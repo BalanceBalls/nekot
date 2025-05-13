@@ -164,9 +164,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 		p.chatView.Height = h
 		p.chatView.Width = w
-		p.chatContainer = p.chatContainer.
-			Width(w).
-			Height(h)
+		p.chatContainer = p.chatContainer.Width(w).Height(h)
 
 	case tea.KeyMsg:
 		if !p.isChatContainerFocused {

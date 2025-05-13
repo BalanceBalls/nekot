@@ -64,20 +64,20 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 	colors := config.ColorScheme.GetColors()
 	spinner := initInfoSpinner()
 
-	infoSpinnerStyle = infoSpinnerStyle.Copy().Foreground(colors.HighlightColor)
-	processingIdleLabel := defaultLabelStyle.Copy().
+	infoSpinnerStyle = infoSpinnerStyle.Foreground(colors.HighlightColor)
+	processingIdleLabel := defaultLabelStyle.
 		BorderLeftForeground(colors.HighlightColor).
 		Foreground(colors.DefaultTextColor)
-	processingActiveLabel := defaultLabelStyle.Copy().
+	processingActiveLabel := defaultLabelStyle.
 		BorderLeftForeground(colors.AccentColor).
 		Foreground(colors.DefaultTextColor)
-	promptTokensLablel := defaultLabelStyle.Copy().
+	promptTokensLablel := defaultLabelStyle.
 		BorderLeftForeground(colors.ActiveTabBorderColor).
 		Foreground(colors.DefaultTextColor)
-	completionTokensLabel := defaultLabelStyle.Copy().
+	completionTokensLabel := defaultLabelStyle.
 		BorderLeftForeground(colors.ActiveTabBorderColor).
 		Foreground(colors.DefaultTextColor)
-	notificationLabel := defaultLabelStyle.Copy().
+	notificationLabel := defaultLabelStyle.
 		Background(colors.NormalTabBorderColor).
 		BorderLeftForeground(colors.HighlightColor).
 		Align(lipgloss.Left).

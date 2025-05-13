@@ -340,7 +340,7 @@ func (p SettingsPane) View() string {
 
 	modelName := util.TrimListItem(
 		p.settings.Model,
-		util.CalcMaxSettingValueSize(p.container.GetWidth()))
+		util.CalcMaxSettingItemWidth(p.container.GetWidth()))
 	modelRowContent := p.listItemRenderer("(m) model", modelName)
 	if p.loading {
 		modelRowContent = p.listItemRenderer(p.spinner.View(), "")

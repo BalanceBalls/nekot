@@ -188,12 +188,13 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 func (p SessionsPane) View() string {
 	listView := p.normalListView()
 	borderColor := p.colors.NormalTabBorderColor
+	lowerRows := ""
 	if !p.isFocused {
 		return p.container.BorderForeground(borderColor).Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				p.listHeader("[Sessions]"),
 				listView,
-				"",
+				lowerRows,
 			),
 		)
 	}
@@ -205,7 +206,6 @@ func (p SessionsPane) View() string {
 	}
 
 	borderColor = p.colors.ActiveTabBorderColor
-	lowerRows := ""
 	if p.operationTargetId != NoTargetSession {
 		lowerRows = "\n" + p.textInput.View()
 	} else {
@@ -413,7 +413,6 @@ func (p SessionsPane) normalListView() string {
 	}
 
 	w, h := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, 0)
-
 	return lipgloss.NewStyle().
 		Width(w).
 		Height(h).
