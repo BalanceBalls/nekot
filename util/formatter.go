@@ -57,6 +57,7 @@ func GetVisualModeView(msgsToRender []MessageToSend, w int, colors SchemeColors)
 func RenderUserMessage(msg string, width int, colors SchemeColors, isVisualMode bool) string {
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width),
 		colors.RendererThemeOption,
 	)
 	if isVisualMode {
@@ -79,6 +80,7 @@ func RenderUserMessage(msg string, width int, colors SchemeColors, isVisualMode 
 func RenderErrorMessage(msg string, width int, colors SchemeColors) string {
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width),
 		colors.RendererThemeOption,
 	)
 	msg = "```json\n" + msg + "\n```"
@@ -100,6 +102,7 @@ func RenderBotMessage(msg string, width int, colors SchemeColors, isVisualMode b
 
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width),
 		colors.RendererThemeOption,
 	)
 

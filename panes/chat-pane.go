@@ -45,6 +45,7 @@ type ChatPane struct {
 	isChatContainerFocused bool
 	msgChan                chan util.ProcessApiCompletionResponse
 	viewMode               util.ViewMode
+	sessionContent         []util.MessageToSend
 
 	terminalWidth  int
 	terminalHeight int
@@ -63,7 +64,6 @@ var chatContainerStyle = lipgloss.NewStyle().
 
 func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	chatView := viewport.New(w, h)
-	chatView.SetContent(util.DefaultMessage)
 	msgChan := make(chan util.ProcessApiCompletionResponse)
 
 	config, ok := config.FromContext(ctx)
@@ -73,6 +73,8 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	}
 	colors := config.ColorScheme.GetColors()
 
+	defaultChatContent := util.GetManual(w, colors)
+	chatView.SetContent(defaultChatContent)
 	chatContainerStyle = chatContainerStyle.
 		Width(w).
 		Height(h).
@@ -86,8 +88,8 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 		chatContainer:          chatContainerStyle,
 		chatView:               chatView,
 		chatViewReady:          false,
-		chatContent:            util.DefaultMessage,
-		renderedContent:        util.DefaultMessage,
+		chatContent:            defaultChatContent,
+		renderedContent:        defaultChatContent,
 		isChatContainerFocused: false,
 		msgChan:                msgChan,
 		terminalWidth:          util.DefaultTerminalWidth,
@@ -122,12 +124,12 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	switch msg := msg.(type) {
 	case util.ViewModeChanged:
 		p.viewMode = msg.Mode
-		w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-		p.chatView.Height = h
-		p.chatView.Width = w
-		p.chatContainer = p.chatContainer.
-			Width(w).
-			Height(h)
+		return p, func() tea.Msg {
+			return tea.WindowSizeMsg{
+				Width:  p.terminalWidth,
+				Height: p.terminalHeight,
+			}
+		}
 
 	case util.FocusEvent:
 		p.isChatContainerFocused = msg.IsFocused
@@ -279,11 +281,12 @@ func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 
 	oldContent := util.GetMessagesAsPrettyString(session.Messages, paneWidth, p.colors)
 	if oldContent == "" {
-		oldContent = util.DefaultMessage
+		oldContent = util.GetManual(p.terminalWidth, p.colors)
 	}
 	rendered := util.GetVisualModeView(session.Messages, paneWidth, p.colors)
 	p.renderedContent = wrap.String(rendered, paneWidth)
 	p.chatView.SetContent(wrap.String(oldContent, paneWidth))
 	p.chatView.GotoBottom()
+	p.sessionContent = session.Messages
 	return p, nil
 }

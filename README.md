@@ -94,7 +94,7 @@ We provide a `config.json` file within your directory for easy access to essenti
 ```
 
  - `providerBaseUrl`: The url can be anything that follows OpenAI API standard ( [ollama](http://localhost:11434), [lmstudio](http://127.0.0.1:1234), etc)
- - `chatGPTApiUrl` [obsolete]: same as `providerBaseUrl` 
+ - `chatGPTApiUrl` [obsolete]: same as `providerBaseUrl`
  - `systemMessage` field is available for customizing system prompt messages. **Better to set it from the app**
  - `defaultModel` field sets the default model.  **Better to set it from the app**
 
@@ -120,8 +120,8 @@ Available themes:
 
 ## Data migration
 
-If you need your settings and chats on other machine - simply copy `chat.db` and `config.json` from the `.nekot/` directory 
-and paste to the same directory on other machine. 
+If you need your settings and chats on other machine - simply copy `chat.db` and `config.json` from the `.nekot/` directory
+and paste to the same directory on other machine.
 
 ## Cache invalidation
 
@@ -142,7 +142,7 @@ nekot --purge-cache
 ## Prompt Pane
 
 - `i`: Enters insert mode (you can now safely paste messages into the tui)
-- `Ctrl+e`: Open/Close prompt editor 
+- `Ctrl+e`: Open/Close prompt editor
 - `Ctrl+r`: Clear prompt
 - `Ctrl+v`: Paste text from buffer
 - `Ctrl+s`: Paste text from buffer as a code block (only in editor mode)
@@ -157,15 +157,15 @@ nekot --purge-cache
 
 ## Chat Messages Pane
 
-- `y`: Copies the last message from ChatGPT into your clipboard.
-- `Shift+y`: Copies all messages from the ChatGPT session into your clipboard.
+- `y`: Copies the last message into your clipboard.
+- `Shift+y`: Copies all messages from current session into your clipboard.
 - `v`, `Shift+v` or `space`: Enters navigation mode when chat pane is focused (allows to move accross the chat content lines)
 
 ### Selection mode
 
 ![selection demo](./docs/images/selection-mode.gif)
 
-Selection mode allows to navigate the chat pane and select lines to copy. Supports basic vim-motions.  
+Selection mode allows to navigate the chat pane and select lines to copy. Supports basic vim-motions.
 
 <b>Navigation</b>
  - `j`, `k` - go down and up a line
@@ -184,7 +184,7 @@ Selection mode allows to navigate the chat pane and select lines to copy. Suppor
 ## Settings Pane
 
 - `[` and `]`: switch between presets and settings tabs
- 
+
 ### Settings tab
 - `m`: Opens a model picker to change the model. (use `/` to set filter)
 - `f`: Change the frequency value
@@ -193,7 +193,7 @@ Selection mode allows to navigate the chat pane and select lines to copy. Suppor
 - `p`: Change the top_p value (nucleus sampling)
 - `s`: Opens a text editor to edit system prompt
 - `Ctrl+r`: resets current settings preset to default values
-- `Ctrl+p`: creates new preset with a specified name from the current preset 
+- `Ctrl+p`: creates new preset with a specified name from the current preset
 
 ### Presets tab
 - `d`: remove preset (default and current selected presets cannot be removed)
