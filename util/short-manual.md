@@ -14,15 +14,17 @@ ____________________________
 # Global keybindings
 
 `Ctrl+n` New session
-<!------->
+ <!------->
 `Ctrl+q` Start quick chat
-<!------->
+ <!------->
+`Ctrl+x` Save quick chat
+ <!------->
 `Ctrl+o` Toggle zen mode
-<!------->
+ <!------->
 `Ctrl+s` Stop inference
-<!------->
+ <!------->
 `1,2,3,4` `TAB` Switch panes
-<!------->
+ <!------->
 `Ctrl+c` Exit
 
 # Chat pane keybindings
@@ -30,14 +32,13 @@ ____________________________
 `j` `k` `d` `u` Scroll chat
 <!------->
 `y` Copy last message
-<!------->
+ <!------->
 `Y` Copy all messages
-
-<!------->
+ <!------->
 `space` Enter line navigation mode
 
 # Navigation mode keybindings
-<!------->
+
 `space` Toggle line selection
-<!------->
+ <!------->
 `y` Copy selected lines

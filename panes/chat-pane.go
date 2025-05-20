@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/reflow/wrap"
 	"github.com/tearingItUp786/nekot/components"
 	"github.com/tearingItUp786/nekot/config"
 	"github.com/tearingItUp786/nekot/sessions"
@@ -41,7 +40,6 @@ type ChatPane struct {
 	chatViewReady          bool
 	displayMode            displayMode
 	chatContent            string
-	renderedContent        string
 	isChatContainerFocused bool
 	msgChan                chan util.ProcessApiCompletionResponse
 	viewMode               util.ViewMode
@@ -89,7 +87,6 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 		chatView:               chatView,
 		chatViewReady:          false,
 		chatContent:            defaultChatContent,
-		renderedContent:        defaultChatContent,
 		isChatContainerFocused: false,
 		msgChan:                msgChan,
 		terminalWidth:          util.DefaultTerminalWidth,
@@ -153,8 +150,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			styledBufferMessage = "\n" + styledBufferMessage
 		}
 
-		rendered := wrap.String(oldContent+styledBufferMessage, paneWidth)
-		p.renderedContent = rendered
+		rendered := oldContent + styledBufferMessage
 		p.chatView.SetContent(rendered)
 		p.chatView.GotoBottom()
 
@@ -167,6 +163,8 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		p.chatView.Height = h
 		p.chatView.Width = w
 		p.chatContainer = p.chatContainer.Width(w).Height(h)
+		content := util.GetMessagesAsPrettyString(p.sessionContent, w, p.colors)
+		p.chatView.SetContent(content)
 
 	case tea.KeyMsg:
 		if !p.isChatContainerFocused {
@@ -194,11 +192,12 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			p.displayMode = selectionMode
 			enableUpdateOfViewport = false
 			p.chatContainer.BorderForeground(p.colors.AccentColor)
+			renderedContent := util.GetVisualModeView(p.sessionContent, p.chatView.Width, p.colors)
 			p.selectionView = components.NewTextSelector(
 				p.terminalWidth,
 				p.terminalHeight,
 				p.chatView.YOffset,
-				p.renderedContent,
+				renderedContent,
 				p.colors)
 			p.selectionView.AdjustScroll()
 
@@ -283,9 +282,7 @@ func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 	if oldContent == "" {
 		oldContent = util.GetManual(p.terminalWidth, p.colors)
 	}
-	rendered := util.GetVisualModeView(session.Messages, paneWidth, p.colors)
-	p.renderedContent = wrap.String(rendered, paneWidth)
-	p.chatView.SetContent(wrap.String(oldContent, paneWidth))
+	p.chatView.SetContent(oldContent)
 	p.chatView.GotoBottom()
 	p.sessionContent = session.Messages
 	return p, nil
