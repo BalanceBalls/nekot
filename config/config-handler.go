@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/tearingItUp786/nekot/util"
 )
@@ -37,6 +38,12 @@ type Config struct {
 	DefaultModel    string           `json:"defaultModel"`
 	Provider        string           `json:"provider"`
 	ColorScheme     util.ColorScheme `json:"colorScheme"`
+}
+
+type StartupFlags struct {
+	Theme       string
+	Provider    string
+	ProviderUrl string
 }
 
 //go:embed config.json
@@ -102,7 +109,7 @@ func validateConfig(config Config) bool {
 	}
 }
 
-func CreateAndValidateConfig() Config {
+func CreateAndValidateConfig(flags StartupFlags) Config {
 	configFilePath, err := createConfig()
 	if err != nil {
 		fmt.Printf("Error finding config JSON: %s", err)
@@ -122,7 +129,9 @@ func CreateAndValidateConfig() Config {
 		fmt.Printf("Error parsing config JSON: %s", err)
 		panic(err)
 	}
+
 	config.setDefaults()
+	config.applyFlags(flags)
 
 	isValidConfig := validateConfig(config)
 	if !isValidConfig {
@@ -163,5 +172,19 @@ func (c *Config) setDefaults() {
 
 	if c.Provider == "" {
 		c.Provider = util.OpenAiProviderType
+	}
+}
+
+func (c *Config) applyFlags(flags StartupFlags) {
+	if flags.Theme != "" {
+		c.ColorScheme = util.ColorScheme(strings.ToLower(flags.Theme))
+	}
+
+	if flags.Provider != "" {
+		c.Provider = flags.Provider
+	}
+
+	if flags.ProviderUrl != "" {
+		c.ProviderBaseUrl = flags.ProviderUrl
 	}
 }

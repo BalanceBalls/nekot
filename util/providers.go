@@ -103,21 +103,22 @@ func IsSystemMessageSupported(provider ApiProvider, model string) bool {
 	return true
 }
 
-func TransformRequestHeaders(provider ApiProvider, params map[string]interface{}) map[string]interface{} {
+func TransformRequestHeaders(provider ApiProvider, params map[string]any) map[string]any {
 	switch provider {
 
 	case Local:
-		params["stream_options"] = map[string]interface{}{
+		params["stream_options"] = map[string]any{
 			"include_usage": true,
 		}
 		return params
 	case OpenAi:
-		params["stream_options"] = map[string]interface{}{
+		params["stream_options"] = map[string]any{
 			"include_usage": true,
 		}
 
 		if isOpenAiReasoningModel(params["model"].(string)) {
 			delete(params, "max_tokens")
+			delete(params, "frequency_penalty")
 		}
 		return params
 	case Mistral:

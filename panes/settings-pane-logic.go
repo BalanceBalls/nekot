@@ -126,7 +126,7 @@ func (p *SettingsPane) handleViewMode(msg tea.KeyMsg) tea.Cmd {
 		if p.settings.SystemPrompt != nil {
 			content = *p.settings.SystemPrompt
 		}
-		cmd = util.SwitchToEditor(content, util.SystemMessageEditing)
+		cmd = util.SwitchToEditor(content, util.SystemMessageEditing, false)
 
 	case key.Matches(msg, p.keyMap.editFrequency):
 		cmd = p.configureInput("Enter Frequency "+util.FrequencyRange, util.FrequencyValidator, frequencyChange)

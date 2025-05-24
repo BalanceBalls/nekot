@@ -69,7 +69,7 @@ func NewPromptPane(ctx context.Context) PromptPane {
 	input.Placeholder = InitializingMsg
 	input.PromptStyle = lipgloss.NewStyle().Foreground(colors.ActiveTabBorderColor)
 	input.CharLimit = 0
-	input.Width = 0
+	input.Width = 20000
 
 	textEditor := textarea.New()
 	textEditor.Placeholder = PlaceholderMsg
@@ -122,7 +122,14 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		case util.TextEditMode:
 			p.textEditor, cmd = p.textEditor.Update(msg)
 		default:
-			p.input, cmd = p.input.Update(msg)
+			// TODO: maybe there is a way to adjust heihgt for long inputs?
+			// TODO: move to dimensions?
+			if len(p.input.Value()) > p.container.GetWidth()-4 {
+				p.input, cmd = p.input.Update(msg)
+				cmds = append(cmds, util.SwitchToEditor(p.input.Value(), util.NoOperaton, true))
+			} else {
+				p.input, cmd = p.input.Update(msg)
+			}
 		}
 		cmds = append(cmds, cmd)
 	}
@@ -132,6 +139,11 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 	case util.OpenTextEditorMsg:
 		p.textEditor.SetValue(msg.Content)
 		p.operation = msg.Operation
+		if msg.IsFocused {
+			p.inputMode = util.PromptInsertMode
+			p.textEditor.Focus()
+			cmds = append(cmds, p.textEditor.Cursor.BlinkCmd())
+		}
 
 	case util.ViewModeChanged:
 		p.viewMode = msg.Mode

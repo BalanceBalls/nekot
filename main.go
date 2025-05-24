@@ -18,13 +18,25 @@ import (
 )
 
 var purgeCache bool
+var provider string
+var baseUrl string
+var theme string
 
 func init() {
 	flag.BoolVar(&purgeCache, "purge-cache", false, "Invalidate models cache")
+	flag.StringVar(&provider, "p", "", "Overrides LLM provider configuration. Available: openai, gemini")
+	flag.StringVar(&baseUrl, "u", "", "Overrides LLM provider base url configuration")
+	flag.StringVar(&theme, "t", "", "Overrides theme configuration")
 }
 
 func main() {
 	flag.Parse()
+
+	flags := config.StartupFlags{
+		Theme:       theme,
+		Provider:    provider,
+		ProviderUrl: baseUrl,
+	}
 
 	env := os.Getenv("FOO_ENV")
 	if "" == env {
@@ -49,7 +61,7 @@ func main() {
 	// delete files if in dev mode
 	util.DeleteFilesIfDevMode()
 	// validate config
-	configToUse := config.CreateAndValidateConfig()
+	configToUse := config.CreateAndValidateConfig(flags)
 
 	// run migrations for our database
 	db := util.InitDb()

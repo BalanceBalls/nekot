@@ -42,3 +42,7 @@ ____________________________
 `space` Toggle line selection
  <!------->
 `y` Copy selected lines
+
+# Prompt pane keybindings
+
+`Ctrl+r` Reset input

@@ -193,6 +193,7 @@ type SwitchToPaneMsg struct {
 type OpenTextEditorMsg struct {
 	Content   string
 	Operation Operation
+	IsFocused bool
 }
 
 type SystemPromptUpdatedMsg struct {
@@ -205,9 +206,9 @@ func UpdateSystemPrompt(prompt string) tea.Cmd {
 	}
 }
 
-func SwitchToEditor(content string, op Operation) tea.Cmd {
+func SwitchToEditor(content string, op Operation, isFocused bool) tea.Cmd {
 	openEditorMsg := func() tea.Msg {
-		return OpenTextEditorMsg{Content: content, Operation: op}
+		return OpenTextEditorMsg{Content: content, Operation: op, IsFocused: isFocused}
 	}
 
 	switchFocus := func() tea.Msg {

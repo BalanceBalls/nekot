@@ -72,9 +72,6 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 	}
 }
 
-type OrchestratorInitialized struct {
-}
-
 func (m Orchestrator) Init() tea.Cmd {
 	// Need to load the latest session as the current session  (select recently created)
 	// OR we need to create a brand new session for the user with a random name (insert new and return)
@@ -222,6 +219,7 @@ func (m *Orchestrator) assertChoiceContentString(choice util.Choice) (string, te
 	choiceContent, ok := choice.Delta["content"]
 
 	if !ok {
+		log.Println("Choice content not ok in assertChoiceContentString. FinishReason:", choice.FinishReason)
 		if choice.FinishReason == "stop" || choice.FinishReason == "length" {
 
 			areIdsAllThere := areIDsInOrderAndComplete(getArrayOfIDs(m.ArrayOfProcessResult))
@@ -276,6 +274,7 @@ func (m Orchestrator) constructJsonMessage(arrayOfProcessResult []util.ProcessAp
 }
 
 func (m *Orchestrator) handleFinalChoiceMessage() tea.Cmd {
+	log.Println("handleFinalChoiceMessage triggered")
 	// if the json for whatever reason is malformed, bail out
 	response, err := m.constructJsonMessage(m.ArrayOfProcessResult)
 	if err != nil {
@@ -334,8 +333,27 @@ func getArrayOfIDs(arr []util.ProcessApiCompletionResponse) []int {
 
 // updates the current view with the messages coming in
 func (m *Orchestrator) handleMsgProcessing(msg util.ProcessApiCompletionResponse) tea.Cmd {
+	log.Println("Hit handleMsgProcessing")
+
 	if msg.Result.Usage != nil {
 		m.sessionService.UpdateSessionTokens(m.CurrentSessionID, msg.Result.Usage.Prompt, msg.Result.Usage.Completion)
+	}
+
+	if len(msg.Result.Choices) > 0 {
+		chunkContent := msg.Result.Choices[0].Delta["content"]
+		if chunkContent != nil {
+			chunkString := chunkContent.(string)
+
+			if strings.HasPrefix(chunkString, "<think>") {
+				chunkString = "\n" + "# Thinking..." + "\n<!------------>" + chunkString
+			}
+
+			if strings.Contains(chunkString, "</think>") {
+				chunkString = chunkString + "\n" + "# Done thinking"
+			}
+
+			msg.Result.Choices[0].Delta["content"] = chunkString
+		}
 	}
 
 	m.appendAndOrderProcessResults(msg)
@@ -344,6 +362,7 @@ func (m *Orchestrator) handleMsgProcessing(msg util.ProcessApiCompletionResponse
 
 	if msg.Err != nil {
 		if errors.Is(context.Canceled, msg.Err) {
+			log.Println("Context cancelled int handleMsgProcessing")
 			return tea.Batch(
 				m.handleFinalChoiceMessage(),
 				util.SendNotificationMsg(util.CancelledNotification),

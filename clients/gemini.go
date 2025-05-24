@@ -71,9 +71,9 @@ func (c GeminiClient) RequestCompletion(
 		for {
 			resp, err := iter.Next()
 			if err == iterator.Done {
-				log.Println("Gemini: Iterator done")
+				log.Println("Gemini: Iterator done. processResultID: ", processResultID)
 				sendCompensationChunk(resultChan, processResultID)
-				break
+				return nil
 			}
 
 			if err != nil {
@@ -162,7 +162,7 @@ func sendCitationsChunk(resultChan chan util.ProcessApiCompletionResponse, id in
 
 	choice := util.Choice{
 		Index: id,
-		Delta: map[string]interface{}{
+		Delta: map[string]any{
 			"content": content,
 		},
 	}
@@ -183,7 +183,7 @@ func sendCompensationChunk(resultChan chan util.ProcessApiCompletionResponse, id
 
 	choice := util.Choice{
 		Index: id,
-		Delta: map[string]interface{}{
+		Delta: map[string]any{
 			"content": "",
 		},
 		FinishReason: "stop",
@@ -195,6 +195,7 @@ func sendCompensationChunk(resultChan chan util.ProcessApiCompletionResponse, id
 		Result: chunk,
 		Final:  true,
 	}
+	log.Println("Gemini: compensation chunk sent")
 }
 
 func setParams(model *genai.GenerativeModel, cfg config.Config, settings util.Settings) {
@@ -243,17 +244,17 @@ func processResponseChunk(response *genai.GenerateContentResponse, id int) (proc
 			if candidate.CitationMetadata != nil && len(candidate.CitationMetadata.CitationSources) > 0 {
 				for _, source := range candidate.CitationMetadata.CitationSources {
 					if source.URI != nil {
-						sourceString := fmt.Sprintf("\t> %s", *source.URI)
+						sourceString := fmt.Sprintf("\t> [](%s)", *source.URI)
 						result.citations = append(result.citations, sourceString)
 					}
 				}
 			}
 
-			choice.Delta = map[string]interface{}{
+			choice.Delta = map[string]any{
 				"content": formatResponsePart(candidate.Content.Parts[0]),
 			}
 		} else {
-			choice.Delta = map[string]interface{}{
+			choice.Delta = map[string]any{
 				"content": "",
 			}
 		}

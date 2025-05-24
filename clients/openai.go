@@ -117,16 +117,19 @@ func (c OpenAiClient) constructCompletionRequestPayload(chatMsgs []util.MessageT
 
 	log.Println("Constructing message: ", settings.Model)
 
-	reqParams := map[string]interface{}{
-		"model":             settings.Model, // Use string literals for keys
-		"frequency_penalty": settings.Frequency,
-		"max_tokens":        settings.MaxTokens,
-		"stream":            true,
-		"messages":          messages,
+	reqParams := map[string]any{
+		"model":      settings.Model,
+		"max_tokens": settings.MaxTokens,
+		"stream":     true,
+		"messages":   messages,
 	}
 
 	if settings.Temperature != nil {
 		reqParams["temperature"] = *settings.Temperature
+	}
+
+	if settings.Frequency != nil {
+		reqParams["frequency_penalty"] = *settings.Frequency
 	}
 
 	if settings.TopP != nil {

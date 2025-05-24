@@ -163,8 +163,10 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		p.chatView.Height = h
 		p.chatView.Width = w
 		p.chatContainer = p.chatContainer.Width(w).Height(h)
-		content := util.GetMessagesAsPrettyString(p.sessionContent, w, p.colors)
-		p.chatView.SetContent(content)
+		if p.viewMode == util.NormalMode {
+			content := util.GetMessagesAsPrettyString(p.sessionContent, w, p.colors)
+			p.chatView.SetContent(content)
+		}
 
 	case tea.KeyMsg:
 		if !p.isChatContainerFocused {
