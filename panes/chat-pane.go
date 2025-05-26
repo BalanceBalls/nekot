@@ -157,16 +157,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		cmds = append(cmds, waitForActivity(p.msgChan))
 
 	case tea.WindowSizeMsg:
-		p.terminalWidth = msg.Width
-		p.terminalHeight = msg.Height
-		w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-		p.chatView.Height = h
-		p.chatView.Width = w
-		p.chatContainer = p.chatContainer.Width(w).Height(h)
-		if p.viewMode == util.NormalMode {
-			content := util.GetMessagesAsPrettyString(p.sessionContent, w, p.colors)
-			p.chatView.SetContent(content)
-		}
+		p = p.handleWindowResize(msg.Width, msg.Height)
 
 	case tea.KeyMsg:
 		if !p.isChatContainerFocused {
@@ -188,7 +179,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 		switch {
 		case key.Matches(msg, p.keyMap.selectionMode):
-			if !p.isChatContainerFocused {
+			if !p.isChatContainerFocused || len(p.sessionContent) == 0 {
 				break
 			}
 			p.displayMode = selectionMode
@@ -280,12 +271,49 @@ func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 		p.isChatPaneReady = true
 	}
 
-	oldContent := util.GetMessagesAsPrettyString(session.Messages, paneWidth, p.colors)
-	if oldContent == "" {
-		oldContent = util.GetManual(p.terminalWidth, p.colors)
+	if len(session.Messages) == 0 {
+		p = p.displayManual()
+	} else {
+		p = p.displaySession(session.Messages, paneWidth, true)
 	}
-	p.chatView.SetContent(oldContent)
-	p.chatView.GotoBottom()
-	p.sessionContent = session.Messages
+
 	return p, nil
+}
+
+func (p ChatPane) displayManual() ChatPane {
+	manual := util.GetManual(p.terminalWidth, p.colors)
+	p.chatView.SetContent(manual)
+	p.chatView.GotoTop()
+	p.sessionContent = []util.MessageToSend{}
+	return p
+}
+
+func (p ChatPane) displaySession(messages []util.MessageToSend, paneWidth int, useScroll bool) ChatPane {
+	oldContent := util.GetMessagesAsPrettyString(messages, paneWidth, p.colors)
+	p.chatView.SetContent(oldContent)
+	if useScroll {
+		p.chatView.GotoBottom()
+	}
+	p.sessionContent = messages
+	return p
+}
+
+func (p ChatPane) handleWindowResize(width int, height int) ChatPane {
+	p.terminalWidth = width
+	p.terminalHeight = height
+
+	w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
+	p.chatView.Height = h
+	p.chatView.Width = w
+	p.chatContainer = p.chatContainer.Width(w).Height(h)
+
+	if p.viewMode == util.NormalMode {
+		p = p.displaySession(p.sessionContent, w, false)
+	}
+
+	if len(p.sessionContent) == 0 {
+		p = p.displayManual()
+	}
+
+	return p
 }

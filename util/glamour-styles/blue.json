@@ -23,7 +23,10 @@
     "bold": true
   },
   "h1": {
-    "prefix": "# "
+    "prefix": " ",
+    "suf#bd93f9fix": " ",
+    "color": "15",
+    "background_color": "131"
   },
   "h2": {
     "prefix": "## "

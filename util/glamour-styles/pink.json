@@ -21,7 +21,10 @@
     "bold": true
   },
   "h1": {
-    "prefix": "# ",
+		"prefix": " ",
+		"suffix": " ",
+		"color": "15",
+    "background_color": "139",
     "bold": true
   },
   "h2": {
