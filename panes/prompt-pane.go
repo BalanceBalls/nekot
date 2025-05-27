@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 const ResponseWaitingMsg = "> Please wait ..."

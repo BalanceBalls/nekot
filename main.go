@@ -10,11 +10,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/migrations"
+	"github.com/BalanceBalls/nekot/util"
+	"github.com/BalanceBalls/nekot/views"
 	"github.com/joho/godotenv"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/migrations"
-	"github.com/tearingItUp786/nekot/util"
-	"github.com/tearingItUp786/nekot/views"
 )
 
 var purgeCache bool

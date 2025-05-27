@@ -13,10 +13,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 
-	"github.com/tearingItUp786/nekot/clients"
-	"github.com/tearingItUp786/nekot/panes"
-	"github.com/tearingItUp786/nekot/sessions"
-	"github.com/tearingItUp786/nekot/util"
+	"github.com/BalanceBalls/nekot/clients"
+	"github.com/BalanceBalls/nekot/panes"
+	"github.com/BalanceBalls/nekot/sessions"
+	"github.com/BalanceBalls/nekot/util"
 )
 
 const pulsarIntervalMs = 300

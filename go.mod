@@ -1,4 +1,4 @@
-module github.com/tearingItUp786/nekot
+module github.com/BalanceBalls/nekot
 
 go 1.23.0
 

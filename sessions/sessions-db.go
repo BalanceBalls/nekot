@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/tearingItUp786/nekot/util"
+	"github.com/BalanceBalls/nekot/util"
 )
 
 type Session struct {
@@ -131,7 +131,7 @@ func (ss *SessionService) UpdateSessionMessages(id int, messages []util.MessageT
 func (ss *SessionService) UpdateSessionTokens(id int, promptTokens, completionTokens int) error {
 	_, err := ss.DB.Exec(`
 			UPDATE sessions
-			SET 
+			SET
 				prompt_tokens = prompt_tokens + $1,
 				completion_tokens = completion_tokens + $2
 			WHERE sessions_id = $3

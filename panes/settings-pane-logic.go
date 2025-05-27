@@ -5,14 +5,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/BalanceBalls/nekot/components"
+	"github.com/BalanceBalls/nekot/settings"
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/components"
-	"github.com/tearingItUp786/nekot/settings"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 const floatPrescision = 32

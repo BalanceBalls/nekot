@@ -6,11 +6,11 @@ import (
 	"log"
 	"strings"
 
+	"github.com/BalanceBalls/nekot/settings"
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/settings"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 type PresetsList struct {

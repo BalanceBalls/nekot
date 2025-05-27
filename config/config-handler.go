@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/tearingItUp786/nekot/util"
+	"github.com/BalanceBalls/nekot/util"
 )
 
 // Define a type for your context key to avoid collisions with other context keys

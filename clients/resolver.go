@@ -1,6 +1,6 @@
 package clients
 
-import "github.com/tearingItUp786/nekot/util"
+import "github.com/BalanceBalls/nekot/util"
 
 func ResolveLlmClient(apiType string, apiUrl string, systemMessage string) util.LlmClient {
 	switch apiType {

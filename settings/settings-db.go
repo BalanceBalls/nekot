@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BalanceBalls/nekot/clients"
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/util"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tearingItUp786/nekot/clients"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 // const ModelsCacheTtl = time.Second * 5
@@ -38,7 +38,7 @@ func NewSettingsService(db *sql.DB) *SettingsService {
 func (ss *SettingsService) GetPreset(id int) (util.Settings, error) {
 	settings := util.Settings{}
 	row := ss.DB.QueryRow(
-		`select 
+		`select
 			settings_id,
 			settings_model,
 			settings_max_tokens,
@@ -71,7 +71,7 @@ func (ss *SettingsService) GetPreset(id int) (util.Settings, error) {
 func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.Config) tea.Msg {
 	settings := util.Settings{}
 	row := ss.DB.QueryRow(
-		`select 
+		`select
 			settings_id,
 			settings_model,
 			settings_max_tokens,
@@ -225,7 +225,7 @@ func (ss *SettingsService) CacheModelsForProvider(provider int, models []string)
 
 func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 	rows, err := ss.DB.Query(
-		`select 
+		`select
 			settings_id,
 			settings_model,
 			settings_max_tokens,
@@ -274,7 +274,7 @@ func (ss *SettingsService) ResetToDefault(current util.Settings) (util.Settings,
 
 func (ss *SettingsService) SavePreset(newSettings util.Settings) (int, error) {
 	upsert := `
-		INSERT INTO settings 
+		INSERT INTO settings
 			(settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name)
 		VALUES
 			($1, $2, $3, $4, $5, $6, $7)
@@ -320,7 +320,7 @@ func (ss *SettingsService) RemovePreset(id int) error {
 
 func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Settings, error) {
 	upsert := `
-		INSERT INTO settings 
+		INSERT INTO settings
 			(settings_id, settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name)
 		VALUES
 			($1, $2, $3, $4, $5, $6, $7, $8)

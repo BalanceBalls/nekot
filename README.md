@@ -63,7 +63,7 @@ nekot
 * Install go - [manual](https://go.dev/doc/install)
 * Clone repo and cd into the directory
 ```bash
-git clone https://github.com/tearingItUp786/nekot.git
+git clone https://github.com/BalanceBalls/nekot.git
 cd ./nekot
 ```
 To install as a go binary:

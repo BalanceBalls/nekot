@@ -7,17 +7,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BalanceBalls/nekot/clients"
+	"github.com/BalanceBalls/nekot/components"
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/settings"
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/clients"
-	"github.com/tearingItUp786/nekot/components"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/settings"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 type settingsViewMode int

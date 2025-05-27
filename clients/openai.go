@@ -13,9 +13,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/util"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 type OpenAiClient struct {

@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BalanceBalls/nekot/clients"
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/settings"
+	"github.com/BalanceBalls/nekot/user"
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tearingItUp786/nekot/clients"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/settings"
-	"github.com/tearingItUp786/nekot/user"
-	"github.com/tearingItUp786/nekot/util"
 	"golang.org/x/net/context"
 )
 

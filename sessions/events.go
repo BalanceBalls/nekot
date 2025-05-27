@@ -1,8 +1,8 @@
 package sessions
 
 import (
+	"github.com/BalanceBalls/nekot/util"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 type LoadDataFromDB struct {

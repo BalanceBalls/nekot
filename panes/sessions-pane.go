@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BalanceBalls/nekot/components"
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/sessions"
+	"github.com/BalanceBalls/nekot/user"
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/components"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/sessions"
-	"github.com/tearingItUp786/nekot/user"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 const NoTargetSession = -1

@@ -4,11 +4,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 const (
