@@ -53,7 +53,7 @@ After API keys are set, proceed to installtion
 #### Homebrew
 
 ```bash
-brew tap tearingitup786/tearingitup786
+brew tap BalanceBalls/BalanceBalls
 brew install nekot
 nekot
 ```
