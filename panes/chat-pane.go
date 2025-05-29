@@ -48,12 +48,13 @@ type ChatPane struct {
 	terminalWidth  int
 	terminalHeight int
 
-	keyMap        chatPaneKeyMap
-	colors        util.SchemeColors
-	chatContainer lipgloss.Style
-	chatView      viewport.Model
-	selectionView components.TextSelector
-	mainCtx       context.Context
+	quickChatActive bool
+	keyMap          chatPaneKeyMap
+	colors          util.SchemeColors
+	chatContainer   lipgloss.Style
+	chatView        viewport.Model
+	selectionView   components.TextSelector
+	mainCtx         context.Context
 }
 
 var chatContainerStyle = lipgloss.NewStyle().
@@ -143,7 +144,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	case sessions.ResponseChunkProcessed:
 		paneWidth := p.chatContainer.GetWidth()
 
-		oldContent := util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors)
+		oldContent := util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
 		styledBufferMessage := util.RenderBotMessage(msg.ChunkMessage, paneWidth, p.colors, false)
 
 		if styledBufferMessage != "" {
@@ -245,6 +246,7 @@ func (p ChatPane) View() string {
 	if p.isChatContainerFocused {
 		borderColor = p.colors.ActiveTabBorderColor
 	}
+
 	return p.chatContainer.BorderForeground(borderColor).Render(viewportContent)
 }
 
@@ -271,7 +273,8 @@ func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 		p.isChatPaneReady = true
 	}
 
-	if len(session.Messages) == 0 {
+	p.quickChatActive = session.IsTemporary
+	if len(session.Messages) == 0 && !session.IsTemporary {
 		p = p.displayManual()
 	} else {
 		p = p.displaySession(session.Messages, paneWidth, true)
@@ -289,7 +292,7 @@ func (p ChatPane) displayManual() ChatPane {
 }
 
 func (p ChatPane) displaySession(messages []util.MessageToSend, paneWidth int, useScroll bool) ChatPane {
-	oldContent := util.GetMessagesAsPrettyString(messages, paneWidth, p.colors)
+	oldContent := util.GetMessagesAsPrettyString(messages, paneWidth, p.colors, p.quickChatActive)
 	p.chatView.SetContent(oldContent)
 	if useScroll {
 		p.chatView.GotoBottom()
@@ -311,7 +314,7 @@ func (p ChatPane) handleWindowResize(width int, height int) ChatPane {
 		p = p.displaySession(p.sessionContent, w, false)
 	}
 
-	if len(p.sessionContent) == 0 {
+	if len(p.sessionContent) == 0 && !p.quickChatActive {
 		p = p.displayManual()
 	}
 

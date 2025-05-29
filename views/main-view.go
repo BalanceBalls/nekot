@@ -24,23 +24,27 @@ const pulsarIntervalMs = 300
 var asyncDeps = []util.AsyncDependency{util.SettingsPaneModule, util.Orchestrator}
 
 type keyMap struct {
-	cancel     key.Binding
-	zenMode    key.Binding
-	editorMode key.Binding
-	nextPane   key.Binding
-	jumpToPane key.Binding
-	newSession key.Binding
-	quit       key.Binding
+	cancel        key.Binding
+	zenMode       key.Binding
+	editorMode    key.Binding
+	nextPane      key.Binding
+	jumpToPane    key.Binding
+	newSession    key.Binding
+	quickChat     key.Binding
+	saveQuickChat key.Binding
+	quit          key.Binding
 }
 
 var defaultKeyMap = keyMap{
-	cancel:     key.NewBinding(key.WithKeys("ctrl+s", "ctrl+b"), key.WithHelp("ctrl+b/ctrl+s", "stop inference")),
-	zenMode:    key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "activate/deactivate zen mode")),
-	editorMode: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "enter/exit editor mode")),
-	quit:       key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit app")),
-	jumpToPane: key.NewBinding(key.WithKeys("1", "2", "3", "4"), key.WithHelp("1,2,3,4", "jump to specific pane")),
-	nextPane:   key.NewBinding(key.WithKeys(tea.KeyTab.String()), key.WithHelp("TAB", "move to next pane")),
-	newSession: key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "add new session")),
+	cancel:        key.NewBinding(key.WithKeys("ctrl+s", "ctrl+b"), key.WithHelp("ctrl+b/ctrl+s", "stop inference")),
+	zenMode:       key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "activate/deactivate zen mode")),
+	editorMode:    key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "enter/exit editor mode")),
+	quit:          key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit app")),
+	quickChat:     key.NewBinding(key.WithKeys("ctrl+q"), key.WithHelp("ctrl+q", "start quick chat")),
+	saveQuickChat: key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "save quick chat")),
+	jumpToPane:    key.NewBinding(key.WithKeys("1", "2", "3", "4"), key.WithHelp("1,2,3,4", "jump to specific pane")),
+	nextPane:      key.NewBinding(key.WithKeys(tea.KeyTab.String()), key.WithHelp("TAB", "move to next pane")),
+	newSession:    key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "add new session")),
 }
 
 type MainView struct {
@@ -197,14 +201,14 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch {
 
+		case key.Matches(msg, m.keys.saveQuickChat):
+			cmds = append(cmds, sessions.SendSaveQuickChatMsg())
+
+		case key.Matches(msg, m.keys.quickChat):
+			cmds = append(cmds, m.InitiateNewSession(true))
+
 		case key.Matches(msg, m.keys.newSession):
-			cmds = append(cmds, util.AddNewSession())
-			if util.IsFocusAllowed(m.viewMode, util.PromptPane, m.terminalWidth) {
-				if m.focused != util.SessionsPane {
-					m.focused = util.PromptPane
-					m.resetFocus()
-				}
-			}
+			cmds = append(cmds, m.InitiateNewSession(false))
 
 		case key.Matches(msg, m.keys.cancel):
 			if m.cancelInference != nil {
@@ -352,4 +356,14 @@ func (m MainView) isFocusChangeAllowed() bool {
 	}
 
 	return true
+}
+
+func (m *MainView) InitiateNewSession(isTemporary bool) tea.Cmd {
+	if util.IsFocusAllowed(m.viewMode, util.PromptPane, m.terminalWidth) {
+		if m.focused != util.SessionsPane {
+			m.focused = util.PromptPane
+			m.resetFocus()
+		}
+	}
+	return util.AddNewSession(isTemporary)
 }

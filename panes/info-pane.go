@@ -45,6 +45,7 @@ type InfoPane struct {
 	promptTokensLablel    lipgloss.Style
 	completionTokensLabel lipgloss.Style
 	notificationLabel     lipgloss.Style
+	quickChatLabel        lipgloss.Style
 
 	showNotification bool
 	notification     util.Notification
@@ -82,6 +83,7 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 		BorderLeftForeground(colors.HighlightColor).
 		Align(lipgloss.Left).
 		Foreground(colors.DefaultTextColor)
+	quickChatLabel := defaultLabelStyle.Background(colors.HighlightColor)
 
 	return InfoPane{
 		processingIdleLabel:   processingIdleLabel,
@@ -89,6 +91,7 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 		promptTokensLablel:    promptTokensLablel,
 		completionTokensLabel: completionTokensLabel,
 		notificationLabel:     notificationLabel,
+		quickChatLabel:        quickChatLabel,
 
 		spinner:        spinner,
 		colors:         colors,
@@ -169,11 +172,17 @@ func (p InfoPane) View() string {
 	promptTokensLablel := p.promptTokensLablel.Render(fmt.Sprintf("IN: %d", p.currentSession.PromptTokens))
 	completionTokensLabel := p.completionTokensLabel.Render(fmt.Sprintf("OUT: %d", p.currentSession.CompletionTokens))
 
+	quickChatLabel := ""
+	if p.currentSession.IsTemporary {
+		quickChatLabel = p.quickChatLabel.Render("Q")
+	}
+
 	firstRow := processingLabel
 	secondRow := lipgloss.JoinHorizontal(
 		lipgloss.Left,
 		promptTokensLablel,
 		completionTokensLabel,
+		quickChatLabel,
 	)
 
 	if p.showNotification {

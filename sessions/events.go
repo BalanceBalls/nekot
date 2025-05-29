@@ -36,6 +36,18 @@ func SendUpdateCurrentSessionMsg(session Session) tea.Cmd {
 	}
 }
 
+type SaveQuickChat struct{}
+
+func SendSaveQuickChatMsg() tea.Cmd {
+	return func() tea.Msg { return SaveQuickChat{} }
+}
+
+type RefreshSessionsList struct{}
+
+func SendRefreshSessionsListMsg() tea.Cmd {
+	return func() tea.Msg { return RefreshSessionsList{} }
+}
+
 type ResponseChunkProcessed struct {
 	PreviousMsgArray []util.MessageToSend
 	ChunkMessage     string

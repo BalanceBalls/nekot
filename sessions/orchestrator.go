@@ -31,15 +31,16 @@ type Orchestrator struct {
 	settingsService *settings.SettingsService
 	config          config.Config
 
-	InferenceClient      util.LlmClient
-	Settings             util.Settings
-	CurrentSessionID     int
-	CurrentSessionName   string
-	ArrayOfProcessResult []util.ProcessApiCompletionResponse
-	ArrayOfMessages      []util.MessageToSend
-	CurrentAnswer        string
-	AllSessions          []Session
-	ProcessingMode       string
+	InferenceClient           util.LlmClient
+	Settings                  util.Settings
+	CurrentSessionID          int
+	CurrentSessionName        string
+	CurrentSessionIsTemporary bool
+	ArrayOfProcessResult      []util.ProcessApiCompletionResponse
+	ArrayOfMessages           []util.MessageToSend
+	CurrentAnswer             string
+	AllSessions               []Session
+	ProcessingMode            string
 
 	settingsReady bool
 	dataLoaded    bool
@@ -136,12 +137,29 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		clipboard.WriteAll(m.GetMessagesAsString())
 		cmds = append(cmds, util.SendNotificationMsg(util.CopiedNotification))
 
+	case SaveQuickChat:
+		log.Println("Save quick chat received. IsTemporary: ", m.CurrentSessionIsTemporary)
+		if m.CurrentSessionIsTemporary {
+			m.sessionService.SaveQuickChat(m.CurrentSessionID)
+			updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
+			cmds = append(cmds, SendUpdateCurrentSessionMsg(updatedSession))
+			cmds = append(cmds, SendRefreshSessionsListMsg())
+
+			// TODO: notification
+		}
+
 	case UpdateCurrentSession:
+		if !msg.Session.IsTemporary {
+			m.sessionService.SweepTemporarySessions()
+			m.userService.UpdateUserCurrentActiveSession(1, msg.Session.ID)
+		}
+		m.CurrentSessionIsTemporary = msg.Session.IsTemporary
 		m.CurrentSessionID = msg.Session.ID
 		m.CurrentSessionName = msg.Session.SessionName
 		m.ArrayOfMessages = msg.Session.Messages
 
 	case LoadDataFromDB:
+		m.CurrentSessionIsTemporary = msg.Session.IsTemporary
 		m.CurrentSessionID = msg.CurrentActiveSessionID
 		m.CurrentSessionName = msg.Session.SessionName
 		m.ArrayOfMessages = msg.Session.Messages

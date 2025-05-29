@@ -120,7 +120,10 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case util.AddNewSessionMsg:
-		cmds = append(cmds, p.addNewSession())
+		cmds = append(cmds, p.addNewSession(msg))
+
+	case sessions.RefreshSessionsList:
+		p.updateSessionsList()
 
 	case sessions.LoadDataFromDB:
 		p.currentSession = msg.Session
@@ -274,11 +277,11 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 	return cmd
 }
 
-func (p *SessionsPane) addNewSession() tea.Cmd {
+func (p *SessionsPane) addNewSession(msg util.AddNewSessionMsg) tea.Cmd {
 	currentTime := time.Now()
 	formattedTime := currentTime.Format(time.ANSIC)
 	defaultSessionName := fmt.Sprintf("%s", formattedTime)
-	newSession, _ := p.sessionService.InsertNewSession(defaultSessionName, []util.MessageToSend{})
+	newSession, _ := p.sessionService.InsertNewSession(defaultSessionName, []util.MessageToSend{}, msg.IsTemporary)
 
 	cmd := p.handleUpdateCurrentSession(newSession)
 	p.updateSessionsList()

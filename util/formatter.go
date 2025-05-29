@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors SchemeColors) string {
+func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors SchemeColors, isQuickChat bool) string {
 	var messages string
 	for _, message := range msgsToRender {
 		messageToUse := message.Content
@@ -26,6 +26,11 @@ func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors Schem
 		}
 
 		messages = messages + "\n" + messageToUse
+	}
+
+	if isQuickChat {
+		quickChatDisclaimer := GetQuickChatDisclaimer(w, colors)
+		messages = quickChatDisclaimer + "\n" + messages
 	}
 
 	return messages
@@ -130,6 +135,30 @@ func RenderBotMessage(msg string, width int, colors SchemeColors, isVisualMode b
 		BorderStyle(lipgloss.InnerHalfBlockBorder()).
 		BorderLeftForeground(colors.ActiveTabBorderColor).
 		Width(width - 1).
+		Render(output)
+}
+
+func GetQuickChatDisclaimer(w int, colors SchemeColors) string {
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithPreservedNewLines(),
+		colors.RendererThemeOption,
+	)
+
+	output, _ := renderer.Render(QuickChatWarning)
+	return lipgloss.NewStyle().
+		MaxWidth(w).
+		Render(output)
+}
+
+func GetManual(w int, colors SchemeColors) string {
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(40),
+		colors.RendererThemeOption,
+	)
+	output, _ := renderer.Render(ManualContent)
+	return lipgloss.NewStyle().
+		MaxWidth(w).
 		Render(output)
 }
 

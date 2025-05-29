@@ -223,8 +223,14 @@ func SwitchToEditor(content string, op Operation, isFocused bool) tea.Cmd {
 	return tea.Batch(switchFocus, switchMode, openEditorMsg)
 }
 
-type AddNewSessionMsg struct{}
+type AddNewSessionMsg struct {
+	IsTemporary bool
+}
 
-func AddNewSession() tea.Cmd {
-	return func() tea.Msg { return AddNewSessionMsg{} }
+func AddNewSession(isTemporary bool) tea.Cmd {
+	return func() tea.Msg {
+		return AddNewSessionMsg{
+			IsTemporary: isTemporary,
+		}
+	}
 }
