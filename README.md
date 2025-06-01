@@ -13,7 +13,7 @@ A terminal util for chatting with LLMs.
 
 ## Demo
 
-![tui demo](./docs/images/tui-demo.gif)
+![tui demo](./docs/images/nekot-demo.gif)
 
 ## Installation manual
 

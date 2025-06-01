@@ -25,7 +25,7 @@ var (
 	openAiChatModelsPrefixes = []string{"gpt-", "o1", "o3"}
 	openAiExclusionKeywords  = []string{"audio", "realtime", "instruct"}
 
-	geminiExclusionKeywords  = []string{"aqa", "imagen", "embedding", "bison"}
+	geminiExclusionKeywords  = []string{"aqa", "imagen", "embedding", "bison", "vision"}
 	mistralExclusionKeywords = []string{"pixtral", "embed"}
 )
 
