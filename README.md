@@ -1,15 +1,17 @@
-# NEKOT TUI README
+# NEKOT
 
-A terminal util for chatting with LLMs.
+**A powerful and intuitive terminal utility for interaction with both local and cloud LLMs.**
 
-## Features
- * **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, and more)
- * **Support for Gemini API**
- * **Chat sessions** management
- * **Settings presets** (configure different personas with unique settings)
- * **Convenient text selection** tool (vim-like line selection)
- * **Crossplatform** - support for MacOS, Windows and Linux
- * **Multiple themes**
+A tool for those who appreciate keyboard driven apps and terminal workflows
+
+## Features                                                                      
+ * 🤖 **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, and more)
+ * 🌟 **Support for Gemini API**
+ * 💬 **Chat sessions** management and quick chats
+ * ⚙️ **Settings presets** (configure different personas with unique settings)
+ * ✂️ **Convenient text selection** tool (vim-like line selection)
+ * 🌐 **Crossplatform** - support for MacOS, Windows and Linux
+ * 🎨 **Multiple themes**
 
 ## Demo
 
