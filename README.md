@@ -161,6 +161,8 @@ nekot -t blue
 - `Ctrl+o`: Toggles zen mode
 - `Ctrl+c`: Exit the program
 - `Ctrl+n`: Create new session
+- `Ctrl+q`: Start quick chat
+- `Ctrl+x`: Save quick chat to session
 
 ## Prompt Pane
 
