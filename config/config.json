@@ -2,6 +2,6 @@
   "providerBaseUrl": "https://api.openai.com",
   "systemMessage": "",
   "defaultModel": "",
-  "colorScheme": "Pink",
+  "colorScheme": "groove",
   "provider": "openai"
 }

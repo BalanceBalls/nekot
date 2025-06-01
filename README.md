@@ -1,6 +1,6 @@
-# NEKOT tui README
+# NEKOT TUI README
 
-A terminal util for chatting with LLMs. Shout out to BalanceBalls for the name!
+A terminal util for chatting with LLMs.
 
 ## Features
  * **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, and more)
@@ -84,11 +84,10 @@ We provide a `config.json` file within your directory for easy access to essenti
 ### Example
 ```json
 {
-  "chatGPTApiUrl": "https://api.openai.com", // obsolete, use "providerBaseUrl" instead
   "providerBaseUrl": "https://api.openai.com", // Or ollama http://localhost:1143, or any other OpenAi compatible API
   "systemMessage": "",
   "defaultModel": "",
-  "colorScheme": "Groove", // Pink, Blue, Groove
+  "colorScheme": "groove", // pink, blue, groove
   "provider": "openai" // openai, gemini
 }
 ```
@@ -113,9 +112,9 @@ When using the `gemini` provider, `providerBaseUrl` param is not used.
 You can change colorscheme using the `colorScheme` field.
 
 Available themes:
- * `Pink` **default**
+ * `Groove` **default**
+ * `Pink`
  * `Blue`
- * `Groove`
 
 
 ## Data migration
@@ -123,11 +122,35 @@ Available themes:
 If you need your settings and chats on other machine - simply copy `chat.db` and `config.json` from the `.nekot/` directory
 and paste to the same directory on other machine.
 
-## Cache invalidation
+## Flags
+
+### Cache invalidation
 
 Models list is cached for 14 days upon loading. If you need to invalidate cache use `--purge-cache` flag:
 ```bash
 nekot --purge-cache
+```
+
+### Provider
+
+To switch between openai and gemini APIs you can use `-p` flag:
+```bash
+nekot -p openai
+nekot -p gemini
+```
+
+### Provider url
+
+To specify provier url use `-u` flag(works with the openai provider only):
+```bash
+nekot -u http://localhost:11434
+```
+
+### Theme
+
+To specify color scheme use `-t` flag:
+```bash
+nekot -t blue
 ```
 
 ## Global Keybindings
@@ -162,8 +185,6 @@ nekot --purge-cache
 - `v`, `Shift+v` or `space`: Enters navigation mode when chat pane is focused (allows to move accross the chat content lines)
 
 ### Selection mode
-
-![selection demo](./docs/images/selection-mode.gif)
 
 Selection mode allows to navigate the chat pane and select lines to copy. Supports basic vim-motions.
 
