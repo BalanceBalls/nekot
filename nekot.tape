@@ -89,7 +89,7 @@ Sleep 1s
 Type "/"
 Sleep 1s
 
-Type "gemma27"
+Type "gemma3:4b"
 Sleep 1s
 
 Enter
@@ -104,11 +104,27 @@ Sleep 1s
 Type "i"
 Sleep 1s
 
-Type "What are the benefits of using terminal UIs"
+Type "Explain the following go code:"
+Sleep 1s
+Ctrl+e
+
+Sleep 1s
+Enter
+Sleep 1s
+Type "```go"
+Sleep 1s
+
+Ctrl+v
+Sleep 1s
+
+Type "```"
+Sleep 1s
+
+Escape
 Sleep 1s
 Enter
 
-Sleep 15s
+Sleep 10s
 
 Type "2"
 Sleep 1s
