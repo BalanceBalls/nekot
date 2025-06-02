@@ -4,16 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"math/rand/v2"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/BalanceBalls/nekot/clients"
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/util"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tearingItUp786/nekot/clients"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 // const ModelsCacheTtl = time.Second * 5
@@ -21,6 +22,8 @@ import (
 const ModelsCacheTtl = time.Hour * 24 * 14 // 14 days
 const ModelsSeparator = ";"
 const DateLayout = "2006-01-02 15:04:05"
+
+const defaultMaxTokens = 3000
 
 type SettingsService struct {
 	DB *sql.DB
@@ -32,30 +35,87 @@ func NewSettingsService(db *sql.DB) *SettingsService {
 	}
 }
 
-func (ss *SettingsService) GetSettings(ctx context.Context, cfg config.Config) tea.Msg {
+func (ss *SettingsService) GetPreset(id int) (util.Settings, error) {
 	settings := util.Settings{}
 	row := ss.DB.QueryRow(
-		`select settings_id, settings_model, settings_max_tokens, settings_frequency from settings`,
+		`select
+			settings_id,
+			settings_model,
+			settings_max_tokens,
+			settings_frequency,
+			system_msg,
+			top_p,
+			temperature,
+			preset_name
+		from settings where settings_id=$1`,
+		id,
 	)
-	err := row.Scan(&settings.ID, &settings.Model, &settings.MaxTokens, &settings.Frequency)
+	err := row.Scan(
+		&settings.ID,
+		&settings.Model,
+		&settings.MaxTokens,
+		&settings.Frequency,
+		&settings.SystemPrompt,
+		&settings.TopP,
+		&settings.Temperature,
+		&settings.PresetName,
+	)
 
-	availableModels, modelsError := ss.GetProviderModels(cfg.ChatGPTApiUrl)
+	if err != nil {
+		return settings, err
+	}
+
+	return settings, nil
+}
+
+func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.Config) tea.Msg {
+	settings := util.Settings{}
+	row := ss.DB.QueryRow(
+		`select
+			settings_id,
+			settings_model,
+			settings_max_tokens,
+			settings_frequency,
+			system_msg,
+			top_p,
+			temperature,
+			preset_name
+		from settings where settings_id=$1`,
+		id,
+	)
+	err := row.Scan(
+		&settings.ID,
+		&settings.Model,
+		&settings.MaxTokens,
+		&settings.Frequency,
+		&settings.SystemPrompt,
+		&settings.TopP,
+		&settings.Temperature,
+		&settings.PresetName,
+	)
+
+	availableModels, modelsError := ss.GetProviderModels(ctx, cfg.Provider, cfg.ProviderBaseUrl)
 
 	if modelsError != nil {
-		return util.ErrorEvent{Message: modelsError.Error()}
+		return UpdateSettingsEvent{
+			Settings: settings,
+			Err:      modelsError,
+		}
 	}
 
 	isModelFromSettingsAvailable := slices.Contains(availableModels, settings.Model)
 
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			return util.ErrorEvent{Message: err.Error()}
+			return UpdateSettingsEvent{
+				Settings: settings,
+				Err:      err,
+			}
 		}
 
 		settings = util.Settings{
 			Model:     availableModels[0],
 			MaxTokens: 3000,
-			Frequency: 0,
 		}
 
 		// if default model is set in config.json - use it instead
@@ -76,8 +136,8 @@ func (ss *SettingsService) GetSettings(ctx context.Context, cfg config.Config) t
 	}
 }
 
-func (ss *SettingsService) GetProviderModels(apiUrl string) ([]string, error) {
-	provider := util.GetInferenceProvider(apiUrl)
+func (ss *SettingsService) GetProviderModels(ctx context.Context, providerType string, apiUrl string) ([]string, error) {
+	provider := util.GetOpenAiInferenceProvider(providerType, apiUrl)
 	availableModels := []string{}
 
 	if provider != util.Local {
@@ -89,13 +149,13 @@ func (ss *SettingsService) GetProviderModels(apiUrl string) ([]string, error) {
 	}
 
 	if len(availableModels) == 0 {
-		openAiClient := clients.NewOpenAiClient(apiUrl, "")
-		modelsResponse := openAiClient.RequestModelsList()
+		llmClient := clients.ResolveLlmClient(providerType, apiUrl, "")
+		modelsResponse := llmClient.RequestModelsList(ctx)
 		if modelsResponse.Err != nil {
 			return []string{}, modelsResponse.Err
 		}
 
-		availableModels = util.GetFilteredModelList(apiUrl, modelsResponse.Result.GetModelNames())
+		availableModels = util.GetFilteredModelList(providerType, apiUrl, modelsResponse.Result.GetModelNamesFromResponse())
 
 		if provider == util.Local {
 			return availableModels, nil
@@ -163,16 +223,115 @@ func (ss *SettingsService) CacheModelsForProvider(provider int, models []string)
 	return err
 }
 
+func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
+	rows, err := ss.DB.Query(
+		`select
+			settings_id,
+			settings_model,
+			settings_max_tokens,
+			settings_frequency,
+			system_msg,
+			top_p,
+			temperature,
+			preset_name
+		from settings`,
+	)
+
+	if err != nil {
+		return []util.Settings{}, err
+	}
+	presets := []util.Settings{}
+	for rows.Next() {
+		preset := util.Settings{}
+		rows.Scan(&preset.ID, &preset.Model, &preset.MaxTokens, &preset.Frequency, &preset.SystemPrompt, &preset.TopP, &preset.Temperature, &preset.PresetName)
+		presets = append(presets, preset)
+	}
+	defer rows.Close()
+
+	return presets, nil
+}
+
+func (ss *SettingsService) ResetToDefault(current util.Settings) (util.Settings, error) {
+	defaultSettings := util.Settings{
+		ID:           current.ID,
+		Model:        current.Model,
+		MaxTokens:    defaultMaxTokens,
+		Frequency:    nil,
+		SystemPrompt: current.SystemPrompt,
+		TopP:         nil,
+		Temperature:  nil,
+		PresetName:   current.PresetName,
+	}
+
+	_, err := ss.UpdateSettings(defaultSettings)
+
+	if err != nil {
+		return current, err
+	}
+
+	return defaultSettings, nil
+}
+
+func (ss *SettingsService) SavePreset(newSettings util.Settings) (int, error) {
+	upsert := `
+		INSERT INTO settings
+			(settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name)
+		VALUES
+			($1, $2, $3, $4, $5, $6, $7)
+		RETURNING settings_id
+	`
+
+	result, err := ss.DB.Exec(
+		upsert,
+		newSettings.Model,
+		newSettings.MaxTokens,
+		newSettings.Frequency,
+		newSettings.Temperature,
+		newSettings.TopP,
+		newSettings.SystemPrompt,
+		newSettings.PresetName,
+	)
+
+	errId := -999999
+	if err != nil {
+		return errId, err
+	}
+	newId, err := result.LastInsertId()
+	if err != nil {
+		return errId, fmt.Errorf("Failed to get last inserted id")
+	}
+	return int(newId), nil
+}
+
+func (ss *SettingsService) RemovePreset(id int) error {
+	existing, err := ss.GetPresetsList()
+
+	if err != nil {
+		return err
+	}
+
+	if len(existing) == 1 {
+		return errors.New("Cannot remove the only settings preset")
+	}
+
+	_, err = ss.DB.Exec(`delete from settings where settings_id=$1;`, id)
+	return err
+}
+
 func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Settings, error) {
 	upsert := `
-		INSERT INTO settings 
-			(settings_id, settings_model, settings_max_tokens, settings_frequency)
+		INSERT INTO settings
+			(settings_id, settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name)
 		VALUES
-			($1, $2, $3, $4)
+			($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT(settings_id) DO UPDATE SET
 			settings_model=$2,
 			settings_max_tokens=$3,
-			settings_frequency=$4;
+			settings_frequency=$4,
+			temperature=$5,
+			top_p=$6,
+			system_msg=$7,
+			preset_name=$8;
 	`
 
 	_, err := ss.DB.Exec(
@@ -181,6 +340,10 @@ func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Setti
 		newSettings.Model,
 		newSettings.MaxTokens,
 		newSettings.Frequency,
+		newSettings.Temperature,
+		newSettings.TopP,
+		newSettings.SystemPrompt,
+		newSettings.PresetName,
 	)
 	if err != nil {
 		return newSettings, err

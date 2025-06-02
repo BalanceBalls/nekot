@@ -4,7 +4,6 @@ import (
 	"slices"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type PrompInputMode int
@@ -34,6 +33,8 @@ const (
 const (
 	CopiedNotification Notification = iota
 	CancelledNotification
+	SysPromptChangedNotification
+	PresetSavedNotification
 )
 
 type ViewMode int
@@ -42,6 +43,13 @@ const (
 	ZenMode ViewMode = iota
 	TextEditMode
 	NormalMode
+)
+
+type Operation int
+
+const (
+	NoOperaton Operation = iota
+	SystemMessageEditing
 )
 
 var (
@@ -93,10 +101,6 @@ func getFocuesPanes(mode ViewMode, pane Pane, tw int) []Pane {
 
 	return focusPanes
 }
-
-var MotivationalMessage = lipgloss.NewStyle().
-	PaddingLeft(1).
-	Render("There's something scary about a blank canvas...that's why I'm here 😄!")
 
 type ModelsLoaded struct {
 	Models []string
@@ -179,5 +183,54 @@ type ViewModeChanged struct {
 func SendViewModeChangedMsg(mode ViewMode) tea.Cmd {
 	return func() tea.Msg {
 		return ViewModeChanged{Mode: mode}
+	}
+}
+
+type SwitchToPaneMsg struct {
+	Target Pane
+}
+
+type OpenTextEditorMsg struct {
+	Content   string
+	Operation Operation
+	IsFocused bool
+}
+
+type SystemPromptUpdatedMsg struct {
+	SystemPrompt string
+}
+
+func UpdateSystemPrompt(prompt string) tea.Cmd {
+	return func() tea.Msg {
+		return SystemPromptUpdatedMsg{SystemPrompt: prompt}
+	}
+}
+
+func SwitchToEditor(content string, op Operation, isFocused bool) tea.Cmd {
+	openEditorMsg := func() tea.Msg {
+		return OpenTextEditorMsg{Content: content, Operation: op, IsFocused: isFocused}
+	}
+
+	switchFocus := func() tea.Msg {
+		return SwitchToPaneMsg{Target: PromptPane}
+	}
+
+	switchMode := func() tea.Msg {
+		return ViewModeChanged{Mode: TextEditMode}
+	}
+
+	// order matters, messages are queued sequentially
+	return tea.Batch(switchFocus, switchMode, openEditorMsg)
+}
+
+type AddNewSessionMsg struct {
+	IsTemporary bool
+}
+
+func AddNewSession(isTemporary bool) tea.Cmd {
+	return func() tea.Msg {
+		return AddNewSessionMsg{
+			IsTemporary: isTemporary,
+		}
 	}
 }

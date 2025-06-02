@@ -4,15 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/BalanceBalls/nekot/components"
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/sessions"
+	"github.com/BalanceBalls/nekot/util"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/reflow/wrap"
-	"github.com/tearingItUp786/nekot/clients"
-	"github.com/tearingItUp786/nekot/components"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/sessions"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 type displayMode int
@@ -22,23 +21,40 @@ const (
 	selectionMode
 )
 
+type chatPaneKeyMap struct {
+	selectionMode key.Binding
+	exit          key.Binding
+	copyLast      key.Binding
+	copyAll       key.Binding
+}
+
+var defaultChatPaneKeyMap = chatPaneKeyMap{
+	exit:          key.NewBinding(key.WithKeys(tea.KeyEsc.String()), key.WithHelp("esc", "exit insert mode or editor mode")),
+	copyLast:      key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy last message from chat to clipboard")),
+	copyAll:       key.NewBinding(key.WithKeys("Y"), key.WithHelp("Y", "copy all chat to clipboard")),
+	selectionMode: key.NewBinding(key.WithKeys(tea.KeySpace.String(), "v", "V"), key.WithHelp("<space>, v, V", "enter selection mode")),
+}
+
 type ChatPane struct {
 	isChatPaneReady        bool
 	chatViewReady          bool
 	displayMode            displayMode
 	chatContent            string
-	renderedContent        string
 	isChatContainerFocused bool
-	msgChan                chan clients.ProcessApiCompletionResponse
+	msgChan                chan util.ProcessApiCompletionResponse
 	viewMode               util.ViewMode
+	sessionContent         []util.MessageToSend
 
 	terminalWidth  int
 	terminalHeight int
 
-	colors        util.SchemeColors
-	chatContainer lipgloss.Style
-	chatView      viewport.Model
-	selectionView components.TextSelector
+	quickChatActive bool
+	keyMap          chatPaneKeyMap
+	colors          util.SchemeColors
+	chatContainer   lipgloss.Style
+	chatView        viewport.Model
+	selectionView   components.TextSelector
+	mainCtx         context.Context
 }
 
 var chatContainerStyle = lipgloss.NewStyle().
@@ -47,8 +63,7 @@ var chatContainerStyle = lipgloss.NewStyle().
 
 func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	chatView := viewport.New(w, h)
-	chatView.SetContent(util.MotivationalMessage)
-	msgChan := make(chan clients.ProcessApiCompletionResponse)
+	msgChan := make(chan util.ProcessApiCompletionResponse)
 
 	config, ok := config.FromContext(ctx)
 	if !ok {
@@ -57,20 +72,22 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	}
 	colors := config.ColorScheme.GetColors()
 
+	defaultChatContent := util.GetManual(w, colors)
+	chatView.SetContent(defaultChatContent)
 	chatContainerStyle = chatContainerStyle.
-		Copy().
 		Width(w).
 		Height(h).
 		BorderForeground(colors.NormalTabBorderColor)
 
 	return ChatPane{
+		mainCtx:                ctx,
+		keyMap:                 defaultChatPaneKeyMap,
 		viewMode:               util.NormalMode,
 		colors:                 colors,
 		chatContainer:          chatContainerStyle,
 		chatView:               chatView,
 		chatViewReady:          false,
-		chatContent:            util.MotivationalMessage,
-		renderedContent:        util.MotivationalMessage,
+		chatContent:            defaultChatContent,
 		isChatContainerFocused: false,
 		msgChan:                msgChan,
 		terminalWidth:          util.DefaultTerminalWidth,
@@ -79,7 +96,7 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	}
 }
 
-func waitForActivity(sub chan clients.ProcessApiCompletionResponse) tea.Cmd {
+func waitForActivity(sub chan util.ProcessApiCompletionResponse) tea.Cmd {
 	return func() tea.Msg {
 		someMessage := <-sub
 		return someMessage
@@ -105,22 +122,17 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	switch msg := msg.(type) {
 	case util.ViewModeChanged:
 		p.viewMode = msg.Mode
-		w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-		p.chatView.Height = h
-		p.chatView.Width = w
-		p.chatContainer = p.chatContainer.
-			Width(w).
-			Height(h)
+		return p, func() tea.Msg {
+			return tea.WindowSizeMsg{
+				Width:  p.terminalWidth,
+				Height: p.terminalHeight,
+			}
+		}
 
 	case util.FocusEvent:
 		p.isChatContainerFocused = msg.IsFocused
+		p.displayMode = normalMode
 
-		if p.isChatContainerFocused {
-			p.chatContainer.BorderForeground(p.colors.ActiveTabBorderColor)
-		} else {
-			p.displayMode = normalMode
-			p.chatContainer.BorderForeground(p.colors.NormalTabBorderColor)
-		}
 		return p, nil
 
 	case sessions.LoadDataFromDB:
@@ -132,29 +144,21 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	case sessions.ResponseChunkProcessed:
 		paneWidth := p.chatContainer.GetWidth()
 
-		oldContent := util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors)
+		oldContent := util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
 		styledBufferMessage := util.RenderBotMessage(msg.ChunkMessage, paneWidth, p.colors, false)
 
 		if styledBufferMessage != "" {
 			styledBufferMessage = "\n" + styledBufferMessage
 		}
 
-		rendered := wrap.String(oldContent+styledBufferMessage, paneWidth)
-		p.renderedContent = rendered
+		rendered := oldContent + styledBufferMessage
 		p.chatView.SetContent(rendered)
 		p.chatView.GotoBottom()
 
 		cmds = append(cmds, waitForActivity(p.msgChan))
 
 	case tea.WindowSizeMsg:
-		p.terminalWidth = msg.Width
-		p.terminalHeight = msg.Height
-		w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-		p.chatView.Height = h
-		p.chatView.Width = w
-		p.chatContainer = p.chatContainer.
-			Width(w).
-			Height(h)
+		p = p.handleWindowResize(msg.Width, msg.Height)
 
 	case tea.KeyMsg:
 		if !p.isChatContainerFocused {
@@ -162,10 +166,11 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		}
 
 		if p.IsSelectionMode() {
-			switch msg.Type {
-			case tea.KeyEsc:
+			switch {
+			case key.Matches(msg, p.keyMap.exit):
 				p.displayMode = normalMode
 				p.chatContainer.BorderForeground(p.colors.ActiveTabBorderColor)
+				p.selectionView.Reset()
 			}
 		}
 
@@ -173,23 +178,24 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			break
 		}
 
-		switch keypress := msg.String(); keypress {
-		case "v":
-			if !p.isChatContainerFocused {
+		switch {
+		case key.Matches(msg, p.keyMap.selectionMode):
+			if !p.isChatContainerFocused || len(p.sessionContent) == 0 {
 				break
 			}
 			p.displayMode = selectionMode
 			enableUpdateOfViewport = false
 			p.chatContainer.BorderForeground(p.colors.AccentColor)
+			renderedContent := util.GetVisualModeView(p.sessionContent, p.chatView.Width, p.colors)
 			p.selectionView = components.NewTextSelector(
 				p.terminalWidth,
 				p.terminalHeight,
 				p.chatView.YOffset,
-				p.renderedContent,
+				renderedContent,
 				p.colors)
 			p.selectionView.AdjustScroll()
 
-		case "y":
+		case key.Matches(msg, p.keyMap.copyLast):
 			if p.isChatContainerFocused {
 				copyLast := func() tea.Msg {
 					return util.SendCopyLastMsg()
@@ -197,7 +203,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 				cmds = append(cmds, copyLast)
 			}
 
-		case "Y":
+		case key.Matches(msg, p.keyMap.copyAll):
 			if p.isChatContainerFocused {
 				copyAll := func() tea.Msg {
 					return util.SendCopyAllMsgs()
@@ -236,7 +242,12 @@ func (p ChatPane) View() string {
 	}
 
 	viewportContent := p.chatView.View()
-	return p.chatContainer.Render(viewportContent)
+	borderColor := p.colors.NormalTabBorderColor
+	if p.isChatContainerFocused {
+		borderColor = p.colors.ActiveTabBorderColor
+	}
+
+	return p.chatContainer.BorderForeground(borderColor).Render(viewportContent)
 }
 
 func (p ChatPane) DisplayError(error string) string {
@@ -262,13 +273,50 @@ func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 		p.isChatPaneReady = true
 	}
 
-	oldContent := util.GetMessagesAsPrettyString(session.Messages, paneWidth, p.colors)
-	if oldContent == "" {
-		oldContent = util.MotivationalMessage
+	p.quickChatActive = session.IsTemporary
+	if len(session.Messages) == 0 && !session.IsTemporary {
+		p = p.displayManual()
+	} else {
+		p = p.displaySession(session.Messages, paneWidth, true)
 	}
-	rendered := util.GetVisualModeView(session.Messages, paneWidth, p.colors)
-	p.renderedContent = wrap.String(rendered, paneWidth)
-	p.chatView.SetContent(wrap.String(oldContent, paneWidth))
-	p.chatView.GotoBottom()
+
 	return p, nil
+}
+
+func (p ChatPane) displayManual() ChatPane {
+	manual := util.GetManual(p.terminalWidth, p.colors)
+	p.chatView.SetContent(manual)
+	p.chatView.GotoTop()
+	p.sessionContent = []util.MessageToSend{}
+	return p
+}
+
+func (p ChatPane) displaySession(messages []util.MessageToSend, paneWidth int, useScroll bool) ChatPane {
+	oldContent := util.GetMessagesAsPrettyString(messages, paneWidth, p.colors, p.quickChatActive)
+	p.chatView.SetContent(oldContent)
+	if useScroll {
+		p.chatView.GotoBottom()
+	}
+	p.sessionContent = messages
+	return p
+}
+
+func (p ChatPane) handleWindowResize(width int, height int) ChatPane {
+	p.terminalWidth = width
+	p.terminalHeight = height
+
+	w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
+	p.chatView.Height = h
+	p.chatView.Width = w
+	p.chatContainer = p.chatContainer.Width(w).Height(h)
+
+	if p.viewMode == util.NormalMode {
+		p = p.displaySession(p.sessionContent, w, false)
+	}
+
+	if len(p.sessionContent) == 0 && !p.quickChatActive {
+		p = p.displayManual()
+	}
+
+	return p
 }

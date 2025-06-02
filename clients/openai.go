@@ -13,8 +13,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/util"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 type OpenAiClient struct {
@@ -25,7 +26,7 @@ type OpenAiClient struct {
 }
 
 func NewOpenAiClient(apiUrl, systemMessage string) *OpenAiClient {
-	provider := util.GetInferenceProvider(apiUrl)
+	provider := util.GetOpenAiInferenceProvider(util.OpenAiProviderType, apiUrl)
 	return &OpenAiClient{
 		provider:      provider,
 		apiUrl:        apiUrl,
@@ -38,21 +39,27 @@ func (c OpenAiClient) RequestCompletion(
 	ctx context.Context,
 	chatMsgs []util.MessageToSend,
 	modelSettings util.Settings,
-	resultChan chan ProcessApiCompletionResponse,
+	resultChan chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	path := "v1/chat/completions"
-	processResultID := 0 // Initialize a counter for ProcessResult IDs
+	processResultID := util.ChunkIndexStart
 
 	return func() tea.Msg {
-		body, err := c.constructCompletionRequestPayload(chatMsgs, modelSettings)
+		config, ok := config.FromContext(ctx)
+		if !ok {
+			fmt.Println("No config found")
+			panic("No config found in context")
+		}
+
+		body, err := c.constructCompletionRequestPayload(chatMsgs, *config, modelSettings)
 		if err != nil {
-			return util.ErrorEvent{Message: err.Error()}
+			return util.MakeErrorMsg(err.Error())
 		}
 
 		resp, err := c.postOpenAiAPI(ctx, apiKey, path, body)
 		if err != nil {
-			return util.ErrorEvent{Message: err.Error()}
+			return util.MakeErrorMsg(err.Error())
 		}
 
 		c.processCompletionResponse(resp, resultChan, &processResultID)
@@ -60,13 +67,15 @@ func (c OpenAiClient) RequestCompletion(
 	}
 }
 
-func (c OpenAiClient) RequestModelsList() ProcessModelsResponse {
+func (c OpenAiClient) RequestModelsList(ctx context.Context) util.ProcessModelsResponse {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	path := "v1/models"
 
-	resp, err := c.getOpenAiAPI(apiKey, path)
+	resp, err := c.getOpenAiAPI(ctx, apiKey, path)
+
 	if err != nil {
-		return ProcessModelsResponse{Err: err}
+		log.Println("OpenAI: models request error: ", err)
+		return util.ProcessModelsResponse{Err: err}
 	}
 
 	return processModelsListResponse(resp)
@@ -86,10 +95,18 @@ func constructSystemMessage(content string) util.MessageToSend {
 	}
 }
 
-func (c OpenAiClient) constructCompletionRequestPayload(chatMsgs []util.MessageToSend, modelSettings util.Settings) ([]byte, error) {
+func (c OpenAiClient) constructCompletionRequestPayload(chatMsgs []util.MessageToSend, cfg config.Config, settings util.Settings) ([]byte, error) {
 	messages := []util.MessageToSend{}
-	if util.IsSystemMessageSupported(c.provider, modelSettings.Model) {
-		messages = append(messages, constructSystemMessage(c.systemMessage))
+
+	if util.IsSystemMessageSupported(c.provider, settings.Model) {
+		if cfg.SystemMessage != "" || settings.SystemPrompt != nil {
+			systemMsg := cfg.SystemMessage
+			if settings.SystemPrompt != nil && *settings.SystemPrompt != "" {
+				systemMsg = *settings.SystemPrompt
+			}
+
+			messages = append(messages, constructSystemMessage(systemMsg))
+		}
 	}
 
 	for _, singleMessage := range chatMsgs {
@@ -97,15 +114,28 @@ func (c OpenAiClient) constructCompletionRequestPayload(chatMsgs []util.MessageT
 			messages = append(messages, singleMessage)
 		}
 	}
-	log.Println("Constructing message: ", modelSettings.Model)
 
-	reqParams := map[string]interface{}{
-		"model":             modelSettings.Model, // Use string literals for keys
-		"frequency_penalty": modelSettings.Frequency,
-		"max_tokens":        modelSettings.MaxTokens,
-		"stream":            true,
-		"messages":          messages,
+	log.Println("Constructing message: ", settings.Model)
+
+	reqParams := map[string]any{
+		"model":      settings.Model,
+		"max_tokens": settings.MaxTokens,
+		"stream":     true,
+		"messages":   messages,
 	}
+
+	if settings.Temperature != nil {
+		reqParams["temperature"] = *settings.Temperature
+	}
+
+	if settings.Frequency != nil {
+		reqParams["frequency_penalty"] = *settings.Frequency
+	}
+
+	if settings.TopP != nil {
+		reqParams["top_p"] = *settings.TopP
+	}
+
 	util.TransformRequestHeaders(c.provider, reqParams)
 
 	body, err := json.Marshal(reqParams)
@@ -126,11 +156,12 @@ func getBaseUrl(configUrl string) string {
 	return baseUrl
 }
 
-func (c OpenAiClient) getOpenAiAPI(apiKey string, path string) (*http.Response, error) {
+func (c OpenAiClient) getOpenAiAPI(ctx context.Context, apiKey string, path string) (*http.Response, error) {
 	baseUrl := getBaseUrl(c.apiUrl)
 	requestUrl := fmt.Sprintf("%s/%s", baseUrl, path)
 
-	req, err := http.NewRequest("GET", requestUrl, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", requestUrl, nil)
+
 	if err != nil {
 		return nil, err
 	}
@@ -157,36 +188,36 @@ func (c OpenAiClient) postOpenAiAPI(ctx context.Context, apiKey, path string, bo
 	return client.Do(req)
 }
 
-func processModelsListResponse(resp *http.Response) ProcessModelsResponse {
+func processModelsListResponse(resp *http.Response) util.ProcessModelsResponse {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return ProcessModelsResponse{Err: err}
+			return util.ProcessModelsResponse{Err: err}
 		}
-		return ProcessModelsResponse{Err: fmt.Errorf(string(bodyBytes))}
+		return util.ProcessModelsResponse{Err: fmt.Errorf("%s", string(bodyBytes))}
 	}
 
 	resBody, err := io.ReadAll(resp.Body)
 
 	if err != nil {
 		util.Log("response body read failed", err)
-		return ProcessModelsResponse{Err: err}
+		return util.ProcessModelsResponse{Err: err}
 	}
 
-	var models ModelsListResponse
+	var models util.ModelsListResponse
 	if err = json.Unmarshal(resBody, &models); err != nil {
 		util.Log("response parsing failed", err)
-		return ProcessModelsResponse{Err: err}
+		return util.ProcessModelsResponse{Err: err}
 	}
 
-	return ProcessModelsResponse{Result: models, Err: nil}
+	return util.ProcessModelsResponse{Result: models, Err: nil}
 }
 
 func (c OpenAiClient) processCompletionResponse(
 	resp *http.Response,
-	resultChan chan ProcessApiCompletionResponse,
+	resultChan chan util.ProcessApiCompletionResponse,
 	processResultID *int,
 ) {
 	defer resp.Body.Close()
@@ -194,10 +225,10 @@ func (c OpenAiClient) processCompletionResponse(
 	if resp.StatusCode >= 400 {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			resultChan <- ProcessApiCompletionResponse{ID: *processResultID, Err: err}
+			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: err}
 			return
 		}
-		resultChan <- ProcessApiCompletionResponse{ID: *processResultID, Err: fmt.Errorf(string(bodyBytes))}
+		resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: fmt.Errorf("%s", string(bodyBytes))}
 		return
 	}
 
@@ -206,14 +237,17 @@ func (c OpenAiClient) processCompletionResponse(
 		line, err := scanner.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
+				log.Println("OpenAI: scanner returned EOF", err)
 				break // End of the stream
 			}
-			resultChan <- ProcessApiCompletionResponse{ID: *processResultID, Err: err}
+			log.Println("OpenAI: Encountered error during receiving respone: ", err)
+			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: err, Final: true}
 			return
 		}
 
 		if line == "data: [DONE]\n" {
-			resultChan <- ProcessApiCompletionResponse{ID: *processResultID, Err: nil, Final: true}
+			log.Println("OpenAI: Received [DONE]")
+			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: nil, Final: true}
 			return
 		}
 
@@ -225,22 +259,13 @@ func (c OpenAiClient) processCompletionResponse(
 	}
 }
 
-func processChunk(chunkData string, id int) ProcessApiCompletionResponse {
-	var chunk CompletionChunk
+func processChunk(chunkData string, id int) util.ProcessApiCompletionResponse {
+	var chunk util.CompletionChunk
 	err := json.Unmarshal([]byte(chunkData), &chunk)
 	if err != nil {
 		log.Println("Error unmarshalling:", chunkData, err)
-		return ProcessApiCompletionResponse{ID: id, Result: CompletionChunk{}, Err: err}
+		return util.ProcessApiCompletionResponse{ID: id, Result: util.CompletionChunk{}, Err: err}
 	}
 
-	return ProcessApiCompletionResponse{ID: id, Result: chunk, Err: nil}
-}
-
-func (m ModelsListResponse) GetModelNames() []string {
-	var modelNames []string
-	for _, model := range m.Data {
-		modelNames = append(modelNames, model.Id)
-	}
-
-	return modelNames
+	return util.ProcessApiCompletionResponse{ID: id, Result: chunk, Err: nil}
 }

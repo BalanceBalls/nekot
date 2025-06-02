@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors SchemeColors) string {
+func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors SchemeColors, isQuickChat bool) string {
 	var messages string
 	for _, message := range msgsToRender {
 		messageToUse := message.Content
@@ -26,6 +26,11 @@ func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors Schem
 		}
 
 		messages = messages + "\n" + messageToUse
+	}
+
+	if isQuickChat {
+		quickChatDisclaimer := GetQuickChatDisclaimer(w, colors)
+		messages = quickChatDisclaimer + "\n" + messages
 	}
 
 	return messages
@@ -57,6 +62,7 @@ func GetVisualModeView(msgsToRender []MessageToSend, w int, colors SchemeColors)
 func RenderUserMessage(msg string, width int, colors SchemeColors, isVisualMode bool) string {
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width-WordWrapDelta),
 		colors.RendererThemeOption,
 	)
 	if isVisualMode {
@@ -79,18 +85,23 @@ func RenderUserMessage(msg string, width int, colors SchemeColors, isVisualMode 
 func RenderErrorMessage(msg string, width int, colors SchemeColors) string {
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width-WordWrapDelta),
 		colors.RendererThemeOption,
 	)
-	msg = "```json\n" + msg + "\n```"
+	msg = " ⛔ **Encountered error:**\n ```json\n" + msg + "\n```"
 	errMsg, _ := renderer.Render(msg)
-	output := strings.TrimSpace(errMsg)
+	errOutput := strings.TrimSpace(errMsg)
+
+	instructions, _ := renderer.Render("\n## Inspect the error, fix the problem and restart the app\n\n" + ErrorHelp)
+	instructionsOutput := strings.TrimSpace(instructions)
+
 	return lipgloss.NewStyle().
 		BorderLeft(true).
 		BorderStyle(lipgloss.InnerHalfBlockBorder()).
 		BorderLeftForeground(colors.ErrorColor).
 		Width(width).
 		Foreground(colors.HighlightColor).
-		Render(" ⛔ " + "Encountered error:\n" + output)
+		Render(errOutput + "\n\n" + instructionsOutput)
 }
 
 func RenderBotMessage(msg string, width int, colors SchemeColors, isVisualMode bool) string {
@@ -100,8 +111,15 @@ func RenderBotMessage(msg string, width int, colors SchemeColors, isVisualMode b
 
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width-WordWrapDelta),
 		colors.RendererThemeOption,
 	)
+
+	// markdown renderer glitches when code block appears on a line with different text
+	if strings.HasPrefix(msg, "```") {
+		msg = "\n" + msg
+	}
+
 	if isVisualMode {
 		msg = "\n🤖 " + msg
 		userMsg, _ := renderer.Render(msg)
@@ -116,6 +134,31 @@ func RenderBotMessage(msg string, width int, colors SchemeColors, isVisualMode b
 		BorderLeft(true).
 		BorderStyle(lipgloss.InnerHalfBlockBorder()).
 		BorderLeftForeground(colors.ActiveTabBorderColor).
+		Width(width - 1).
+		Render(output)
+}
+
+func GetQuickChatDisclaimer(w int, colors SchemeColors) string {
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithPreservedNewLines(),
+		colors.RendererThemeOption,
+	)
+
+	output, _ := renderer.Render(QuickChatWarning)
+	return lipgloss.NewStyle().
+		MaxWidth(w).
+		Render(output)
+}
+
+func GetManual(w int, colors SchemeColors) string {
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(40),
+		colors.RendererThemeOption,
+	)
+	output, _ := renderer.Render(ManualContent)
+	return lipgloss.NewStyle().
+		MaxWidth(w).
 		Render(output)
 }
 

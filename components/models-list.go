@@ -5,25 +5,28 @@ import (
 	"io"
 	"strings"
 
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 type ModelsList struct {
 	list list.Model
 }
 
+var tips = "/ filter"
 var listItemSpan = lipgloss.NewStyle().
 	PaddingLeft(util.ListItemPaddingLeft)
 
 var listItemSpanSelected = lipgloss.NewStyle().
 	PaddingLeft(util.ListItemPaddingLeft)
 
-type ModelsListItem string
+type ModelsListItem struct {
+	Text string
+}
 
-func (i ModelsListItem) FilterValue() string { return "" }
+func (i ModelsListItem) FilterValue() string { return i.Text }
 
 type modelItemDelegate struct{}
 
@@ -36,7 +39,7 @@ func (d modelItemDelegate) Render(w io.Writer, m list.Model, index int, listItem
 		return
 	}
 
-	str := fmt.Sprintf("%d. %s", index+1, i)
+	str := fmt.Sprintf("%d. %s", index+1, i.Text)
 	str = util.TrimListItem(str, m.Width())
 
 	fn := listItemSpan.Render
@@ -51,12 +54,24 @@ func (d modelItemDelegate) Render(w io.Writer, m list.Model, index int, listItem
 }
 
 func (l *ModelsList) View() string {
-	return l.list.View()
+	if l.list.FilterState() == list.Filtering {
+		l.list.SetShowStatusBar(false)
+	} else {
+		l.list.SetShowStatusBar(true)
+	}
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		l.list.View(),
+		util.HelpStyle.Render(tips))
 }
 
 func (l *ModelsList) GetSelectedItem() (ModelsListItem, bool) {
 	item, ok := l.list.SelectedItem().(ModelsListItem)
 	return item, ok
+}
+
+func (l ModelsList) IsFiltering() bool {
+	return l.list.SettingFilter()
 }
 
 func (l ModelsList) Update(msg tea.Msg) (ModelsList, tea.Cmd) {
@@ -66,20 +81,23 @@ func (l ModelsList) Update(msg tea.Msg) (ModelsList, tea.Cmd) {
 }
 
 func NewModelsList(items []list.Item, w, h int, colors util.SchemeColors) ModelsList {
-	newList := list.New(items, modelItemDelegate{}, w, h)
+	h = h - 1 // account for tips row
+	l := list.New(items, modelItemDelegate{}, w, h)
 
-	newList.SetStatusBarItemName("model detected", "models detected")
-	newList.SetShowTitle(false)
-	newList.SetShowHelp(false)
-	newList.SetFilteringEnabled(false)
-	newList.DisableQuitKeybindings()
+	l.SetStatusBarItemName("fetched", "fetched")
+	l.SetShowTitle(false)
+	l.SetShowHelp(false)
+	l.SetFilteringEnabled(true)
+	l.DisableQuitKeybindings()
 
-	newList.Paginator.ActiveDot = lipgloss.NewStyle().Foreground(colors.HighlightColor).Render("■")
-	newList.Paginator.InactiveDot = lipgloss.NewStyle().Foreground(colors.DefaultTextColor).Render("•")
-	listItemSpan = listItemSpan.Copy().Foreground(colors.DefaultTextColor)
-	listItemSpanSelected = listItemSpanSelected.Copy().Foreground(colors.AccentColor)
+	l.Paginator.ActiveDot = lipgloss.NewStyle().Foreground(colors.HighlightColor).Render(util.ActiveDot)
+	l.Paginator.InactiveDot = lipgloss.NewStyle().Foreground(colors.DefaultTextColor).Render(util.InactiveDot)
+	listItemSpan = listItemSpan.Foreground(colors.DefaultTextColor)
+	listItemSpanSelected = listItemSpanSelected.Foreground(colors.AccentColor)
+	l.FilterInput.PromptStyle = l.FilterInput.PromptStyle.Foreground(colors.ActiveTabBorderColor).PaddingBottom(0).Margin(0)
+	l.FilterInput.Cursor.Style = l.FilterInput.Cursor.Style.Foreground(colors.NormalTabBorderColor)
 
 	return ModelsList{
-		list: newList,
+		list: l,
 	}
 }

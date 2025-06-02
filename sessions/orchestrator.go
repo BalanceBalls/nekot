@@ -4,15 +4,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
+	"strings"
+	"time"
 
+	"github.com/BalanceBalls/nekot/clients"
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/settings"
+	"github.com/BalanceBalls/nekot/user"
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tearingItUp786/nekot/clients"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/settings"
-	"github.com/tearingItUp786/nekot/user"
-	"github.com/tearingItUp786/nekot/util"
 	"golang.org/x/net/context"
 )
 
@@ -28,19 +31,21 @@ type Orchestrator struct {
 	settingsService *settings.SettingsService
 	config          config.Config
 
-	OpenAiClient         *clients.OpenAiClient
-	Settings             util.Settings
-	CurrentSessionID     int
-	CurrentSessionName   string
-	ArrayOfProcessResult []clients.ProcessApiCompletionResponse
-	ArrayOfMessages      []util.MessageToSend
-	CurrentAnswer        string
-	AllSessions          []Session
-	ProcessingMode       string
+	InferenceClient           util.LlmClient
+	Settings                  util.Settings
+	CurrentSessionID          int
+	CurrentSessionName        string
+	CurrentSessionIsTemporary bool
+	ArrayOfProcessResult      []util.ProcessApiCompletionResponse
+	ArrayOfMessages           []util.MessageToSend
+	CurrentAnswer             string
+	AllSessions               []Session
+	ProcessingMode            string
 
 	settingsReady bool
 	dataLoaded    bool
 	initialized   bool
+	mainCtx       context.Context
 }
 
 func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
@@ -54,27 +59,31 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 	}
 
 	settingsService := settings.NewSettingsService(db)
-	openAiClient := clients.NewOpenAiClient(config.ChatGPTApiUrl, config.SystemMessage)
+	llmClient := clients.ResolveLlmClient(config.Provider, config.ProviderBaseUrl, config.SystemMessage)
 
 	return Orchestrator{
+		mainCtx:              ctx,
 		config:               *config,
-		ArrayOfProcessResult: []clients.ProcessApiCompletionResponse{},
+		ArrayOfProcessResult: []util.ProcessApiCompletionResponse{},
 		sessionService:       ss,
 		userService:          us,
 		settingsService:      settingsService,
-		OpenAiClient:         openAiClient,
+		InferenceClient:      llmClient,
 		ProcessingMode:       IDLE,
 	}
-}
-
-type OrchestratorInitialized struct {
 }
 
 func (m Orchestrator) Init() tea.Cmd {
 	// Need to load the latest session as the current session  (select recently created)
 	// OR we need to create a brand new session for the user with a random name (insert new and return)
 
-	settingsData := func() tea.Msg { return m.settingsService.GetSettings(nil, m.config) }
+	initCtx, cancel := context.
+		WithTimeout(m.mainCtx, time.Duration(util.DefaultRequestTimeOutSec*time.Second))
+
+	settingsData := func() tea.Msg {
+		defer cancel()
+		return m.settingsService.GetSettings(initCtx, util.DefaultSettingsId, m.config)
+	}
 
 	dbData := func() tea.Msg {
 		mostRecentSession, err := m.sessionService.GetMostRecessionSessionOrCreateOne()
@@ -128,12 +137,29 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		clipboard.WriteAll(m.GetMessagesAsString())
 		cmds = append(cmds, util.SendNotificationMsg(util.CopiedNotification))
 
+	case SaveQuickChat:
+		log.Println("Save quick chat received. IsTemporary: ", m.CurrentSessionIsTemporary)
+		if m.CurrentSessionIsTemporary {
+			m.sessionService.SaveQuickChat(m.CurrentSessionID)
+			updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
+			cmds = append(cmds, SendUpdateCurrentSessionMsg(updatedSession))
+			cmds = append(cmds, SendRefreshSessionsListMsg())
+
+			// TODO: notification
+		}
+
 	case UpdateCurrentSession:
+		if !msg.Session.IsTemporary {
+			m.sessionService.SweepTemporarySessions()
+			m.userService.UpdateUserCurrentActiveSession(1, msg.Session.ID)
+		}
+		m.CurrentSessionIsTemporary = msg.Session.IsTemporary
 		m.CurrentSessionID = msg.Session.ID
 		m.CurrentSessionName = msg.Session.SessionName
 		m.ArrayOfMessages = msg.Session.Messages
 
 	case LoadDataFromDB:
+		m.CurrentSessionIsTemporary = msg.Session.IsTemporary
 		m.CurrentSessionID = msg.CurrentActiveSessionID
 		m.CurrentSessionName = msg.Session.SessionName
 		m.ArrayOfMessages = msg.Session.Messages
@@ -141,10 +167,13 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		m.dataLoaded = true
 
 	case settings.UpdateSettingsEvent:
+		if msg.Err != nil {
+			return m, util.MakeErrorMsg(msg.Err.Error())
+		}
 		m.Settings = msg.Settings
 		m.settingsReady = true
 
-	case clients.ProcessApiCompletionResponse:
+	case util.ProcessApiCompletionResponse:
 		// add the latest message to the array of messages
 		cmds = append(cmds, m.handleMsgProcessing(msg))
 		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
@@ -158,8 +187,8 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m Orchestrator) GetCompletion(ctx context.Context, resp chan clients.ProcessApiCompletionResponse) tea.Cmd {
-	return m.OpenAiClient.RequestCompletion(ctx, m.ArrayOfMessages, m.Settings, resp)
+func (m Orchestrator) GetCompletion(ctx context.Context, resp chan util.ProcessApiCompletionResponse) tea.Cmd {
+	return m.InferenceClient.RequestCompletion(ctx, m.ArrayOfMessages, m.Settings, resp)
 }
 
 func (m Orchestrator) GetLatestBotMessage() (string, error) {
@@ -192,7 +221,7 @@ func (m Orchestrator) GetMessagesAsString() string {
 }
 
 // MIGHT BE WORTH TO MOVE TO A SEP FILE
-func (m *Orchestrator) appendAndOrderProcessResults(msg clients.ProcessApiCompletionResponse) {
+func (m *Orchestrator) appendAndOrderProcessResults(msg util.ProcessApiCompletionResponse) {
 	m.ArrayOfProcessResult = append(m.ArrayOfProcessResult, msg)
 	m.CurrentAnswer = ""
 
@@ -204,10 +233,11 @@ func (m *Orchestrator) appendAndOrderProcessResults(msg clients.ProcessApiComple
 	})
 }
 
-func (m *Orchestrator) assertChoiceContentString(choice clients.Choice) (string, tea.Cmd) {
+func (m *Orchestrator) assertChoiceContentString(choice util.Choice) (string, tea.Cmd) {
 	choiceContent, ok := choice.Delta["content"]
 
 	if !ok {
+		log.Println("Choice content not ok in assertChoiceContentString. FinishReason:", choice.FinishReason)
 		if choice.FinishReason == "stop" || choice.FinishReason == "length" {
 
 			areIdsAllThere := areIDsInOrderAndComplete(getArrayOfIDs(m.ArrayOfProcessResult))
@@ -228,12 +258,13 @@ func (m *Orchestrator) assertChoiceContentString(choice clients.Choice) (string,
 	return choiceString, nil
 }
 
-func constructJsonMessage(arrayOfProcessResult []clients.ProcessApiCompletionResponse) (util.MessageToSend, error) {
+func (m Orchestrator) constructJsonMessage(arrayOfProcessResult []util.ProcessApiCompletionResponse) (util.MessageToSend, error) {
 	newMessage := util.MessageToSend{Role: "assistant", Content: ""}
 
 	for _, aMessage := range arrayOfProcessResult {
 		if aMessage.Final {
 			util.Log("Hit final in construct", aMessage.Result)
+			log.Println("Hit final in construct", aMessage.Result)
 			break
 		}
 
@@ -242,6 +273,7 @@ func constructJsonMessage(arrayOfProcessResult []clients.ProcessApiCompletionRes
 			// TODO: we need a helper for this
 			if choice.FinishReason == "stop" || choice.FinishReason == "length" {
 				util.Log("Hit stop or length in construct")
+				log.Println("Hit stop or length in construct", choice.FinishReason)
 				break
 			}
 
@@ -260,12 +292,22 @@ func constructJsonMessage(arrayOfProcessResult []clients.ProcessApiCompletionRes
 }
 
 func (m *Orchestrator) handleFinalChoiceMessage() tea.Cmd {
+	log.Println("handleFinalChoiceMessage triggered")
 	// if the json for whatever reason is malformed, bail out
-	jsonMessages, err := constructJsonMessage(m.ArrayOfProcessResult)
+	response, err := m.constructJsonMessage(m.ArrayOfProcessResult)
+	if err != nil {
+		log.Println("Failed to construct json message. Processing stopped.", err)
+		return m.resetStateAndCreateError(err.Error())
+	}
+
+	modelName := "**" + m.Settings.Model + "**\n"
+	if response.Content != "" && !strings.HasPrefix(response.Content, modelName) {
+		response.Content = modelName + response.Content
+	}
 
 	m.ArrayOfMessages = append(
 		m.ArrayOfMessages,
-		jsonMessages,
+		response,
 	)
 
 	/*
@@ -275,7 +317,7 @@ func (m *Orchestrator) handleFinalChoiceMessage() tea.Cmd {
 	err = m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
 	m.ProcessingMode = IDLE
 	m.CurrentAnswer = ""
-	m.ArrayOfProcessResult = []clients.ProcessApiCompletionResponse{}
+	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 
 	if err != nil {
 		util.Log("Error updating session messages", err)
@@ -299,7 +341,7 @@ func areIDsInOrderAndComplete(ids []int) bool {
 	return true
 }
 
-func getArrayOfIDs(arr []clients.ProcessApiCompletionResponse) []int {
+func getArrayOfIDs(arr []util.ProcessApiCompletionResponse) []int {
 	ids := []int{}
 	for _, msg := range arr {
 		ids = append(ids, msg.ID)
@@ -308,9 +350,28 @@ func getArrayOfIDs(arr []clients.ProcessApiCompletionResponse) []int {
 }
 
 // updates the current view with the messages coming in
-func (m *Orchestrator) handleMsgProcessing(msg clients.ProcessApiCompletionResponse) tea.Cmd {
+func (m *Orchestrator) handleMsgProcessing(msg util.ProcessApiCompletionResponse) tea.Cmd {
+	log.Println("Hit handleMsgProcessing")
+
 	if msg.Result.Usage != nil {
 		m.sessionService.UpdateSessionTokens(m.CurrentSessionID, msg.Result.Usage.Prompt, msg.Result.Usage.Completion)
+	}
+
+	if len(msg.Result.Choices) > 0 {
+		chunkContent := msg.Result.Choices[0].Delta["content"]
+		if chunkContent != nil {
+			chunkString := chunkContent.(string)
+
+			if strings.HasPrefix(chunkString, "<think>") {
+				chunkString = "\n" + "# Thinking..." + "\n<!------------>" + chunkString
+			}
+
+			if strings.Contains(chunkString, "</think>") {
+				chunkString = chunkString + "\n" + "# Done thinking"
+			}
+
+			msg.Result.Choices[0].Delta["content"] = chunkString
+		}
 	}
 
 	m.appendAndOrderProcessResults(msg)
@@ -319,6 +380,7 @@ func (m *Orchestrator) handleMsgProcessing(msg clients.ProcessApiCompletionRespo
 
 	if msg.Err != nil {
 		if errors.Is(context.Canceled, msg.Err) {
+			log.Println("Context cancelled int handleMsgProcessing")
 			return tea.Batch(
 				m.handleFinalChoiceMessage(),
 				util.SendNotificationMsg(util.CancelledNotification),
@@ -353,7 +415,7 @@ func (m *Orchestrator) handleMsgProcessing(msg clients.ProcessApiCompletionRespo
 
 func (m *Orchestrator) resetStateAndCreateError(errMsg string) tea.Cmd {
 	m.ProcessingMode = ERROR
-	m.ArrayOfProcessResult = []clients.ProcessApiCompletionResponse{}
+	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 	m.CurrentAnswer = ""
 	return util.MakeErrorMsg(errMsg)
 }

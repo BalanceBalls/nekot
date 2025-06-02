@@ -4,11 +4,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 const (
@@ -279,6 +279,10 @@ func filterLine(line string) string {
 	line = strings.Replace(line, "🤖", "", -1)
 	line = strings.Replace(line, "💁", "", -1)
 	return line
+}
+
+func (s *TextSelector) Reset() {
+	s.Selection.Active = false
 }
 
 func (s TextSelector) IsSelecting() bool {

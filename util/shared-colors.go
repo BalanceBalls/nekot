@@ -10,9 +10,9 @@ import (
 type ColorScheme string
 
 const (
-	OriginalPink ColorScheme = "Pink"
-	SmoothBlue   ColorScheme = "Blue"
-	Groovebox    ColorScheme = "Groove"
+	OriginalPink ColorScheme = "pink"
+	SmoothBlue   ColorScheme = "blue"
+	Groovebox    ColorScheme = "groove"
 )
 
 //go:embed glamour-styles/groovebox.json

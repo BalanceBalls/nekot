@@ -1,9 +1,22 @@
 package util
 
 import (
+	"context"
 	"slices"
 	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
+
+type LlmClient interface {
+	RequestCompletion(
+		ctx context.Context,
+		chatMsgs []MessageToSend,
+		modelSettings Settings,
+		resultChan chan ProcessApiCompletionResponse,
+	) tea.Cmd
+	RequestModelsList(ctx context.Context) ProcessModelsResponse
+}
 
 // `Exclusion keywords` filter out models that contain any of the specified in their names
 // `Prefixes` allow models to be used in app IF model name starts with any of the specidied
@@ -12,6 +25,7 @@ var (
 	openAiChatModelsPrefixes = []string{"gpt-", "o1", "o3"}
 	openAiExclusionKeywords  = []string{"audio", "realtime", "instruct"}
 
+	geminiExclusionKeywords  = []string{"aqa", "imagen", "embedding", "bison", "vision"}
 	mistralExclusionKeywords = []string{"pixtral", "embed"}
 )
 
@@ -21,17 +35,40 @@ var (
 	localApiPrefixes   = []string{"localhost", "127.0.0.1", "::1"}
 )
 
+const (
+	OpenAiProviderType = "openai"
+	GeminiProviderType = "gemini"
+)
+
 type ApiProvider int
 
 const (
 	OpenAi ApiProvider = iota
 	Local
 	Mistral
+	Gemini
 )
 
-func GetFilteredModelList(apiUrl string, models []string) []string {
+func GetFilteredModelList(providerType string, apiUrl string, models []string) []string {
 	var modelNames []string
-	provider := GetInferenceProvider(apiUrl)
+
+	switch providerType {
+	case OpenAiProviderType:
+		modelNames = filterOpenAiApiModels(apiUrl, models)
+		break
+	case GeminiProviderType:
+		for _, model := range models {
+			if isGeminiChatModel(model) {
+				modelNames = append(modelNames, model)
+			}
+		}
+	}
+	return modelNames
+}
+
+func filterOpenAiApiModels(apiUrl string, models []string) []string {
+	var modelNames []string
+	provider := GetOpenAiInferenceProvider(OpenAiProviderType, apiUrl)
 
 	for _, model := range models {
 		switch provider {
@@ -66,21 +103,22 @@ func IsSystemMessageSupported(provider ApiProvider, model string) bool {
 	return true
 }
 
-func TransformRequestHeaders(provider ApiProvider, params map[string]interface{}) map[string]interface{} {
+func TransformRequestHeaders(provider ApiProvider, params map[string]any) map[string]any {
 	switch provider {
 
 	case Local:
-		params["stream_options"] = map[string]interface{}{
+		params["stream_options"] = map[string]any{
 			"include_usage": true,
 		}
 		return params
 	case OpenAi:
-		params["stream_options"] = map[string]interface{}{
+		params["stream_options"] = map[string]any{
 			"include_usage": true,
 		}
 
 		if isOpenAiReasoningModel(params["model"].(string)) {
 			delete(params, "max_tokens")
+			delete(params, "frequency_penalty")
 		}
 		return params
 	case Mistral:
@@ -90,26 +128,49 @@ func TransformRequestHeaders(provider ApiProvider, params map[string]interface{}
 	return params
 }
 
-func GetInferenceProvider(apiUrl string) ApiProvider {
-	if slices.ContainsFunc(openAiApiPrefixes, func(p string) bool {
-		return strings.Contains(apiUrl, p)
-	}) {
-		return OpenAi
-	}
+func GetOpenAiInferenceProvider(providerType string, apiUrl string) ApiProvider {
+	switch providerType {
+	case GeminiProviderType:
+		return Gemini
+	case OpenAiProviderType:
+		if slices.ContainsFunc(openAiApiPrefixes, func(p string) bool {
+			return strings.Contains(apiUrl, p)
+		}) {
+			return OpenAi
+		}
 
-	if slices.ContainsFunc(mistralApiPrefixes, func(p string) bool {
-		return strings.Contains(apiUrl, p)
-	}) {
-		return Mistral
-	}
+		if slices.ContainsFunc(mistralApiPrefixes, func(p string) bool {
+			return strings.Contains(apiUrl, p)
+		}) {
+			return Mistral
+		}
 
-	if slices.ContainsFunc(localApiPrefixes, func(p string) bool {
-		return strings.Contains(apiUrl, p)
-	}) {
-		return Local
+		if slices.ContainsFunc(localApiPrefixes, func(p string) bool {
+			return strings.Contains(apiUrl, p)
+		}) {
+			return Local
+		}
 	}
 
 	return Local
+}
+
+func (m ModelsListResponse) GetModelNamesFromResponse() []string {
+	var modelNames []string
+	for _, model := range m.Data {
+		modelNames = append(modelNames, model.Id)
+	}
+
+	return modelNames
+}
+
+func isGeminiChatModel(model string) bool {
+	for _, keyword := range geminiExclusionKeywords {
+		if strings.Contains(model, keyword) {
+			return false
+		}
+	}
+	return true
 }
 
 func isOpenAiChatModel(model string) bool {

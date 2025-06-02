@@ -10,21 +10,33 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/migrations"
+	"github.com/BalanceBalls/nekot/util"
+	"github.com/BalanceBalls/nekot/views"
 	"github.com/joho/godotenv"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/migrations"
-	"github.com/tearingItUp786/nekot/util"
-	"github.com/tearingItUp786/nekot/views"
 )
 
 var purgeCache bool
+var provider string
+var baseUrl string
+var theme string
 
 func init() {
 	flag.BoolVar(&purgeCache, "purge-cache", false, "Invalidate models cache")
+	flag.StringVar(&provider, "p", "", "Overrides LLM provider configuration. Available: openai, gemini")
+	flag.StringVar(&baseUrl, "u", "", "Overrides LLM provider base url configuration")
+	flag.StringVar(&theme, "t", "", "Overrides theme configuration")
 }
 
 func main() {
 	flag.Parse()
+
+	flags := config.StartupFlags{
+		Theme:       theme,
+		Provider:    provider,
+		ProviderUrl: baseUrl,
+	}
 
 	env := os.Getenv("FOO_ENV")
 	if "" == env {
@@ -46,18 +58,10 @@ func main() {
 	}
 	defer f.Close()
 
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if "" == apiKey {
-		fmt.Println("OPENAI_API_KEY not set; set it in your profile")
-		fmt.Printf("export OPENAI_API_KEY=your_key in the config for :%v \n", os.Getenv("SHELL"))
-		fmt.Println("Exiting...")
-		os.Exit(1)
-	}
-
 	// delete files if in dev mode
 	util.DeleteFilesIfDevMode()
 	// validate config
-	configToUse := config.CreateAndValidateConfig()
+	configToUse := config.CreateAndValidateConfig(flags)
 
 	// run migrations for our database
 	db := util.InitDb()

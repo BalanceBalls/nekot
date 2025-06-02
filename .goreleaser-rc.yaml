@@ -70,11 +70,11 @@ brews:
     ids:
       - rc-nekot
     tap:
-      owner: tearingItUp786
-      name: homebrew-tearingitup786
-    homepage: https://github.com/tearingItUp786/chatgpt-tui
+      owner: BalanceBalls
+      name: homebrew-BalanceBalls
+    homepage: https://github.com/BalanceBalls/chatgpt-tui
     commit_author:
-      name: tearingitup786
+      name: BalanceBalls
     # Setting this will prevent goreleaser to actually try to commit the updated
     # formula - instead, the formula file will be stored on the dist folder only,
     # leaving the responsibility of publishing it to the user.
@@ -88,11 +88,11 @@ brews:
     ids:
       - rc-chatgpt-tui
     tap:
-      owner: tearingItUp786
-      name: homebrew-tearingitup786
-    homepage: https://github.com/tearingItUp786/chatgpt-tui
+      owner: BalanceBalls
+      name: homebrew-BalanceBalls
+    homepage: https://github.com/BalanceBalls/chatgpt-tui
     commit_author:
-      name: tearingitup786
+      name: BalanceBalls
 
     # Setting this will prevent goreleaser to actually try to commit the updated
     # formula - instead, the formula file will be stored on the dist folder only,

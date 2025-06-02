@@ -6,21 +6,23 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/sessions"
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/sessions"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 const notificationDisplayDurationSec = 2
 
 const (
-	copiedLabelText     = "Copied to clipboard"
-	cancelledLabelText  = "Inference interrupted"
-	idleLabelText       = "IDLE"
-	processingLabelText = "Processing"
+	copiedLabelText           = "Copied to clipboard"
+	cancelledLabelText        = "Inference interrupted"
+	sysPromptChangedLabelText = "System prompt updated"
+	presetSavedLabelText      = "Preset saved"
+	idleLabelText             = "IDLE"
+	processingLabelText       = "Processing"
 )
 
 var infoSpinnerStyle = lipgloss.NewStyle()
@@ -43,6 +45,7 @@ type InfoPane struct {
 	promptTokensLablel    lipgloss.Style
 	completionTokensLabel lipgloss.Style
 	notificationLabel     lipgloss.Style
+	quickChatLabel        lipgloss.Style
 
 	showNotification bool
 	notification     util.Notification
@@ -62,23 +65,25 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 	colors := config.ColorScheme.GetColors()
 	spinner := initInfoSpinner()
 
-	infoSpinnerStyle = infoSpinnerStyle.Copy().Foreground(colors.HighlightColor)
-	processingIdleLabel := defaultLabelStyle.Copy().
+	infoSpinnerStyle = infoSpinnerStyle.Foreground(colors.HighlightColor)
+	processingIdleLabel := defaultLabelStyle.
 		BorderLeftForeground(colors.HighlightColor).
 		Foreground(colors.DefaultTextColor)
-	processingActiveLabel := defaultLabelStyle.Copy().
+	processingActiveLabel := defaultLabelStyle.
 		BorderLeftForeground(colors.AccentColor).
 		Foreground(colors.DefaultTextColor)
-	promptTokensLablel := defaultLabelStyle.Copy().
+	promptTokensLablel := defaultLabelStyle.
 		BorderLeftForeground(colors.ActiveTabBorderColor).
 		Foreground(colors.DefaultTextColor)
-	completionTokensLabel := defaultLabelStyle.Copy().
+	completionTokensLabel := defaultLabelStyle.
 		BorderLeftForeground(colors.ActiveTabBorderColor).
 		Foreground(colors.DefaultTextColor)
-	notificationLabel := defaultLabelStyle.Copy().
+	notificationLabel := defaultLabelStyle.
 		Background(colors.NormalTabBorderColor).
 		BorderLeftForeground(colors.HighlightColor).
+		Align(lipgloss.Left).
 		Foreground(colors.DefaultTextColor)
+	quickChatLabel := defaultLabelStyle.Background(colors.HighlightColor)
 
 	return InfoPane{
 		processingIdleLabel:   processingIdleLabel,
@@ -86,6 +91,7 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 		promptTokensLablel:    promptTokensLablel,
 		completionTokensLabel: completionTokensLabel,
 		notificationLabel:     notificationLabel,
+		quickChatLabel:        quickChatLabel,
 
 		spinner:        spinner,
 		colors:         colors,
@@ -166,11 +172,17 @@ func (p InfoPane) View() string {
 	promptTokensLablel := p.promptTokensLablel.Render(fmt.Sprintf("IN: %d", p.currentSession.PromptTokens))
 	completionTokensLabel := p.completionTokensLabel.Render(fmt.Sprintf("OUT: %d", p.currentSession.CompletionTokens))
 
+	quickChatLabel := ""
+	if p.currentSession.IsTemporary {
+		quickChatLabel = p.quickChatLabel.Render("Q")
+	}
+
 	firstRow := processingLabel
 	secondRow := lipgloss.JoinHorizontal(
 		lipgloss.Left,
 		promptTokensLablel,
 		completionTokensLabel,
+		quickChatLabel,
 	)
 
 	if p.showNotification {
@@ -178,17 +190,25 @@ func (p InfoPane) View() string {
 		notificationText := ""
 
 		switch p.notification {
+		case util.PresetSavedNotification:
+			notificationText = presetSavedLabelText
+			notificationLabel = p.notificationLabel.
+				Background(p.colors.AccentColor).
+				Width(paneWidth - 1)
+		case util.SysPromptChangedNotification:
+			notificationText = sysPromptChangedLabelText
+			notificationLabel = p.notificationLabel.
+				Background(p.colors.AccentColor).
+				Width(paneWidth - 1)
 		case util.CopiedNotification:
 			notificationText = copiedLabelText
 			notificationLabel = p.notificationLabel.
 				Background(p.colors.NormalTabBorderColor).
-				Align(lipgloss.Left).
 				Width(paneWidth - 1)
 		case util.CancelledNotification:
 			notificationText = cancelledLabelText
 			notificationLabel = p.notificationLabel.
 				Background(p.colors.ErrorColor).
-				Align(lipgloss.Left).
 				Width(paneWidth - 1)
 		}
 

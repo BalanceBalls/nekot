@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BalanceBalls/nekot/components"
+	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/sessions"
+	"github.com/BalanceBalls/nekot/user"
+	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/tearingItUp786/nekot/components"
-	"github.com/tearingItUp786/nekot/config"
-	"github.com/tearingItUp786/nekot/sessions"
-	"github.com/tearingItUp786/nekot/user"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 const NoTargetSession = -1
@@ -38,12 +38,23 @@ type sessionsKeyMap struct {
 }
 
 var defaultSessionsKeyMap = sessionsKeyMap{
-	delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete session")),
-	rename: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "rename session")),
+	delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "d delete")),
+	rename: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "e edit")),
 	cancel: key.NewBinding(key.WithKeys(tea.KeyEsc.String()), key.WithHelp("esc", "cancel action")),
 	apply:  key.NewBinding(key.WithKeys(tea.KeyEnter.String()), key.WithHelp("esc", "switch to session/apply renaming")),
-	addNew: key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "add new session")),
+	addNew: key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "ctrl+n add new")),
 }
+
+var tips = []string{
+	defaultSessionsKeyMap.addNew.Help().Desc,
+	strings.Join([]string{
+		defaultSessionsKeyMap.rename.Help().Desc,
+		util.TipsSeparator,
+		defaultSessionsKeyMap.delete.Help().Desc,
+		util.TipsSeparator,
+		"/ filter"}, ""),
+}
+var tipsOffset = len(tips) - 1 // 1 is the input field height
 
 type SessionsPane struct {
 	sessionsListData []sessions.Session
@@ -64,6 +75,7 @@ type SessionsPane struct {
 	isFocused          bool
 	terminalWidth      int
 	terminalHeight     int
+	mainCtx            context.Context
 }
 
 func NewSessionsPane(db *sql.DB, ctx context.Context) SessionsPane {
@@ -78,6 +90,7 @@ func NewSessionsPane(db *sql.DB, ctx context.Context) SessionsPane {
 	colors := config.ColorScheme.GetColors()
 
 	return SessionsPane{
+		mainCtx:           ctx,
 		operationMode:     defaultMode,
 		operationTargetId: NoTargetSession,
 		keyMap:            defaultSessionsKeyMap,
@@ -106,12 +119,18 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
+	case util.AddNewSessionMsg:
+		cmds = append(cmds, p.addNewSession(msg))
+
+	case sessions.RefreshSessionsList:
+		p.updateSessionsList()
+
 	case sessions.LoadDataFromDB:
 		p.currentSession = msg.Session
 		p.sessionsListData = msg.AllSessions
 		p.currentSessionId = msg.CurrentActiveSessionID
 		listItems := constructSessionsListItems(msg.AllSessions, msg.CurrentActiveSessionID)
-		w, h := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight)
+		w, h := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, 0)
 		p.sessionsList = components.NewSessionsList(listItems, w, h, p.colors)
 		p.operationMode = defaultMode
 		p.sessionsListReady = true
@@ -119,6 +138,8 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 	case util.FocusEvent:
 		p.isFocused = msg.IsFocused
 		p.operationMode = defaultMode
+		width, height := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, tipsOffset)
+		p.sessionsList.SetSize(width, height)
 
 	case tea.WindowSizeMsg:
 		p.terminalWidth = msg.Width
@@ -126,7 +147,11 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		width, height := util.CalcSessionsPaneSize(p.terminalWidth, p.terminalHeight)
 		p.container = p.container.Width(width).Height(height)
 		if p.sessionsListReady {
-			width, height = util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight)
+			offset := 0
+			if p.isFocused {
+				offset = tipsOffset
+			}
+			width, height = util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, offset)
 			p.sessionsList.SetSize(width, height)
 		}
 
@@ -140,7 +165,7 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
-		if p.isFocused {
+		if p.isFocused && !p.sessionsList.IsFiltering() {
 			switch p.operationMode {
 			case defaultMode:
 				cmd := p.handleDefaultMode(msg)
@@ -165,28 +190,36 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 
 func (p SessionsPane) View() string {
 	listView := p.normalListView()
-
-	if p.isFocused {
-		_, paneHeight := util.CalcSessionsPaneSize(p.terminalWidth, p.terminalHeight)
-		listView = p.sessionsList.EditListView(paneHeight)
-	}
-
-	editForm := ""
-	if p.operationTargetId != NoTargetSession {
-		editForm = p.textInput.View()
-	}
-
 	borderColor := p.colors.NormalTabBorderColor
+	lowerRows := ""
+	if !p.isFocused {
+		return p.container.BorderForeground(borderColor).Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				p.listHeader("[Sessions]"),
+				listView,
+				lowerRows,
+			),
+		)
+	}
 
-	if p.isFocused {
-		borderColor = p.colors.ActiveTabBorderColor
+	if p.sessionsList.IsFiltering() {
+		p.sessionsList.SetShowStatusBar(false)
+	} else {
+		p.sessionsList.SetShowStatusBar(true)
+	}
+
+	borderColor = p.colors.ActiveTabBorderColor
+	if p.operationTargetId != NoTargetSession {
+		lowerRows = "\n" + p.textInput.View()
+	} else {
+		lowerRows = util.HelpStyle.Render(strings.Join(tips, "\n"))
 	}
 
 	return p.container.BorderForeground(borderColor).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
-			p.listHeader("Sessions"),
-			listView,
-			editForm,
+			p.listHeader("[Sessions]"),
+			p.sessionsList.EditListView(),
+			lowerRows,
 		),
 	)
 }
@@ -195,16 +228,6 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 	var cmd tea.Cmd
 
 	switch {
-
-	case key.Matches(msg, p.keyMap.addNew):
-
-		currentTime := time.Now()
-		formattedTime := currentTime.Format(time.ANSIC)
-		defaultSessionName := fmt.Sprintf("%s", formattedTime)
-		newSession, _ := p.sessionService.InsertNewSession(defaultSessionName, []util.MessageToSend{})
-
-		cmd = p.handleUpdateCurrentSession(newSession)
-		p.updateSessionsList()
 
 	case key.Matches(msg, p.keyMap.apply):
 		i, ok := p.sessionsList.GetSelectedItem()
@@ -244,12 +267,24 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 		if ok {
 			p.operationTargetId = i.Id
 			p.textInput.Placeholder = "Delete session? y/n"
+			p.textInput.Validate = util.DeleteSessionValidator
 		}
 
 		p.textInput.Focus()
 		p.textInput.CharLimit = 1
 	}
 
+	return cmd
+}
+
+func (p *SessionsPane) addNewSession(msg util.AddNewSessionMsg) tea.Cmd {
+	currentTime := time.Now()
+	formattedTime := currentTime.Format(time.ANSIC)
+	defaultSessionName := fmt.Sprintf("%s", formattedTime)
+	newSession, _ := p.sessionService.InsertNewSession(defaultSessionName, []util.MessageToSend{}, msg.IsTemporary)
+
+	cmd := p.handleUpdateCurrentSession(newSession)
+	p.updateSessionsList()
 	return cmd
 }
 
@@ -338,10 +373,11 @@ func (p *SessionsPane) updateSessionsList() {
 
 func (p SessionsPane) listHeader(str ...string) string {
 	return lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.ThickBorder()).
 		BorderBottom(true).
 		Bold(true).
 		Foreground(p.colors.DefaultTextColor).
+		BorderForeground(p.colors.DefaultTextColor).
 		MarginLeft(util.ListItemMarginLeft).
 		Render(str...)
 }
@@ -365,7 +401,7 @@ func (p SessionsPane) listItem(heading string, value string, isActive bool, widt
 
 	value = util.TrimListItem(value, widthCap)
 
-	return headingEl("■ "+heading, spanEl(value))
+	return headingEl(util.ListHeadingDot+" "+heading, spanEl(value))
 }
 
 func (p SessionsPane) normalListView() string {
@@ -379,8 +415,7 @@ func (p SessionsPane) normalListView() string {
 		)
 	}
 
-	w, h := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight)
-
+	w, h := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, 0)
 	return lipgloss.NewStyle().
 		Width(w).
 		Height(h).

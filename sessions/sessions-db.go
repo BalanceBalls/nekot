@@ -3,8 +3,9 @@ package sessions
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 
-	"github.com/tearingItUp786/nekot/util"
+	"github.com/BalanceBalls/nekot/util"
 )
 
 type Session struct {
@@ -14,6 +15,7 @@ type Session struct {
 	SessionName      string
 	PromptTokens     int
 	CompletionTokens int
+	IsTemporary      bool
 }
 
 type SessionService struct {
@@ -38,7 +40,7 @@ SELECT sessions_id, sessions_messages, sessions_created_at, sessions_session_nam
 	// so we create a latest sesion
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return ss.InsertNewSession("default", []util.MessageToSend{})
+			return ss.InsertNewSession("default", []util.MessageToSend{}, false)
 		} else {
 			// An error occurred that isn't due to no rows being found
 			return Session{}, err
@@ -56,7 +58,16 @@ SELECT sessions_id, sessions_messages, sessions_created_at, sessions_session_nam
 func (ss *SessionService) GetSession(id int) (Session, error) {
 	var messages string
 	rows, err := ss.DB.Query(
-		`SELECT sessions_id, sessions_messages, sessions_created_at, sessions_session_name, prompt_tokens, completion_tokens FROM sessions WHERE sessions_id=$1`,
+		`SELECT 
+			sessions_id,
+			sessions_messages,
+			sessions_created_at,
+			sessions_session_name,
+			prompt_tokens,
+			completion_tokens,
+			is_temporary
+		FROM sessions 
+		WHERE sessions_id=$1`,
 		id,
 	)
 	if err != nil {
@@ -69,7 +80,14 @@ func (ss *SessionService) GetSession(id int) (Session, error) {
 	aSession := Session{}
 	if rows.Next() {
 		// Check for errors from Scan.
-		if err := rows.Scan(&aSession.ID, &messages, &aSession.CreatedAt, &aSession.SessionName, &aSession.PromptTokens, &aSession.CompletionTokens); err != nil {
+		if err := rows.Scan(
+			&aSession.ID,
+			&messages,
+			&aSession.CreatedAt,
+			&aSession.SessionName,
+			&aSession.PromptTokens,
+			&aSession.CompletionTokens,
+			&aSession.IsTemporary); err != nil {
 			return Session{}, err
 		}
 	} else {
@@ -91,7 +109,16 @@ func (ss *SessionService) GetSession(id int) (Session, error) {
 // get me all the sessions
 func (ss *SessionService) GetAllSessions() ([]Session, error) {
 	rows, err := ss.DB.Query(
-		`SELECT sessions_id,  sessions_created_at, sessions_session_name, prompt_tokens, completion_tokens FROM sessions ORDER BY sessions_id DESC`,
+		`SELECT 
+			sessions_id,
+			sessions_created_at,
+			sessions_session_name,
+			prompt_tokens,
+			completion_tokens,
+			is_temporary
+		FROM sessions
+		WHERE is_temporary = 0
+		ORDER BY sessions_id DESC`,
 	)
 	if err != nil {
 		return []Session{}, err
@@ -99,7 +126,14 @@ func (ss *SessionService) GetAllSessions() ([]Session, error) {
 	sessions := []Session{}
 	for rows.Next() {
 		aSession := Session{}
-		rows.Scan(&aSession.ID, &aSession.CreatedAt, &aSession.SessionName, &aSession.PromptTokens, &aSession.CompletionTokens)
+		rows.Scan(
+			&aSession.ID,
+			&aSession.CreatedAt,
+			&aSession.SessionName,
+			&aSession.PromptTokens,
+			&aSession.CompletionTokens,
+			&aSession.IsTemporary,
+		)
 		sessions = append(sessions, aSession)
 	}
 	defer rows.Close()
@@ -130,7 +164,7 @@ func (ss *SessionService) UpdateSessionMessages(id int, messages []util.MessageT
 func (ss *SessionService) UpdateSessionTokens(id int, promptTokens, completionTokens int) error {
 	_, err := ss.DB.Exec(`
 			UPDATE sessions
-			SET 
+			SET
 				prompt_tokens = prompt_tokens + $1,
 				completion_tokens = completion_tokens + $2
 			WHERE sessions_id = $3
@@ -157,16 +191,17 @@ func (ss *SessionService) UpdateSessionName(id int, name string) error {
 	return nil
 }
 
-func (ss *SessionService) InsertNewSession(name string, messages []util.MessageToSend) (Session, error) {
+func (ss *SessionService) InsertNewSession(name string, messages []util.MessageToSend, isTemporary bool) (Session, error) {
 	// No session found, create a new one
 	newSession := Session{
 		// Initialize your session fields as needed
 		// ID will be set by the database if using auto-increment
+		IsTemporary: isTemporary,
 		SessionName: name,                   // Set a default or generate a name
 		Messages:    []util.MessageToSend{}, // Assuming Messages is a slice of Message
 	}
 
-	insertSQL := `INSERT INTO sessions (sessions_session_name, sessions_messages) VALUES (?, ?);`
+	insertSQL := `INSERT INTO sessions (sessions_session_name, sessions_messages, is_temporary) VALUES (?, ?, ?);`
 	messagesJSON, err := json.Marshal(newSession.Messages)
 	if err != nil {
 		return Session{}, err
@@ -175,6 +210,7 @@ func (ss *SessionService) InsertNewSession(name string, messages []util.MessageT
 		insertSQL,
 		newSession.SessionName,
 		messagesJSON,
+		isTemporary,
 	)
 	if err != nil {
 		return Session{}, err
@@ -191,12 +227,47 @@ func (ss *SessionService) InsertNewSession(name string, messages []util.MessageT
 }
 
 func (ss *SessionService) DeleteSession(id int) error {
-	_, err := ss.DB.Exec(`
+	existing, err := ss.GetAllSessions()
+
+	if err != nil {
+		return err
+	}
+
+	if len(existing) == 1 {
+		return errors.New("Cannot remove the only session")
+	}
+
+	_, err = ss.DB.Exec(`
 		DELETE FROM sessions
 		WHERE sessions_id = $1
 	`, id)
 	if err != nil {
-		return (err)
+		return err
+	}
+
+	return nil
+}
+
+func (ss *SessionService) SweepTemporarySessions() error {
+	_, err := ss.DB.Exec(`
+		DELETE FROM sessions
+		WHERE is_temporary = 1
+	`)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ss *SessionService) SaveQuickChat(id int) error {
+	_, err := ss.DB.Exec(`
+			UPDATE sessions
+			SET is_temporary = 0
+			where sessions_id= $1
+	`, id)
+	if err != nil {
+		return err
 	}
 
 	return nil

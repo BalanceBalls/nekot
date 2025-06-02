@@ -71,22 +71,22 @@ brews:
     ids:
       - nekot
     tap:
-      owner: tearingItUp786
-      name: homebrew-tearingitup786
-    homepage: https://github.com/tearingItUp786/chatgpt-tui
+      owner: BalanceBalls
+      name: homebrew-BalanceBalls
+    homepage: https://github.com/BalanceBalls/nekot
     commit_author:
-      name: tearingitup786
+      name: BalanceBalls
     skip_upload: auto
 
   - name: chatgpt-tui
     ids:
       - chatgpt-tui
     tap:
-      owner: tearingItUp786
-      name: homebrew-tearingitup786
-    homepage: https://github.com/tearingItUp786/chatgpt-tui
+      owner: BalanceBalls
+      name: homebrew-BalanceBalls
+    homepage: https://github.com/BalanceBalls/nekot
     commit_author:
-      name: tearingitup786
+      name: BalanceBalls
     skip_upload: auto
     post_install: |
       opoo "⚠︎ chatgpt-tui is deprecated and will be removed in the future. Use nekot instead."

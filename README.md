@@ -1,73 +1,175 @@
-# nekot tui README
+# NEKOT
 
-A terminal util for chatting with LLMs. Shout out to BalanceBalls for the name!
+**A powerful and intuitive terminal utility for interaction with both local and cloud LLMs.**
 
-## Installation
+A tool for those who appreciate keyboard driven apps and terminal workflows
 
-Please make sure that you expose a `OPENAI_API_KEY` inside of your environment; we require it to make api calls!
+## Features                                                                      
+ * 🤖 **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, and more)
+ * 🌟 **Support for Gemini API**
+ * 💬 **Chat sessions** management and quick chats
+ * ⚙️ **Settings presets** (configure different personas with unique settings)
+ * ✂️ **Convenient text selection** tool (vim-like line selection)
+ * 🌐 **Crossplatform** - support for MacOS, Windows and Linux
+ * 🎨 **Multiple themes**
 
-Set up your [api key](https://platform.openai.com/api-keys)
+## Demo
+
+![tui demo](./docs/images/nekot-demo.gif)
+
+## Installation manual
+
+### Setting API keys
+
+To use the app, you will need to set `OPENAI_API_KEY` or/and `GEMINI_API_KEY` env variables depending on your needs
+
+<details>
+
+<summary>API keys guide</summary>
+
+#### OpenAI APIs
+
+<i>For local models the key still needs to be set (`OPENAI_API_KEY=1` will do).</i>
+
+Set up your openai api key:
+* ChatGPT: [how to get an api key](https://platform.openai.com/api-keys)
+* Mistral: [how to get an api key](https://docs.mistral.ai/getting-started/quickstart/#account-setup)
 
 ```bash
 export OPENAI_API_KEY="some-key" # you would want to export this in your .zshrc
-brew tap tearingitup786/tearingitup786
-brew install nekot 
+```
+
+#### Gemini API
+
+Set up your api key - [how to get an api key](https://aistudio.google.com/apikey)
+
+```bash
+export  GEMINI_API_KEY="some-key" # you would want to export this in your .zshrc
+```
+</details>
+
+### App installation
+
+After API keys are set, proceed to installtion
+
+#### Homebrew
+
+```bash
+brew tap BalanceBalls/BalanceBalls
+brew install nekot
 nekot
 ```
 
-To get access to the release candidates, install command:
+#### Manual (Mac,Windows,Linux)
 
+* Install go - [manual](https://go.dev/doc/install)
+* Clone repo and cd into the directory
 ```bash
-brew install rc-nekot
-rc-nekot
+git clone https://github.com/BalanceBalls/nekot.git
+cd ./nekot
 ```
+To install as a go binary:
+* Run `go install`
+
+To build a binary:
+* Build binary `go build .`
+* Allow execution of the binary `chmod +x ./nekot` (if needed)
+* Run binary `./nekot` . For windows `./nekot.exe`
+
 
 ## Config
 
 We provide a `config.json` file within your directory for easy access to essential settings.
-On most Macs, the path is `~/.chatgpt-tui/config.json`.
-This file includes the URL used for network calls to the TUI,
-specified as `chatGPTApiUrl: "https://api.openai.com"`.
-The url can be anything that follows OpenAI API standard ( [ollama](https://ollama.com/), [lmstudio](https://lmstudio.ai/), etc)
-Additional fields:
- - `systemMessage` field is available for customizing system prompt messages.
- - `defaultModel` field sets the default model 
+- On **MacOS & Linux**, the path is `~/.nekot/config.json`.
+- On **Windows**, the path is `C:\Users\%UserName%\.nekot\config.json` or `%HOMEPATH%\.nekot\config.json`
+
+### Example
+```json
+{
+  "providerBaseUrl": "https://api.openai.com", // Or ollama http://localhost:1143, or any other OpenAi compatible API
+  "systemMessage": "",
+  "defaultModel": "",
+  "colorScheme": "groove", // pink, blue, groove
+  "provider": "openai" // openai, gemini
+}
+```
+
+ - `providerBaseUrl`: The url can be anything that follows OpenAI API standard ( [ollama](http://localhost:11434), [lmstudio](http://127.0.0.1:1234), etc)
+ - `chatGPTApiUrl` [obsolete]: same as `providerBaseUrl`
+ - `systemMessage` field is available for customizing system prompt messages. **Better to set it from the app**
+ - `defaultModel` field sets the default model.  **Better to set it from the app**
+
+### Providers
+
+You can change API provider using the `provider` field.
+
+Available providers:
+ * `openai` **default**
+ * `gemini`
+
+To use **GeminiAPI**, just set `"provider": "gemini"` (make sure to set GEMINI_API_KEY env variable).
+When using the `gemini` provider, `providerBaseUrl` param is not used.
 
 ### Themes
 You can change colorscheme using the `colorScheme` field.
 
 Available themes:
- * `Pink` **default**
+ * `Groove` **default**
+ * `Pink`
  * `Blue`
- * `Groove`
 
-## Cache invalidation
+
+## Data migration
+
+If you need your settings and chats on other machine - simply copy `chat.db` and `config.json` from the `.nekot/` directory
+and paste to the same directory on other machine.
+
+## Flags
+
+### Cache invalidation
 
 Models list is cached for 14 days upon loading. If you need to invalidate cache use `--purge-cache` flag:
 ```bash
-./chatgpt-tui --purge-cache
+nekot --purge-cache
 ```
 
-## Demo
+### Provider
 
-![tui demo](./docs/images/tui-demo.gif)
+To switch between openai and gemini APIs you can use `-p` flag:
+```bash
+nekot -p openai
+nekot -p gemini
+```
+
+### Provider url
+
+To specify provier url use `-u` flag(works with the openai provider only):
+```bash
+nekot -u http://localhost:11434
+```
+
+### Theme
+
+To specify color scheme use `-t` flag:
+```bash
+nekot -t blue
+```
 
 ## Global Keybindings
 
-- `Tab`: \*Change focus between panes. The currently focused pane will be highlighted with a pink border.
-  - You can only change focus if Prompt Pane is not in `insert mode`
-- `1`: Jump to prompt pane
-- `2`: Jump to chat pane
-- `3`: Jump to settings pane
-- `4`: Jump to sessions pane
+- `Tab`: Change focus between panes. The currently focused pane will be highlighted
+- `1-4` pane jumps: `1` **prompt** pane, `2`, **chat** pane, `3` **settings** pane, `4` **sessions** pane
 - `Ctrl+b` or `Ctrl+s`: Interrupt inference
 - `Ctrl+o`: Toggles zen mode
 - `Ctrl+c`: Exit the program
+- `Ctrl+n`: Create new session
+- `Ctrl+q`: Start quick chat
+- `Ctrl+x`: Save quick chat to session
 
 ## Prompt Pane
 
 - `i`: Enters insert mode (you can now safely paste messages into the tui)
-- `Ctrl+e`: Open/Close prompt editor 
+- `Ctrl+e`: Open/Close prompt editor
 - `Ctrl+r`: Clear prompt
 - `Ctrl+v`: Paste text from buffer
 - `Ctrl+s`: Paste text from buffer as a code block (only in editor mode)
@@ -82,33 +184,46 @@ Models list is cached for 14 days upon loading. If you need to invalidate cache 
 
 ## Chat Messages Pane
 
-- `y`: Copies the last message from ChatGPT into your clipboard.
-- `Shift+y`: Copies all messages from the ChatGPT session into your clipboard.
-- `v`: Enters navigation mode when chat pane is focused (allows to move accross the chat content lines)
+- `y`: Copies the last message into your clipboard.
+- `Shift+y`: Copies all messages from current session into your clipboard.
+- `v`, `Shift+v` or `space`: Enters navigation mode when chat pane is focused (allows to move accross the chat content lines)
 
 ### Selection mode
 
-![selection demo](./docs/images/selection-mode.gif)
-
-Selection mode allows to navigate the chat pane and select lines to copy. Supports basic vim-motions.  
+Selection mode allows to navigate the chat pane and select lines to copy. Supports basic vim-motions.
 
 <b>Navigation</b>
  - `j`, `k` - go down and up a line
-   - Multiline jumps like `3j` (3 lines down), `99k` (99 lines up) are also supported
  - `d`, `u`, `Ctrl+d`, `Ctrl+u` - go up or down half page
  - `g` - go to top
  - `Shift+g` - go to bottom
 
 <b>Selection</b>
+ - `d`, `u`, `Ctrl+d`, `Ctrl+u` - go up or down half page
+ - `j`, `k` - go down and up a line
+   - Multiline jumps like `3j` (3 lines down), `99k` (99 lines up) are also supported
 - `v`, `Shift+v` or `space` to enter or quit line selection mode
 - `y` to copy selected text
 - `Esc` to quit selection or navigation modes
 
 ## Settings Pane
 
-- `m`: Opens a model picker to change the model. (use `j` to go up and `k` to go down the list)
-- `f`: Opens an input dialog to change the frequency of updates.
-- `t`: Opens an input dialog to set the maximum number of tokens per message.
+- `[` and `]`: switch between presets and settings tabs
+
+### Settings tab
+- `m`: Opens a model picker to change the model. (use `/` to set filter)
+- `f`: Change the frequency value
+- `t`: Change the maximum number of tokens per message
+- `e`: Change the temperature value
+- `p`: Change the top_p value (nucleus sampling)
+- `s`: Opens a text editor to edit system prompt
+- `Ctrl+r`: resets current settings preset to default values
+- `Ctrl+p`: creates new preset with a specified name from the current preset
+
+### Presets tab
+- `d`: remove preset (default and current selected presets cannot be removed)
+- `enter`: select preset as the current one
+- `/`: filter presets
 
 ## Sessions Pane
 
@@ -116,6 +231,7 @@ Selection mode allows to navigate the chat pane and select lines to copy. Suppor
 - `d`: Deletes the currently selected session from the list.
 - `e`: Edit session name
 - `Enter`: Switches to the session that is currently selected.
+- `/`: filter sessions
 
 ## Info pane
 
@@ -127,7 +243,14 @@ Please refer to this guide as you navigate the TUI. Happy exploring!
 
 ### Dev notes
 
-The SQL db is stored in you `your/home/directory/.chatgpt-tui`, as well as the debug log. To enable `debug` mode, `export DEBUG=1` before running the program.
+The SQL db is stored in you `your/home/directory/.nekot`, as well as the debug log. To enable `debug` mode, `export DEBUG=1` before running the program.
+
+To get access to the release candidates, install command:
+
+```bash
+brew install rc-nekot
+rc-nekot
+```
 
 ## Technologies
 

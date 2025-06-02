@@ -23,7 +23,10 @@
     "bold": true
   },
   "h1": {
-    "prefix": "# "
+    "prefix": " ",
+    "suf#bd93f9fix": " ",
+    "color": "15",
+    "background_color": "131"
   },
   "h2": {
     "prefix": "## "
@@ -101,8 +104,7 @@
         "color": "#D4D4D4"
       },
       "error": {
-        "color": "#D4D4D4",
-        "background_color": "#F44747"
+        "color": "#D16969"
       },
       "comment": {
         "color": "#a0d390"
@@ -166,7 +168,7 @@
         "color": "#D4D4D4"
       },
       "generic_deleted": {
-        "color": "#F44747"
+        "color": "#e3b89f"
       },
       "generic_emph": {
         "color": "#e3b89f",

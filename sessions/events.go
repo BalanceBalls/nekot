@@ -1,8 +1,8 @@
 package sessions
 
 import (
+	"github.com/BalanceBalls/nekot/util"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tearingItUp786/nekot/util"
 )
 
 type LoadDataFromDB struct {
@@ -34,6 +34,18 @@ func SendUpdateCurrentSessionMsg(session Session) tea.Cmd {
 			Session: session,
 		}
 	}
+}
+
+type SaveQuickChat struct{}
+
+func SendSaveQuickChatMsg() tea.Cmd {
+	return func() tea.Msg { return SaveQuickChat{} }
+}
+
+type RefreshSessionsList struct{}
+
+func SendRefreshSessionsListMsg() tea.Cmd {
+	return func() tea.Msg { return RefreshSessionsList{} }
 }
 
 type ResponseChunkProcessed struct {

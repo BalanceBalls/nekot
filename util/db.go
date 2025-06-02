@@ -19,8 +19,14 @@ func GetAppDirName() string {
 	if err != nil {
 		return ".chatgpt-tui" // fallback
 	}
+
 	binaryName := filepath.Base(exePath)
 	binaryName = strings.TrimSuffix(binaryName, filepath.Ext(binaryName)) // remove .exe if present
+
+	// needed for when we're developing and we're running `go run ./main.go`
+	if (binaryName == "main") || (binaryName == "main.exe") {
+		return ".nekot-dev"
+	}
 
 	return "." + binaryName
 }
@@ -128,11 +134,4 @@ func MigrateFS(db *sql.DB, migrationsFS fs.FS, dir string) error {
 func PurgeModelsCache(db *sql.DB) error {
 	_, err := db.Exec("delete from models")
 	return err
-}
-
-func checkErr(err error) {
-	if err != nil {
-		Log(err)
-		panic(err)
-	}
 }

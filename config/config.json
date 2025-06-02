@@ -1,6 +1,7 @@
 {
-  "chatGPTApiUrl": "https://api.openai.com/v1/chat/completions",
+  "providerBaseUrl": "https://api.openai.com",
   "systemMessage": "",
   "defaultModel": "",
-  "colorScheme": "Pink"
+  "colorScheme": "groove",
+  "provider": "openai"
 }
