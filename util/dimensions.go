@@ -32,6 +32,7 @@ const (
 // UI elements
 const (
 	ListRightShiftedItemPadding = -2
+	TextSelectorCaretMaxWidth   = 2
 
 	ListItemMarginLeft  = 2
 	ListItemPaddingLeft = 2

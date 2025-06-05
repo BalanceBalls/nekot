@@ -38,6 +38,7 @@ func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors Schem
 
 func GetVisualModeView(msgsToRender []MessageToSend, w int, colors SchemeColors) string {
 	var messages string
+	w = w - TextSelectorCaretMaxWidth
 	for _, message := range msgsToRender {
 		messageToUse := message.Content
 
