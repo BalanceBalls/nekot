@@ -36,14 +36,18 @@ changelog:
       - "^docs:"
       - "^test:"
 
+release:
+  prerelease: auto
+  draft: false
+
 brews:
-  - name: rc-nekot
+  - name: nekot 
     ids:
-      - rc-nekot
+      - nekot
     tap:
       owner: BalanceBalls
       name: homebrew-BalanceBalls
-    homepage: https://github.com/BalanceBalls/chatgpt-tui
+    homepage: https://github.com/BalanceBalls/nekot
     commit_author:
       name: BalanceBalls
-    skip_upload: false
+    skip_upload: auto
