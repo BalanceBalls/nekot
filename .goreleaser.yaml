@@ -12,7 +12,9 @@ builds:
       - arm
       - arm64
       - '386'
-    # Default is `-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}`.
+    ignore:
+      - goos: windows
+        goarch: arm
     ldflags:
       - -s -w -X main.version={{.Version}}
 
