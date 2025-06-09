@@ -1,0 +1,92 @@
+builds:
+  - id: darwin-amd64-chatgpt-tui
+    main: ./
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - PKG_CONFIG_SYSROOT_DIR=/sysroot/macos/amd64
+      - PKG_CONFIG_PATH=/sysroot/macos/amd64/usr/local/lib/pkgconfig
+      - CC=o64-clang
+      - CXX=o64-clang++
+    flags:
+      - -mod=readonly
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    binary: bin/chatgpt-tui
+    
+  - id: darwin-amd64-nekot
+    main: ./
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - PKG_CONFIG_SYSROOT_DIR=/sysroot/macos/amd64
+      - PKG_CONFIG_PATH=/sysroot/macos/amd64/usr/local/lib/pkgconfig
+      - CC=o64-clang
+      - CXX=o64-clang++
+    flags:
+      - -mod=readonly
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    binary: bin/nekot
+
+archives:
+  - id: chatgpt-tui
+    builds:
+      - darwin-amd64-chatgpt-tui
+    name_template: "chatgpt-tui_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: zip
+    wrap_in_directory: true
+    
+  - id: nekot
+    builds:
+      - darwin-amd64-nekot
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: zip
+    wrap_in_directory: true
+
+# The rest of the configuration remains unchanged
+checksum:
+  name_template: "checksums.txt"
+snapshot:
+  name_template: "{{ .Tag }}"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  prerelease: auto
+  draft: false
+
+brews:
+  - name: nekot 
+    ids:
+      - nekot
+    tap:
+      owner: BalanceBalls
+      name: homebrew-BalanceBalls
+    homepage: https://github.com/BalanceBalls/nekot
+    commit_author:
+      name: BalanceBalls
+    skip_upload: auto
+
+  - name: chatgpt-tui
+    ids:
+      - chatgpt-tui
+    tap:
+      owner: BalanceBalls
+      name: homebrew-BalanceBalls
+    homepage: https://github.com/BalanceBalls/nekot
+    commit_author:
+      name: BalanceBalls
+    skip_upload: auto
+    post_install: |
+      opoo "⚠︎ chatgpt-tui is deprecated and will be removed in the future. Use nekot instead."

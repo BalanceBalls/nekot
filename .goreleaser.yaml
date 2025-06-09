@@ -1,56 +1,30 @@
 builds:
-  - id: darwin-amd64-chatgpt-tui
-    main: ./
+  - env:
+      - CGO_ENABLED=0
     goos:
+      - windows
       - darwin
+      - linux
     goarch:
       - amd64
+      - arm
       - arm64
-    env:
-      - PKG_CONFIG_SYSROOT_DIR=/sysroot/macos/amd64
-      - PKG_CONFIG_PATH=/sysroot/macos/amd64/usr/local/lib/pkgconfig
-      - CC=o64-clang
-      - CXX=o64-clang++
-    flags:
-      - -mod=readonly
+      - '386'
+    # Default is `-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}`.
     ldflags:
       - -s -w -X main.version={{.Version}}
-    binary: bin/chatgpt-tui
-    
-  - id: darwin-amd64-nekot
-    main: ./
-    goos:
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    env:
-      - PKG_CONFIG_SYSROOT_DIR=/sysroot/macos/amd64
-      - PKG_CONFIG_PATH=/sysroot/macos/amd64/usr/local/lib/pkgconfig
-      - CC=o64-clang
-      - CXX=o64-clang++
-    flags:
-      - -mod=readonly
-    ldflags:
-      - -s -w -X main.version={{.Version}}
-    binary: bin/nekot
 
 archives:
-  - id: chatgpt-tui
-    builds:
-      - darwin-amd64-chatgpt-tui
-    name_template: "chatgpt-tui_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: zip
-    wrap_in_directory: true
-    
-  - id: nekot
-    builds:
-      - darwin-amd64-nekot
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: zip
-    wrap_in_directory: true
+  - replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      386: 32-bit
+      amd64: x86_64
+    format_overrides:
+      - goos: windows
+        format: zip
 
-# The rest of the configuration remains unchanged
 checksum:
   name_template: "checksums.txt"
 snapshot:
@@ -77,16 +51,3 @@ brews:
     commit_author:
       name: BalanceBalls
     skip_upload: auto
-
-  - name: chatgpt-tui
-    ids:
-      - chatgpt-tui
-    tap:
-      owner: BalanceBalls
-      name: homebrew-BalanceBalls
-    homepage: https://github.com/BalanceBalls/nekot
-    commit_author:
-      name: BalanceBalls
-    skip_upload: auto
-    post_install: |
-      opoo "⚠︎ chatgpt-tui is deprecated and will be removed in the future. Use nekot instead."

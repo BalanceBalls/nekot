@@ -5,6 +5,7 @@
 A tool for those who appreciate keyboard driven apps and terminal workflows
 
 ## Features                                                                      
+ * 📦 **Single binary** - lightweight, zero dependencies, use anywhere without any requirements
  * 🤖 **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, and more)
  * 🌟 **Support for Gemini API**
  * 💬 **Chat sessions** management and quick chats
@@ -86,7 +87,7 @@ We provide a `config.json` file within your directory for easy access to essenti
 ### Example
 ```json
 {
-  "providerBaseUrl": "https://api.openai.com", // Or ollama http://localhost:1143, or any other OpenAi compatible API
+  "providerBaseUrl": "https://api.openai.com", // Or http://localhost:1143, or any other OpenAi compatible API
   "systemMessage": "",
   "defaultModel": "",
   "colorScheme": "groove", // pink, blue, groove
@@ -259,9 +260,7 @@ rc-nekot
   terminal user interfaces. It's a great framework that makes it easy to create
   TUIs in Go.
 - [openai](https://platform.openai.com/docs/api-reference): OpenAI's REST Api
-- [sqlite](https://www.sqlite.org/): A C library that provides a lightweight
-  disk-based database that doesn't require a separate server process (perfect
-  for terminal apps, in my opinion).
+- [sqlite](https://gitlab.com/cznic/sqlite): CGO-free sqlite lib
 - [lipgloss](https://github.com/charmbracelet/lipgloss): Style definitions for
   nice terminal layouts!
 - [bubbles](https://github.com/charmbracelet/bubbles): Some general use

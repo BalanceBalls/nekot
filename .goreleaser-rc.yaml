@@ -1,54 +1,29 @@
 builds:
-  - id: darwin-amd64-rc-chatgpt-tui
-    main: ./
+  - env:
+      - CGO_ENABLED=0
     goos:
+      - windows
       - darwin
+      - linux
     goarch:
       - amd64
+      - arm
       - arm64
-    env:
-      - PKG_CONFIG_SYSROOT_DIR=/sysroot/macos/amd64
-      - PKG_CONFIG_PATH=/sysroot/macos/amd64/usr/local/lib/pkgconfig
-      - CC=o64-clang
-      - CXX=o64-clang++
-    flags:
-      - -mod=readonly
+      - '386'
+    # Default is `-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}`.
     ldflags:
       - -s -w -X main.version={{.Version}}
-    binary: bin/rc-chatgpt-tui
-    
-  - id: darwin-amd64-rc-nekot
-    main: ./
-    goos:
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    env:
-      - PKG_CONFIG_SYSROOT_DIR=/sysroot/macos/amd64
-      - PKG_CONFIG_PATH=/sysroot/macos/amd64/usr/local/lib/pkgconfig
-      - CC=o64-clang
-      - CXX=o64-clang++
-    flags:
-      - -mod=readonly
-    ldflags:
-      - -s -w -X main.version={{.Version}}
-    binary: bin/rc-nekot
 
 archives:
-  - id: rc-chatgpt-tui
-    builds:
-      - darwin-amd64-rc-chatgpt-tui
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: zip
-    wrap_in_directory: true
-
-  - id: rc-nekot
-    builds:
-      - darwin-amd64-rc-nekot
-    name_template: "rc-nekot_{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: zip
-    wrap_in_directory: true
+  - replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      386: 32-bit
+      amd64: x86_64
+    format_overrides:
+      - goos: windows
+        format: zip
 
 checksum:
   name_template: "checksums.txt"
@@ -61,10 +36,6 @@ changelog:
       - "^docs:"
       - "^test:"
 
-release:
-  prerelease: auto
-  draft: false
-
 brews:
   - name: rc-nekot
     ids:
@@ -75,32 +46,4 @@ brews:
     homepage: https://github.com/BalanceBalls/chatgpt-tui
     commit_author:
       name: BalanceBalls
-    # Setting this will prevent goreleaser to actually try to commit the updated
-    # formula - instead, the formula file will be stored on the dist folder only,
-    # leaving the responsibility of publishing it to the user.
-    # If set to auto, the release will not be uploaded to the homebrew tap
-    # in case there is an indicator for prerelease in the tag e.g. v1.0.0-rc1
-    #
-    # Templates: allowed
     skip_upload: false
-
-  - name: rc-chatgpt-tui
-    ids:
-      - rc-chatgpt-tui
-    tap:
-      owner: BalanceBalls
-      name: homebrew-BalanceBalls
-    homepage: https://github.com/BalanceBalls/chatgpt-tui
-    commit_author:
-      name: BalanceBalls
-
-    # Setting this will prevent goreleaser to actually try to commit the updated
-    # formula - instead, the formula file will be stored on the dist folder only,
-    # leaving the responsibility of publishing it to the user.
-    # If set to auto, the release will not be uploaded to the homebrew tap
-    # in case there is an indicator for prerelease in the tag e.g. v1.0.0-rc1
-    #
-    # Templates: allowed
-    skip_upload: false
-    post_install: |
-      opoo "⚠︎ rc-chatgpt-tui is deprecated and will be removed in the future. Use rc-nekot instead."

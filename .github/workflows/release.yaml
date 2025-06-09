@@ -42,9 +42,16 @@ jobs:
           echo "GITHUB_TOKEN=${{ secrets.PUBLISHER_TOKEN }}" >> .release-env
         env:
           HOMEBREW_APP_NAME: ${{ env.HOMEBREW_APP_NAME }}
-      - name: release publish
-        run: |
-          make release
+      - name: Set up Go
+        uses: actions/setup-go@v5
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --config=.goreleaser.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-candidate:
     needs: check-tag
@@ -66,6 +73,13 @@ jobs:
           echo "GITHUB_TOKEN=${{ secrets.PUBLISHER_TOKEN }}" >> .release-env
         env:
           HOMEBREW_APP_NAME: ${{ env.HOMEBREW_APP_NAME }}
-      - name: release candidate publish
-        run: |
-          make release-candidate
+      - name: Set up Go
+        uses: actions/setup-go@v5
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --config=.goreleaser-rc.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

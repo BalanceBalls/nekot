@@ -31,7 +31,8 @@ const (
 
 // UI elements
 const (
-	ListRightShiftedItemPadding = -2
+	ListRightShiftedItemPadding    = -2
+	TextSelectorMaxWidthCorrection = 6
 
 	ListItemMarginLeft  = 2
 	ListItemPaddingLeft = 2

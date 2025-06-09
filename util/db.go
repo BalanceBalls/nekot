@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/pressly/goose/v3"
+	_ "modernc.org/sqlite"
 )
 
 func GetAppDirName() string {
@@ -95,7 +95,7 @@ func InitDb() *sql.DB {
 	}
 
 	// Open the database from the persistent location
-	db, err := sql.Open("sqlite3", pathToPersistDb)
+	db, err := sql.Open("sqlite", pathToPersistDb)
 	if err != nil {
 		panic(err)
 	}
@@ -107,7 +107,7 @@ func InitDb() *sql.DB {
 }
 
 func migrate(db *sql.DB, dir string) error {
-	err := goose.SetDialect("sqlite3")
+	err := goose.SetDialect("sqlite")
 	if err != nil {
 		log.Printf("migrate: %v", err)
 		return err
