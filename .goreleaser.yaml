@@ -40,8 +40,6 @@ release:
 
 homebrew_casks:
   - name: nekot 
-    ids:
-      - nekot
     repository:
       owner: BalanceBalls
       name: homebrew-BalanceBalls
