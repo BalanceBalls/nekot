@@ -3,6 +3,7 @@ version: 2
 builds:
   - env:
       - CGO_ENABLED=0
+    binary: rc-nekot
     goos:
       - windows
       - darwin
@@ -36,10 +37,19 @@ changelog:
 
 homebrew_casks:
   - name: rc-nekot
+    binary: rc-nekot
     repository:
       owner: BalanceBalls
       name: homebrew-BalanceBalls
-    homepage: https://github.com/BalanceBalls/chatgpt-tui
+    homepage: https://github.com/BalanceBalls/nekot
+    conflicts:
+      formula: rc-nekot
     commit_author:
       name: BalanceBalls
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "#{staged_path}/rc-nekot"]
+          end
     skip_upload: false

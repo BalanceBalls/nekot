@@ -44,6 +44,8 @@ homebrew_casks:
       owner: BalanceBalls
       name: homebrew-BalanceBalls
     homepage: https://github.com/BalanceBalls/nekot
+    conflicts:
+      formula: nekot
     commit_author:
       name: BalanceBalls
     skip_upload: auto
