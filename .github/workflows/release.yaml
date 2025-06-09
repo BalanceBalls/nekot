@@ -50,7 +50,7 @@ jobs:
           version: '~> v2'
           args: release --clean --config=.goreleaser.yaml
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PUBLISHER_TOKEN }}
 
   release-candidate:
     permissions:
@@ -80,4 +80,4 @@ jobs:
           version: '~> v2'
           args: release --clean --config=.goreleaser-rc.yaml
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PUBLISHER_TOKEN }}
