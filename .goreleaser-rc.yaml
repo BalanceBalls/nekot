@@ -36,8 +36,6 @@ changelog:
 
 homebrew_casks:
   - name: rc-nekot
-    ids:
-      - rc-nekot
     repository:
       owner: BalanceBalls
       name: homebrew-BalanceBalls
