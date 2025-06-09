@@ -42,6 +42,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
       - name: Run GoReleaser
+        permissions:
+          contents: write
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -70,6 +72,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
       - name: Run GoReleaser
+        permissions:
+          contents: write
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
