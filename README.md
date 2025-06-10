@@ -115,9 +115,9 @@ When using the `gemini` provider, `providerBaseUrl` param is not used.
 You can change colorscheme using the `colorScheme` field.
 
 Available themes:
- * `Groove` **default**
- * `Pink`
- * `Blue`
+ * `groove` **default**
+ * `pink`
+ * `blue`
 
 
 ## Data migration
