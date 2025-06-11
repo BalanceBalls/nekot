@@ -243,16 +243,13 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 
 	case key.Matches(msg, p.keyMap.rename):
 		p.operationMode = editMode
-		ti := textinput.New()
-		ti.PromptStyle = lipgloss.NewStyle().PaddingLeft(util.DefaultElementsPadding)
-		p.textInput = ti
 		i, ok := p.sessionsList.GetSelectedItem()
 		if ok {
 			p.operationTargetId = i.Id
-			p.textInput.Placeholder = "New Session Name"
+			p.textInput = p.createInput("New Session Name", 100, util.EmptyValidator)
 		}
-		p.textInput.Focus()
-		p.textInput.CharLimit = 100
+
+		cmd = p.textInput.Focus()
 
 	case key.Matches(msg, p.keyMap.delete):
 		i, ok := p.sessionsList.GetSelectedItem()
@@ -261,17 +258,12 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 		}
 
 		p.operationMode = deleteMode
-		ti := textinput.New()
-		ti.PromptStyle = lipgloss.NewStyle().PaddingLeft(util.DefaultElementsPadding)
-		p.textInput = ti
 		if ok {
 			p.operationTargetId = i.Id
-			p.textInput.Placeholder = "Delete session? y/n"
-			p.textInput.Validate = util.DeleteSessionValidator
+			p.textInput = p.createInput("Delete session? y/n", 1, util.DeleteSessionValidator)
 		}
 
-		p.textInput.Focus()
-		p.textInput.CharLimit = 1
+		cmd = p.textInput.Focus()
 	}
 
 	return cmd
@@ -425,4 +417,18 @@ func (p SessionsPane) normalListView() string {
 
 func (p SessionsPane) AllowFocusChange() bool {
 	return p.operationMode == defaultMode
+}
+
+func (p SessionsPane) createInput(
+	placeholder string,
+	charLimit int,
+	validator func(s string) error) textinput.Model {
+
+	ti := textinput.New()
+	ti.PromptStyle = lipgloss.NewStyle().PaddingLeft(util.DefaultElementsPadding)
+	ti.Placeholder = placeholder
+	ti.Validate = validator
+	ti.Width = p.container.GetWidth() - util.InputContainerDelta
+	ti.CharLimit = charLimit
+	return ti
 }
