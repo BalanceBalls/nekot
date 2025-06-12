@@ -3,6 +3,7 @@
 set -euo pipefail
  
 # curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/install.sh | sh
+# curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/install-scripts/install.sh | sh
  
 text_bold() {
   echo -e "\033[1m$1\033[0m"
@@ -40,6 +41,9 @@ SYSTEM="${OS}_${ARCH}"
 
 case "${OS}_${ARCH}" in
   Linux_arm64)
+    FILENAME="${PREFIX}_linux_arm64.${FILE_EXT}"
+    ;;
+  Linux_aarch64)
     FILENAME="${PREFIX}_linux_arm64.${FILE_EXT}"
     ;;
   Linux_armel)
