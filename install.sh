@@ -67,7 +67,7 @@ case "${OS}_${ARCH}" in
   *) 
     text_title_error "Error: Unsupported operating system or architecture."
     echo "Detected: ${OS}_${ARCH}"
-    echo "Supported: Linux_x86_64, Linux_arm64, Linux_armv6, Linux_armv7, Linux_armel, Darwin_x86_64, Darwin_arm64" 
+    echo "Supported: Linux_x86_64, Linux_arm64, Linux_aarch64, Linux_armv6, Linux_armv7, Linux_armel, Darwin_x86_64, Darwin_arm64" 
     exit 1
     ;;
 esac
