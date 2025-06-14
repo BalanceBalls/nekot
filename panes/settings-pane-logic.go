@@ -146,7 +146,7 @@ func (p *SettingsPane) configureInput(title string, validator func(str string) e
 	ti.PromptStyle = lipgloss.NewStyle().PaddingLeft(util.DefaultElementsPadding)
 	p.textInput = ti
 	p.textInput.Placeholder = title
-	p.textInput.Width = p.container.GetWidth() - 5
+	p.textInput.Width = p.container.GetWidth() - util.InputContainerDelta
 	p.changeMode = mode
 	p.textInput.Focus()
 	p.textInput.Validate = validator
