@@ -33,6 +33,7 @@ const (
 const (
 	ListRightShiftedItemPadding    = -2
 	TextSelectorMaxWidthCorrection = 6
+	InputContainerDelta            = 5
 
 	ListItemMarginLeft  = 2
 	ListItemPaddingLeft = 2

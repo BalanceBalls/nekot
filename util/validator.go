@@ -16,6 +16,9 @@ const FrequencyRange = "[-2.0, 2.0)"
 const TemperatureRange = "[0.0, 2.0]"
 const TopPRange = "[0.0, 1.0]"
 
+var EmptyValidator = func(input string) error {
+	return nil
+}
 var DeleteSessionValidator = func(input string) error {
 	allowed := []string{"y", "n"}
 	if len(input) > 1 || !slices.Contains(allowed, input) {
@@ -33,6 +36,10 @@ var TopPValidator = func(input string) error {
 	return validateRangedFloat(input, 0.0, 1.0, false, false)
 }
 var MaxTokensValidator = func(input string) error {
+	if input == "" {
+		return nil
+	}
+
 	min := 0
 	max := 1_000_000
 	val, err := strconv.Atoi(input)
@@ -82,6 +89,10 @@ func isGreater(value float64, max float64, isStrict bool) bool {
 
 // If strict is true, the value should be strictly less or more than threshold
 func validateRangedFloat(input string, min, max float64, minStrict, maxStrict bool) error {
+	if input == "" {
+		return nil
+	}
+
 	allowNegative := isGreater(0, min, false)
 
 	value, err := validateFloat(input, allowNegative)

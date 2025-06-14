@@ -104,7 +104,7 @@ func (p *SettingsPane) handleViewMode(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, p.keyMap.savePreset):
 		cmd = p.configureInput(
 			"Enter name for a preset",
-			func(str string) error { return nil },
+			util.EmptyValidator,
 			presetChange)
 
 	case key.Matches(msg, p.keyMap.changeModel):
@@ -145,10 +145,11 @@ func (p *SettingsPane) configureInput(title string, validator func(str string) e
 	ti := textinput.New()
 	ti.PromptStyle = lipgloss.NewStyle().PaddingLeft(util.DefaultElementsPadding)
 	p.textInput = ti
-	p.textInput.Focus()
 	p.textInput.Placeholder = title
-	p.textInput.Validate = validator
+	p.textInput.Width = p.container.GetWidth() - util.InputContainerDelta
 	p.changeMode = mode
+	p.textInput.Focus()
+	p.textInput.Validate = validator
 	return p.textInput.Cursor.BlinkCmd()
 }
 

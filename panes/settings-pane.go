@@ -194,6 +194,16 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	if p.changeMode != inactive {
+		beforeChange := p.textInput.Value()
+		p.textInput, cmd = p.textInput.Update(msg)
+		if p.textInput.Err != nil {
+			p.textInput.SetValue(beforeChange)
+		} else {
+			cmds = append(cmds, cmd)
+		}
+	}
+
 	switch msg := msg.(type) {
 
 	case util.ErrorEvent:
@@ -273,11 +283,6 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 				}
 			}
 		}
-	}
-
-	if p.changeMode != inactive {
-		p.textInput, cmd = p.textInput.Update(msg)
-		cmds = append(cmds, cmd)
 	}
 
 	if !p.initMode && p.viewMode == modelsView {

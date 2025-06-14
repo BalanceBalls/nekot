@@ -271,8 +271,16 @@ func (s TextSelector) copySelectedLinesToClipboard() {
 		selectedLines = append(selectedLines, filteredLine)
 	}
 
-	linesToCopy := util.StripAnsiCodes(strings.Join(selectedLines, "\n"))
-	clipboard.WriteAll(linesToCopy)
+	ansiFreeText := util.StripAnsiCodes(strings.Join(selectedLines, "\n"))
+
+	ansiFreeLines := strings.Split(ansiFreeText, "\n")
+	var linesToCopy = make([]string, len(ansiFreeLines))
+
+	for i, line := range ansiFreeLines {
+		linesToCopy[i] = strings.TrimRight(line, " ")
+	}
+
+	clipboard.WriteAll(strings.Join(linesToCopy, "\n"))
 }
 
 func filterLine(line string) string {
