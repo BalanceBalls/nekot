@@ -4,7 +4,7 @@
 
 A tool for those who appreciate keyboard driven apps and terminal workflows
 
-## Features                                                                      
+## Features
  * 📦 **Single binary** - lightweight, zero dependencies, use anywhere without any requirements
  * 🤖 **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, and more)
  * 🌟 **Support for Gemini API**
@@ -18,9 +18,45 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
 
 ![tui demo](./docs/images/nekot-demo.gif)
 
-## Installation manual
+## App installation
 
-### Setting API keys
+**Ensure API keys are set before proceeding to installtion**
+
+### Homebrew (MacOS)
+
+```bash
+brew tap BalanceBalls/BalanceBalls
+brew install nekot --cask
+```
+
+### Shell script (Linux, MacOS)
+
+Requires `curl` and `tar`.
+
+**For updating the app, just run the script again**
+
+**Basic install:**
+* Requires `sudo`, and installs to `/usr/local/bin/`
+```bash
+curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/install.sh | sudo sh
+```
+
+**Install to path:**
+* Use `-p` flag to specify install path.
+* Make sure the specified directory is in the `$PATH`.
+* May require `sudo` depending on the path specified.
+```bash
+curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/install.sh | sh -p ~/.local/bin
+```
+
+### Download binary/executable (Windows, MacOS, Linux)
+
+1. [Go to latest release](https://github.com/BalanceBalls/nekot/releases/latest)
+2. Download and extract the archive
+3. Place the binary/executable in some directory
+4. Add that directory to `$PATH`
+
+## Setting API keys
 
 To use the app, you will need to set `OPENAI_API_KEY` or/and `GEMINI_API_KEY` env variables depending on your needs
 
@@ -28,7 +64,7 @@ To use the app, you will need to set `OPENAI_API_KEY` or/and `GEMINI_API_KEY` en
 
 <summary>API keys guide</summary>
 
-#### OpenAI APIs
+### OpenAI APIs
 
 <i>For local models the key still needs to be set (`OPENAI_API_KEY=1` will do).</i>
 
@@ -37,46 +73,17 @@ Set up your openai api key:
 * Mistral: [how to get an api key](https://docs.mistral.ai/getting-started/quickstart/#account-setup)
 
 ```bash
-export OPENAI_API_KEY="some-key" # you would want to export this in your .zshrc
+export OPENAI_API_KEY="some-key" # you would want to export this in your .zshrc or .bashrc
 ```
 
-#### Gemini API
+### Gemini API
 
 Set up your api key - [how to get an api key](https://aistudio.google.com/apikey)
 
 ```bash
-export  GEMINI_API_KEY="some-key" # you would want to export this in your .zshrc
+export  GEMINI_API_KEY="some-key" # you would want to export this in your .zshrc or .bashrc
 ```
 </details>
-
-### App installation
-
-After API keys are set, proceed to installtion
-
-#### Homebrew
-
-```bash
-brew tap BalanceBalls/BalanceBalls
-brew install nekot
-nekot
-```
-
-#### Manual (Mac,Windows,Linux)
-
-* Install go - [manual](https://go.dev/doc/install)
-* Clone repo and cd into the directory
-```bash
-git clone https://github.com/BalanceBalls/nekot.git
-cd ./nekot
-```
-To install as a go binary:
-* Run `go install`
-
-To build a binary:
-* Build binary `go build .`
-* Allow execution of the binary `chmod +x ./nekot` (if needed)
-* Run binary `./nekot` . For windows `./nekot.exe`
-
 
 ## Config
 
