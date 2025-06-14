@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
  
 set -euo pipefail
- 
-# curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/install.sh | sh
+
+ # Default install directory
+INSTALL_DIR="/usr/local/bin"
+
+while getopts "p:" opt; do
+	case $opt in
+		p)
+			INSTALL_DIR="$OPTARG"
+			;;
+		\?)
+			echo "Invalid option: -$OPTARG" >&2
+			exit 1
+			;;
+	esac
+done
+
+# curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/install.sh | sudo sh
 # curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/install-scripts/install.sh | sh
  
 text_bold() {
@@ -72,9 +87,6 @@ case "${OS}_${ARCH}" in
     ;;
 esac
  
-INSTALL_DIR="/usr/local/bin"
-echo "$FILENAME"
-
 DOWNLOAD_URL="$DOWNLOAD_BASE_URL/$FILENAME"
 echo "$DOWNLOAD_URL"
  
@@ -87,7 +99,12 @@ text_title "Downloading Binary" " $DOWNLOAD_URL"
 curl --fail --show-error --location --progress-bar \
     $DOWNLOAD_URL | \
     tar -xzf - -C "."
- 
+
+if [ -f "$INSTALL_DIR/$NAME" ]; then
+	rm -f "$INSTALL_DIR/$NAME"
+  text_bold "\nA previously installed version has been removed \n"
+fi
+
 text_title "Installing binary to" " $INSTALL_DIR/$NAME"
 chmod +x "$NAME"
 mv "$NAME" "$INSTALL_DIR/$NAME"
