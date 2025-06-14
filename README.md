@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/install.sh 
 * Make sure the specified directory is in the `$PATH`.
 * May require `sudo` depending on the path specified.
 ```bash
-curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/install.sh | sh -p ~/.local/bin
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/install.sh)" -- -p ~/.local/bin
 ```
 
 ### Download binary/executable (Windows, MacOS, Linux)
