@@ -11,8 +11,8 @@ while getopts "p:" opt; do
       INSTALL_DIR="$OPTARG"
       ;;
     \?)
-       echo "Invalid option: -$OPTARG" >&2
-       exit 1
+      echo "Invalid option: -$OPTARG" >&2
+      exit 1
       ;;
   esac
 done
@@ -26,8 +26,8 @@ text_title() {
   if [ "$2" != "" ]; then echo "$2"; fi
 }
 text_title_error() {
-    echo ""
-    echo -e "\033[1;31m$1\033[00m"
+  echo ""
+  echo -e "\033[1;31m$1\033[00m"
 }
  
 NAME="nekot"
