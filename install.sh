@@ -6,20 +6,17 @@ set -euo pipefail
 INSTALL_DIR="/usr/local/bin"
 
 while getopts "p:" opt; do
-	case $opt in
-		p)
-			INSTALL_DIR="$OPTARG"
-			;;
-		\?)
-			echo "Invalid option: -$OPTARG" >&2
-			exit 1
-			;;
-	esac
+  case $opt in
+    p)
+      INSTALL_DIR="$OPTARG"
+      ;;
+    \?)
+       echo "Invalid option: -$OPTARG" >&2
+       exit 1
+      ;;
+  esac
 done
 
-# curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/install.sh | sudo sh
-# curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/install-scripts/install.sh | sh
- 
 text_bold() {
   echo -e "\033[1m$1\033[0m"
 }
@@ -101,7 +98,7 @@ curl --fail --show-error --location --progress-bar \
     tar -xzf - -C "."
 
 if [ -f "$INSTALL_DIR/$NAME" ]; then
-	rm -f "$INSTALL_DIR/$NAME"
+  rm -f "$INSTALL_DIR/$NAME"
   text_bold "\nA previously installed version has been removed \n"
 fi
 
