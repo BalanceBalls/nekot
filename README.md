@@ -1,6 +1,5 @@
 <p align="center">
-  <img src="./docs/images/logo.png" width="250" border="2px" title="logo">
-
+  <img src="./docs/images/logo.png" width="250" title="logo">
   <h1 align="center">
     NEKOT
   </h1>
