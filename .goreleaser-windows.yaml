@@ -1,0 +1,40 @@
+version: 2
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - '386'
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - format_overrides:
+    - goos: windows
+      formats: ['zip']
+
+checksum:
+  name_template: "checksums.txt"
+snapshot:
+  version_template: "{{ .Tag }}"
+
+chocolateys:
+  - name: nekot
+    title: "Nekot"
+    owners: "Aleksandr Shevchuk"
+    authors: "Aleksandr Shevchuk"
+    url_template: "https://github.com/BalanceBalls/nekot/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    tags: "terminal llm cli chatgpt gemini ollama"
+    require_license_acceptance: false
+    description: "A portable terminal AI interface."
+    api_key: "{{ .Env.CHOCO_API_KEY }}"
+    source_repo: "https://push.chocolatey.org/"
+    project_url: "https://github.com/BalanceBalls/nekot"
+    license_url: "https://github.com/BalanceBalls/nekot/blob/main/LICENSE"
+    bug_tracker_url: "https://github.com/BalanceBalls/nekot/issues"
+    release_notes: "https://github.com/BalanceBalls/nekot/releases/tag/{{ .Tag }}"
+    copyright: "Copyright 2025 Aleksandr Shevchuk"
