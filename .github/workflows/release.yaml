@@ -57,40 +57,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PUBLISHER_TOKEN }}
 
-  release-windows:
-    permissions:
-      contents: write
-    needs: check-tag
-    if: needs.check-tag.outputs.proceed == 'stable'
-    runs-on: windows-latest
-    steps:
-      - name: checkout code
-        uses: actions/checkout@v2
-        with:
-          submodules: "true"
+  # release-windows:
+  #   permissions:
+  #     contents: write
+  #   needs: check-tag
+  #   if: needs.check-tag.outputs.proceed == 'stable'
+  #   runs-on: windows-latest
+  #   steps:
+  #     - name: checkout code
+  #       uses: actions/checkout@v2
+  #       with:
+  #         submodules: "true"
 
-      - run: git fetch --prune --unshallow
+  #     - run: git fetch --prune --unshallow
 
-      - name: setup dependencies
-        uses: actions/setup-go@v2
+  #     - name: setup dependencies
+  #       uses: actions/setup-go@v2
 
-      - name: setup release environment
-        run: |
-          echo "CHOCO_API_KEY=${{ secrets.CHOCO_API_KEY }}" >> .release-env
-          echo "GITHUB_TOKEN=${{ secrets.PUBLISHER_TOKEN }}" >> .release-env
+  #     - name: setup release environment
+  #       run: |
+  #         echo "CHOCO_API_KEY=${{ secrets.CHOCO_API_KEY }}" >> .release-env
+  #         echo "GITHUB_TOKEN=${{ secrets.PUBLISHER_TOKEN }}" >> .release-env
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+  #     - name: Set up Go
+  #       uses: actions/setup-go@v5
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: release --clean --config=.goreleaser-windows.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.PUBLISHER_TOKEN }}
-          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+  #     - name: Run GoReleaser
+  #       uses: goreleaser/goreleaser-action@v6
+  #       with:
+  #         distribution: goreleaser
+  #         version: '~> v2'
+  #         args: release --clean --config=.goreleaser-windows.yaml
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.PUBLISHER_TOKEN }}
+  #         CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
 
   release-candidate:
     permissions:
