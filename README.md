@@ -5,11 +5,10 @@
     NEKOT
   </h1>
 
-```shell
-echo "A powerful and intuitive terminal utility for interacting with both local and cloud LLMs." >> 
+**A powerful and intuitive terminal utility for interacting with both local and cloud LLMs.**
 
-# A tool for those who appreciate keyboard driven apps and terminal workflows
-```
+A tool for those who appreciate keyboard driven apps and terminal workflows
+
 </p>
 
 ## Features
