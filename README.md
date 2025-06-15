@@ -1,8 +1,16 @@
-# NEKOT
+<p align="center">
+  <img src="./docs/images/logo.png" width="250" border="2px" title="logo">
 
-**A powerful and intuitive terminal utility for interaction with both local and cloud LLMs.**
+  <h1 align="center">
+    NEKOT
+  </h1>
 
-A tool for those who appreciate keyboard driven apps and terminal workflows
+```shell
+echo "A powerful and intuitive terminal utility for interacting with both local and cloud LLMs." >> 
+
+# A tool for those who appreciate keyboard driven apps and terminal workflows
+```
+</p>
 
 ## Features
  * 📦 **Single binary** - lightweight, zero dependencies, use anywhere without any requirements
