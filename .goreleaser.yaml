@@ -4,7 +4,6 @@ builds:
   - env:
       - CGO_ENABLED=0
     goos:
-      - windows
       - darwin
       - linux
     goarch:
@@ -12,9 +11,6 @@ builds:
       - arm
       - arm64
       - '386'
-    ignore:
-      - goos: windows
-        goarch: arm
     ldflags:
       - -s -w -X main.version={{.Version}}
 
