@@ -28,7 +28,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
 
 **Ensure API keys are set before proceeding to installtion**
 
-### Homebrew (MacOS)
+### Homebrew (MacOS, Linux)
 
 ```bash
 brew tap BalanceBalls/BalanceBalls
