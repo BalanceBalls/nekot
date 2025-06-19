@@ -247,7 +247,26 @@ func (p ChatPane) View() string {
 		borderColor = p.colors.ActiveTabBorderColor
 	}
 
-	return p.chatContainer.BorderForeground(borderColor).Render(viewportContent)
+	percent := p.chatView.ScrollPercent()
+	info := fmt.Sprintf("▐ [%.f%%]", percent*100)
+	if p.quickChatActive {
+		info += " | [Quick chat]"
+	}
+	bar := info
+	if len(p.sessionContent) == 0 {
+		return p.chatContainer.BorderForeground(borderColor).Render(viewportContent)
+	}
+
+	scrollBar := lipgloss.NewStyle().
+		BorderTop(true).
+		BorderStyle(lipgloss.HiddenBorder()).
+		BorderForeground(p.colors.MainColor).
+		Width(p.chatView.Width).
+		Foreground(p.colors.HighlightColor).
+		Render(bar)
+
+	content := lipgloss.JoinVertical(lipgloss.Left, viewportContent, scrollBar)
+	return p.chatContainer.BorderForeground(borderColor).Render(content)
 }
 
 func (p ChatPane) DisplayError(error string) string {
@@ -269,7 +288,7 @@ func (p ChatPane) GetWidth() int {
 func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 	paneWidth, paneHeight := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 	if !p.isChatPaneReady {
-		p.chatView = viewport.New(paneWidth, paneHeight)
+		p.chatView = viewport.New(paneWidth, paneHeight-2)
 		p.isChatPaneReady = true
 	}
 
@@ -306,7 +325,7 @@ func (p ChatPane) handleWindowResize(width int, height int) ChatPane {
 	p.terminalHeight = height
 
 	w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-	p.chatView.Height = h
+	p.chatView.Height = h - 2
 	p.chatView.Width = w
 	p.chatContainer = p.chatContainer.Width(w).Height(h)
 
