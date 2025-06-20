@@ -61,6 +61,10 @@ var chatContainerStyle = lipgloss.NewStyle().
 	Border(lipgloss.ThickBorder()).
 	MarginRight(util.ChatPaneMarginRight)
 
+var infoBarStyle = lipgloss.NewStyle().
+	BorderTop(true).
+	BorderStyle(lipgloss.HiddenBorder())
+
 func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	chatView := viewport.New(w, h)
 	msgChan := make(chan util.ProcessApiCompletionResponse)
@@ -78,6 +82,11 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 		Width(w).
 		Height(h).
 		BorderForeground(colors.NormalTabBorderColor)
+
+	infoBarStyle = infoBarStyle.
+		Width(w).
+		BorderForeground(colors.MainColor).
+		Foreground(colors.HighlightColor)
 
 	return ChatPane{
 		mainCtx:                ctx,
@@ -247,25 +256,12 @@ func (p ChatPane) View() string {
 		borderColor = p.colors.ActiveTabBorderColor
 	}
 
-	percent := p.chatView.ScrollPercent()
-	info := fmt.Sprintf("▐ [%.f%%]", percent*100)
-	if p.quickChatActive {
-		info += " | [Quick chat]"
-	}
-	bar := info
 	if len(p.sessionContent) == 0 {
 		return p.chatContainer.BorderForeground(borderColor).Render(viewportContent)
 	}
 
-	scrollBar := lipgloss.NewStyle().
-		BorderTop(true).
-		BorderStyle(lipgloss.HiddenBorder()).
-		BorderForeground(p.colors.MainColor).
-		Width(p.chatView.Width).
-		Foreground(p.colors.HighlightColor).
-		Render(bar)
-
-	content := lipgloss.JoinVertical(lipgloss.Left, viewportContent, scrollBar)
+	infoRow := p.renderInfoRow()
+	content := lipgloss.JoinVertical(lipgloss.Left, viewportContent, infoRow)
 	return p.chatContainer.BorderForeground(borderColor).Render(content)
 }
 
@@ -283,6 +279,25 @@ func (p ChatPane) SetPaneHeight(h int) {
 
 func (p ChatPane) GetWidth() int {
 	return p.chatContainer.GetWidth()
+}
+
+func (p ChatPane) renderInfoRow() string {
+	percent := p.chatView.ScrollPercent()
+
+	info := fmt.Sprintf("▐ [%.f%%]", percent*100)
+	if percent == 0 {
+		info = "▐ [Top]"
+	}
+	if percent == 1 {
+		info = "▐ [Bottom]"
+	}
+
+	if p.quickChatActive {
+		info += " | [Quick chat]"
+	}
+
+	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
+	return infoBar
 }
 
 func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
