@@ -37,4 +37,5 @@ chocolateys:
     license_url: "https://github.com/BalanceBalls/nekot/blob/main/LICENSE"
     bug_tracker_url: "https://github.com/BalanceBalls/nekot/issues"
     release_notes: "https://github.com/BalanceBalls/nekot/releases/tag/{{ .Tag }}"
+    icon_url: "https://raw.githubusercontent.com/BalanceBalls/nekot/main/docs/images/icon.png"
     copyright: "Copyright 2025 Aleksandr Shevchuk"
