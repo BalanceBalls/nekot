@@ -18,7 +18,7 @@ archives:
       formats: ['zip']
 
 checksum:
-  name_template: "checksums.txt"
+  name_template: "checksums-win.txt"
 snapshot:
   version_template: "{{ .Tag }}"
 
