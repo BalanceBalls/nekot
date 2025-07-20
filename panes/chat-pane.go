@@ -61,6 +61,10 @@ var chatContainerStyle = lipgloss.NewStyle().
 	Border(lipgloss.ThickBorder()).
 	MarginRight(util.ChatPaneMarginRight)
 
+var infoBarStyle = lipgloss.NewStyle().
+	BorderTop(true).
+	BorderStyle(lipgloss.HiddenBorder())
+
 func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	chatView := viewport.New(w, h)
 	msgChan := make(chan util.ProcessApiCompletionResponse)
@@ -78,6 +82,11 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 		Width(w).
 		Height(h).
 		BorderForeground(colors.NormalTabBorderColor)
+
+	infoBarStyle = infoBarStyle.
+		Width(w).
+		BorderForeground(colors.MainColor).
+		Foreground(colors.HighlightColor)
 
 	return ChatPane{
 		mainCtx:                ctx,
@@ -247,7 +256,13 @@ func (p ChatPane) View() string {
 		borderColor = p.colors.ActiveTabBorderColor
 	}
 
-	return p.chatContainer.BorderForeground(borderColor).Render(viewportContent)
+	if len(p.sessionContent) == 0 {
+		return p.chatContainer.BorderForeground(borderColor).Render(viewportContent)
+	}
+
+	infoRow := p.renderInfoRow()
+	content := lipgloss.JoinVertical(lipgloss.Left, viewportContent, infoRow)
+	return p.chatContainer.BorderForeground(borderColor).Render(content)
 }
 
 func (p ChatPane) DisplayError(error string) string {
@@ -266,10 +281,29 @@ func (p ChatPane) GetWidth() int {
 	return p.chatContainer.GetWidth()
 }
 
+func (p ChatPane) renderInfoRow() string {
+	percent := p.chatView.ScrollPercent()
+
+	info := fmt.Sprintf("▐ [%.f%%]", percent*100)
+	if percent == 0 {
+		info = "▐ [Top]"
+	}
+	if percent == 1 {
+		info = "▐ [Bottom]"
+	}
+
+	if p.quickChatActive {
+		info += " | [Quick chat]"
+	}
+
+	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
+	return infoBar
+}
+
 func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 	paneWidth, paneHeight := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 	if !p.isChatPaneReady {
-		p.chatView = viewport.New(paneWidth, paneHeight)
+		p.chatView = viewport.New(paneWidth, paneHeight-2)
 		p.isChatPaneReady = true
 	}
 
@@ -306,7 +340,7 @@ func (p ChatPane) handleWindowResize(width int, height int) ChatPane {
 	p.terminalHeight = height
 
 	w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-	p.chatView.Height = h
+	p.chatView.Height = h - 2
 	p.chatView.Width = w
 	p.chatContainer = p.chatContainer.Width(w).Height(h)
 

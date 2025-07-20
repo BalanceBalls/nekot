@@ -44,11 +44,13 @@ homebrew_casks:
     conflicts:
       - formula: nekot
     commit_author:
-      name: BalanceBalls
+    name: BalanceBalls
     hooks:
       post:
         install: |
-          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-            system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "#{staged_path}/nekot"]
+          if OS.mac?
+            if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+              system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "#{staged_path}/nekot"]
+            end
           end
     skip_upload: auto

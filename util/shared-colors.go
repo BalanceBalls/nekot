@@ -40,6 +40,7 @@ var (
 	cyan       = "#c3f7f5"
 	lightGreen = "#a0d390"
 	blue       = "#6b81c5"
+	smoothRed  = "#af5f5f"
 )
 
 var (
@@ -80,7 +81,7 @@ func (s ColorScheme) GetColors() SchemeColors {
 		return SchemeColors{
 			MainColor:            lipgloss.Color(pinkYellow),
 			AccentColor:          lipgloss.Color(lightGreen),
-			HighlightColor:       lipgloss.Color(blue),
+			HighlightColor:       lipgloss.Color(smoothRed),
 			DefaultTextColor:     lipgloss.Color(white),
 			ErrorColor:           lipgloss.Color(red),
 			NormalTabBorderColor: lipgloss.Color(smoothBlue),
