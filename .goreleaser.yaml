@@ -44,7 +44,7 @@ homebrew_casks:
     conflicts:
       - formula: nekot
     commit_author:
-    name: BalanceBalls
+      name: BalanceBalls
     hooks:
       post:
         install: |
