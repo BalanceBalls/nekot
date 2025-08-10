@@ -55,7 +55,6 @@ func GetFilteredModelList(providerType string, apiUrl string, models []string) [
 	switch providerType {
 	case OpenAiProviderType:
 		modelNames = filterOpenAiApiModels(apiUrl, models)
-		break
 	case GeminiProviderType:
 		for _, model := range models {
 			if isGeminiChatModel(model) {
@@ -120,6 +119,14 @@ func TransformRequestHeaders(provider ApiProvider, params map[string]any) map[st
 			delete(params, "max_tokens")
 			delete(params, "frequency_penalty")
 		}
+
+		if isOpenAiGpt5Model(params["model"].(string)) {
+			delete(params, "max_tokens")
+			delete(params, "frequency_penalty")
+			delete(params, "temperature")
+			delete(params, "top_p")
+		}
+
 		return params
 	case Mistral:
 		return params
@@ -201,6 +208,13 @@ func isMistralChatModel(model string) bool {
 
 func isOpenAiReasoningModel(model string) bool {
 	if strings.HasPrefix(model, "o") {
+		return true
+	}
+	return false
+}
+
+func isOpenAiGpt5Model(model string) bool {
+	if strings.HasPrefix(model, "gpt-5") {
 		return true
 	}
 	return false
