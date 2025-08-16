@@ -252,7 +252,7 @@ func (m *Orchestrator) assertChoiceContentString(choice util.Choice) (string, te
 	choiceString, ok := choiceContent.(string)
 
 	if !ok {
-		return "", m.resetStateAndCreateError("choice string no good")
+		return "", nil //m.resetStateAndCreateError("choice string no good")
 	}
 
 	return choiceString, nil
@@ -279,12 +279,13 @@ func (m Orchestrator) constructJsonMessage(arrayOfProcessResult []util.ProcessAp
 
 			if content, ok := choice.Delta["content"].(string); ok {
 				newMessage.Content += content
-			} else {
-				// Handle the case where the type assertion fails, e.g., log an error or return
-				util.Log("type assertion to string failed for choice.Delta[\"content\"]")
-				formattedError := fmt.Errorf("type assertion to string failed for choice.Delta[\"content\"]")
-				return util.MessageToSend{}, formattedError
 			}
+			// else {
+			// 	// Handle the case where the type assertion fails, e.g., log an error or return
+			// 	util.Log("type assertion to string failed for choice.Delta[\"content\"]")
+			// 	formattedError := fmt.Errorf("type assertion to string failed for choice.Delta[\"content\"]")
+			// 	return util.MessageToSend{}, formattedError
+			// }
 
 		}
 	}
