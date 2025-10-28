@@ -2,11 +2,10 @@ package sessions
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"sort"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/BalanceBalls/nekot/clients"
@@ -31,6 +30,7 @@ type Orchestrator struct {
 	settingsService *settings.SettingsService
 	config          config.Config
 
+	mu                        sync.RWMutex
 	InferenceClient           util.LlmClient
 	Settings                  util.Settings
 	CurrentSessionID          int
@@ -59,7 +59,11 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 	}
 
 	settingsService := settings.NewSettingsService(db)
-	llmClient := clients.ResolveLlmClient(config.Provider, config.ProviderBaseUrl, config.SystemMessage)
+	llmClient := clients.ResolveLlmClient(
+		config.Provider,
+		config.ProviderBaseUrl,
+		config.SystemMessage,
+	)
 
 	return Orchestrator{
 		mainCtx:              ctx,
@@ -174,8 +178,9 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		m.settingsReady = true
 
 	case util.ProcessApiCompletionResponse:
+		log.Println(msg)
 		// add the latest message to the array of messages
-		cmds = append(cmds, m.handleMsgProcessing(msg))
+		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
 		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
 	}
 
@@ -187,7 +192,10 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m Orchestrator) GetCompletion(ctx context.Context, resp chan util.ProcessApiCompletionResponse) tea.Cmd {
+func (m Orchestrator) GetCompletion(
+	ctx context.Context,
+	resp chan util.ProcessApiCompletionResponse,
+) tea.Cmd {
 	return m.InferenceClient.RequestCompletion(ctx, m.ArrayOfMessages, m.Settings, resp)
 }
 
@@ -199,7 +207,7 @@ func (m Orchestrator) GetLatestBotMessage() (string, error) {
 		return m.ArrayOfMessages[lastIndex].Content, nil
 	}
 	return "", fmt.Errorf(
-		"No messages found in array of messages. Length: %v",
+		"no messages found in array of messages. Length: %v",
 		len(m.ArrayOfMessages),
 	)
 }
@@ -220,102 +228,64 @@ func (m Orchestrator) GetMessagesAsString() string {
 	return messages
 }
 
-// MIGHT BE WORTH TO MOVE TO A SEP FILE
-func (m *Orchestrator) appendAndOrderProcessResults(msg util.ProcessApiCompletionResponse) {
-	m.ArrayOfProcessResult = append(m.ArrayOfProcessResult, msg)
-	m.CurrentAnswer = ""
+func (m *Orchestrator) hanldeProcessAPICompletionResponse(
+	msg util.ProcessApiCompletionResponse,
+) tea.Cmd {
+	m.ProcessingMode = PROCESSING
 
-	// we need to sort on ID here because go routines are done in different threads
-	// and the order in which our channel receives messages is not guaranteed.
-	// TODO: look into a better way to insert (can I Insert in order)
-	sort.SliceStable(m.ArrayOfProcessResult, func(i, j int) bool {
-		return m.ArrayOfProcessResult[i].ID < m.ArrayOfProcessResult[j].ID
-	})
-}
-
-func (m *Orchestrator) assertChoiceContentString(choice util.Choice) (string, tea.Cmd) {
-	choiceContent, ok := choice.Delta["content"]
-
-	if !ok {
-		log.Println("Choice content not ok in assertChoiceContentString. FinishReason:", choice.FinishReason)
-		if choice.FinishReason == "stop" || choice.FinishReason == "length" {
-
-			areIdsAllThere := areIDsInOrderAndComplete(getArrayOfIDs(m.ArrayOfProcessResult))
-			var cmd tea.Cmd
-			if areIdsAllThere && m.ProcessingMode == PROCESSING {
-				cmd = m.handleFinalChoiceMessage()
-			}
-			return "", cmd
-		}
-		return "", m.resetStateAndCreateError("choice content not found")
-	}
-	choiceString, ok := choiceContent.(string)
-
-	if !ok {
-		return "", nil //m.resetStateAndCreateError("choice string no good")
-	}
-
-	return choiceString, nil
-}
-
-func (m Orchestrator) constructJsonMessage(arrayOfProcessResult []util.ProcessApiCompletionResponse) (util.MessageToSend, error) {
-	newMessage := util.MessageToSend{Role: "assistant", Content: ""}
-
-	for _, aMessage := range arrayOfProcessResult {
-		if aMessage.Final {
-			util.Log("Hit final in construct", aMessage.Result)
-			log.Println("Hit final in construct", aMessage.Result)
-			break
-		}
-
-		if len(aMessage.Result.Choices) > 0 {
-			choice := aMessage.Result.Choices[0]
-			// TODO: we need a helper for this
-			if choice.FinishReason == "stop" || choice.FinishReason == "length" {
-				util.Log("Hit stop or length in construct")
-				log.Println("Hit stop or length in construct", choice.FinishReason)
-				break
-			}
-
-			if content, ok := choice.Delta["content"].(string); ok {
-				newMessage.Content += content
-			}
-			// else {
-			// 	// Handle the case where the type assertion fails, e.g., log an error or return
-			// 	util.Log("type assertion to string failed for choice.Delta[\"content\"]")
-			// 	formattedError := fmt.Errorf("type assertion to string failed for choice.Delta[\"content\"]")
-			// 	return util.MessageToSend{}, formattedError
-			// }
-
-		}
-	}
-	return newMessage, nil
-}
-
-func (m *Orchestrator) handleFinalChoiceMessage() tea.Cmd {
-	log.Println("handleFinalChoiceMessage triggered")
-	// if the json for whatever reason is malformed, bail out
-	response, err := m.constructJsonMessage(m.ArrayOfProcessResult)
+	p := NewMessageProcessor(m.ArrayOfProcessResult, m.CurrentAnswer, m.Settings)
+	result, err := p.Process(msg)
 	if err != nil {
-		log.Println("Failed to construct json message. Processing stopped.", err)
+		log.Printf(
+			"error occured on processing the following chunk (%s):\n%s",
+			err.Error(),
+			msg,
+		)
 		return m.resetStateAndCreateError(err.Error())
 	}
 
-	modelName := "**" + m.Settings.Model + "**\n"
-	if response.Content != "" && !strings.HasPrefix(response.Content, modelName) {
-		response.Content = modelName + response.Content
+	m.appendAndOrderProcessResults(msg)
+
+	if result.IsSkipped {
+		return nil
 	}
+
+	m.CurrentAnswer = result.CurrentResponse
+	m.sessionService.UpdateSessionTokens(
+		m.CurrentSessionID,
+		result.PromptTokens,
+		result.CompletionTokens,
+	)
+
+	if result.IsCancelled {
+		return tea.Batch(
+			m.finishResponseProcessing(result.JSONResponse),
+			util.SendNotificationMsg(util.CancelledNotification),
+			util.SendProcessingStateChangedMsg(false))
+	}
+
+	if result.IsFinished {
+		return tea.Batch(
+			m.finishResponseProcessing(result.JSONResponse),
+			util.SendProcessingStateChangedMsg(false),
+		)
+	}
+
+	return nil
+}
+
+func (m *Orchestrator) finishResponseProcessing(response util.MessageToSend) tea.Cmd {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	log.Println("finishResponse triggered")
 
 	m.ArrayOfMessages = append(
 		m.ArrayOfMessages,
 		response,
 	)
 
-	/*
-		Update the database session with the ArrayOfMessages
-		And then reset the model that we use for the view to the default state
-	*/
-	err = m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
+	err := m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
 	m.ProcessingMode = IDLE
 	m.CurrentAnswer = ""
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
@@ -328,90 +298,13 @@ func (m *Orchestrator) handleFinalChoiceMessage() tea.Cmd {
 	return util.SendProcessingStateChangedMsg(false)
 }
 
-func areIDsInOrderAndComplete(ids []int) bool {
-	if len(ids) == 0 {
-		return false // Assuming the list shouldn't be empty
-	}
+func (m *Orchestrator) appendAndOrderProcessResults(msg util.ProcessApiCompletionResponse) {
+	m.ArrayOfProcessResult = append(m.ArrayOfProcessResult, msg)
+	m.CurrentAnswer = ""
 
-	for i := 0; i < len(ids)-1; i++ {
-		if ids[i+1] != ids[i]+1 {
-			return false
-		}
-	}
-
-	return true
-}
-
-func getArrayOfIDs(arr []util.ProcessApiCompletionResponse) []int {
-	ids := []int{}
-	for _, msg := range arr {
-		ids = append(ids, msg.ID)
-	}
-	return ids
-}
-
-// updates the current view with the messages coming in
-func (m *Orchestrator) handleMsgProcessing(msg util.ProcessApiCompletionResponse) tea.Cmd {
-	log.Println("Hit handleMsgProcessing")
-
-	if msg.Result.Usage != nil {
-		m.sessionService.UpdateSessionTokens(m.CurrentSessionID, msg.Result.Usage.Prompt, msg.Result.Usage.Completion)
-	}
-
-	if len(msg.Result.Choices) > 0 {
-		chunkContent := msg.Result.Choices[0].Delta["content"]
-		if chunkContent != nil {
-			chunkString := chunkContent.(string)
-
-			if strings.HasPrefix(chunkString, "<think>") {
-				chunkString = "\n" + "# Thinking..." + "\n<!------------>" + chunkString
-			}
-
-			if strings.Contains(chunkString, "</think>") {
-				chunkString = chunkString + "\n" + "# Done thinking"
-			}
-
-			msg.Result.Choices[0].Delta["content"] = chunkString
-		}
-	}
-
-	m.appendAndOrderProcessResults(msg)
-	areIdsAllThere := areIDsInOrderAndComplete(getArrayOfIDs(m.ArrayOfProcessResult))
-	m.ProcessingMode = PROCESSING
-
-	if msg.Err != nil {
-		if errors.Is(context.Canceled, msg.Err) {
-			log.Println("Context cancelled int handleMsgProcessing")
-			return tea.Batch(
-				m.handleFinalChoiceMessage(),
-				util.SendNotificationMsg(util.CancelledNotification),
-				util.SendProcessingStateChangedMsg(false))
-		}
-		return util.MakeErrorMsg(msg.Err.Error())
-	}
-
-	for _, msg := range m.ArrayOfProcessResult {
-		if msg.Final && areIdsAllThere {
-			util.Log("-----Final message found-----")
-			return tea.Batch(m.handleFinalChoiceMessage(), util.SendProcessingStateChangedMsg(false))
-		}
-
-		if len(msg.Result.Choices) > 0 {
-			// Now you can safely use 'choice' since you've confirmed there's at least one element.
-			// this is when we're done with the stream
-			choice := msg.Result.Choices[0]
-
-			// we need to keep appending content to our current answer in this case
-			choiceString, cmdToRun := m.assertChoiceContentString(choice)
-			if cmdToRun != nil {
-				return cmdToRun
-			}
-
-			m.CurrentAnswer = m.CurrentAnswer + choiceString
-		}
-	}
-
-	return nil
+	sort.SliceStable(m.ArrayOfProcessResult, func(i, j int) bool {
+		return m.ArrayOfProcessResult[i].ID < m.ArrayOfProcessResult[j].ID
+	})
 }
 
 func (m *Orchestrator) resetStateAndCreateError(errMsg string) tea.Cmd {

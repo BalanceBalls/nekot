@@ -63,7 +63,7 @@ func (c OpenAiClient) RequestCompletion(
 		}
 
 		c.processCompletionResponse(resp, resultChan, &processResultID)
-		return nil // Or return a specific message indicating completion or next steps
+		return nil
 	}
 }
 
@@ -95,7 +95,11 @@ func constructSystemMessage(content string) util.MessageToSend {
 	}
 }
 
-func (c OpenAiClient) constructCompletionRequestPayload(chatMsgs []util.MessageToSend, cfg config.Config, settings util.Settings) ([]byte, error) {
+func (c OpenAiClient) constructCompletionRequestPayload(
+	chatMsgs []util.MessageToSend,
+	cfg config.Config,
+	settings util.Settings,
+) ([]byte, error) {
 	messages := []util.MessageToSend{}
 
 	if util.IsSystemMessageSupported(c.provider, settings.Model) {
@@ -156,7 +160,11 @@ func getBaseUrl(configUrl string) string {
 	return baseUrl
 }
 
-func (c OpenAiClient) getOpenAiAPI(ctx context.Context, apiKey string, path string) (*http.Response, error) {
+func (c OpenAiClient) getOpenAiAPI(
+	ctx context.Context,
+	apiKey string,
+	path string,
+) (*http.Response, error) {
 	baseUrl := getBaseUrl(c.apiUrl)
 	requestUrl := fmt.Sprintf("%s/%s", baseUrl, path)
 
@@ -172,7 +180,11 @@ func (c OpenAiClient) getOpenAiAPI(ctx context.Context, apiKey string, path stri
 	return client.Do(req)
 }
 
-func (c OpenAiClient) postOpenAiAPI(ctx context.Context, apiKey, path string, body []byte) (*http.Response, error) {
+func (c OpenAiClient) postOpenAiAPI(
+	ctx context.Context,
+	apiKey, path string,
+	body []byte,
+) (*http.Response, error) {
 	baseUrl := getBaseUrl(c.apiUrl)
 	requestUrl := fmt.Sprintf("%s/%s", baseUrl, path)
 
@@ -238,7 +250,7 @@ func (c OpenAiClient) processCompletionResponse(
 		if err != nil {
 			if err == io.EOF {
 				log.Println("OpenAI: scanner returned EOF", err)
-				break // End of the stream
+				break
 			}
 			log.Println("OpenAI: Encountered error during receiving respone: ", err)
 			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: err, Final: true}
