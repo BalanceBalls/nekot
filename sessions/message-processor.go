@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/util"
@@ -56,7 +57,7 @@ func (p MessageProcessor) Process(
 	}
 
 	result = result.handleTokenStats(chunk)
-	if p.shouldSkipProcessing(chunk) {
+	if p.shouldSkipProcessing(chunk) || p.isDuplicate(chunk) {
 		result.IsSkipped = true
 		return result, nil
 	}
@@ -76,7 +77,25 @@ func (p MessageProcessor) Process(
 	return result, nil
 }
 
+func (p MessageProcessor) orderChunks() MessageProcessor {
+	sort.Slice(p.ResponseDataChunks, func(i, j int) bool {
+		return p.ResponseDataChunks[i].ID < p.ResponseDataChunks[j].ID
+	})
+	return p
+}
+
+func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) bool {
+	if slices.ContainsFunc(p.ResponseDataChunks, func(c util.ProcessApiCompletionResponse) bool {
+		return c.ID == chunk.ID
+	}) {
+		log.Println("there is already a chunk with id: ", chunk.ID)
+		return true
+	}
+	return false
+}
+
 func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionResponse) bool {
+
 	if chunk.Result.Choices == nil {
 		return true
 	}
@@ -134,6 +153,8 @@ func (r ParsingResult) rebuildResponseBuffer(
 	updatedResponseBuffer := ""
 
 	p.ResponseDataChunks = append(p.ResponseDataChunks, newChunk)
+	p = p.orderChunks()
+
 	for _, chunk := range p.ResponseDataChunks {
 		if p.shouldSkipProcessing(chunk) {
 			continue
