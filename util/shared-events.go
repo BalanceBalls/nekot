@@ -60,11 +60,7 @@ var (
 func IsFocusAllowed(mode ViewMode, pane Pane, tw int) bool {
 	focusPanes := getFocuesPanes(mode, pane, tw)
 
-	if slices.Contains(focusPanes, pane) {
-		return true
-	}
-
-	return false
+	return slices.Contains(focusPanes, pane)
 }
 
 func GetNewFocusMode(mode ViewMode, currentFocus Pane, tw int) Pane {

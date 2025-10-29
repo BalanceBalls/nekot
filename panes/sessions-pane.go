@@ -41,7 +41,10 @@ var defaultSessionsKeyMap = sessionsKeyMap{
 	delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "d delete")),
 	rename: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "e edit")),
 	cancel: key.NewBinding(key.WithKeys(tea.KeyEsc.String()), key.WithHelp("esc", "cancel action")),
-	apply:  key.NewBinding(key.WithKeys(tea.KeyEnter.String()), key.WithHelp("esc", "switch to session/apply renaming")),
+	apply: key.NewBinding(
+		key.WithKeys(tea.KeyEnter.String()),
+		key.WithHelp("esc", "switch to session/apply renaming"),
+	),
 	addNew: key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "ctrl+n add new")),
 }
 
@@ -273,7 +276,11 @@ func (p *SessionsPane) addNewSession(msg util.AddNewSessionMsg) tea.Cmd {
 	currentTime := time.Now()
 	formattedTime := currentTime.Format(time.ANSIC)
 	defaultSessionName := fmt.Sprintf("%s", formattedTime)
-	newSession, _ := p.sessionService.InsertNewSession(defaultSessionName, []util.MessageToSend{}, msg.IsTemporary)
+	newSession, _ := p.sessionService.InsertNewSession(
+		defaultSessionName,
+		[]util.MessageToSend{},
+		msg.IsTemporary,
+	)
 
 	cmd := p.handleUpdateCurrentSession(newSession)
 	p.updateSessionsList()

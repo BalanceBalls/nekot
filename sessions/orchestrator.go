@@ -30,7 +30,7 @@ type Orchestrator struct {
 	settingsService *settings.SettingsService
 	config          config.Config
 
-	mu                        sync.RWMutex
+	mu                        *sync.RWMutex
 	InferenceClient           util.LlmClient
 	Settings                  util.Settings
 	CurrentSessionID          int
@@ -74,6 +74,7 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 		settingsService:      settingsService,
 		InferenceClient:      llmClient,
 		ProcessingMode:       IDLE,
+		mu:                   &sync.RWMutex{},
 	}
 }
 
@@ -231,9 +232,9 @@ func (m Orchestrator) GetMessagesAsString() string {
 func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	msg util.ProcessApiCompletionResponse,
 ) tea.Cmd {
-	m.ProcessingMode = PROCESSING
 
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.CurrentAnswer, m.Settings)
+
 	result, err := p.Process(msg)
 	if err != nil {
 		log.Printf(
@@ -245,30 +246,27 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	}
 
 	m.appendAndOrderProcessResults(msg)
-
-	if result.IsSkipped {
-		return nil
-	}
-
-	m.CurrentAnswer = result.CurrentResponse
 	m.sessionService.UpdateSessionTokens(
 		m.CurrentSessionID,
 		result.PromptTokens,
 		result.CompletionTokens,
 	)
 
+	if result.IsSkipped {
+		return nil
+	}
+
+	m.ProcessingMode = PROCESSING
+	m.CurrentAnswer = result.CurrentResponse
+
 	if result.IsCancelled {
 		return tea.Batch(
 			m.finishResponseProcessing(result.JSONResponse),
-			util.SendNotificationMsg(util.CancelledNotification),
-			util.SendProcessingStateChangedMsg(false))
+			util.SendNotificationMsg(util.CancelledNotification))
 	}
 
 	if result.IsFinished {
-		return tea.Batch(
-			m.finishResponseProcessing(result.JSONResponse),
-			util.SendProcessingStateChangedMsg(false),
-		)
+		return m.finishResponseProcessing(result.JSONResponse)
 	}
 
 	return nil
@@ -311,5 +309,5 @@ func (m *Orchestrator) resetStateAndCreateError(errMsg string) tea.Cmd {
 	m.ProcessingMode = ERROR
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 	m.CurrentAnswer = ""
-	return util.MakeErrorMsg(errMsg)
+	return tea.Batch(util.MakeErrorMsg(errMsg), util.SendProcessingStateChangedMsg(false))
 }

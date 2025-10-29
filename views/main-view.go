@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"database/sql"
+	"log"
 	"os"
 	"runtime"
 	"slices"
@@ -36,15 +37,39 @@ type keyMap struct {
 }
 
 var defaultKeyMap = keyMap{
-	cancel:        key.NewBinding(key.WithKeys("ctrl+s", "ctrl+b"), key.WithHelp("ctrl+b/ctrl+s", "stop inference")),
-	zenMode:       key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "activate/deactivate zen mode")),
-	editorMode:    key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "enter/exit editor mode")),
-	quit:          key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit app")),
-	quickChat:     key.NewBinding(key.WithKeys("ctrl+q"), key.WithHelp("ctrl+q", "start quick chat")),
-	saveQuickChat: key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "save quick chat")),
-	jumpToPane:    key.NewBinding(key.WithKeys("1", "2", "3", "4"), key.WithHelp("1,2,3,4", "jump to specific pane")),
-	nextPane:      key.NewBinding(key.WithKeys(tea.KeyTab.String()), key.WithHelp("TAB", "move to next pane")),
-	newSession:    key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "add new session")),
+	cancel: key.NewBinding(
+		key.WithKeys("ctrl+s", "ctrl+b"),
+		key.WithHelp("ctrl+b/ctrl+s", "stop inference"),
+	),
+	zenMode: key.NewBinding(
+		key.WithKeys("ctrl+o"),
+		key.WithHelp("ctrl+o", "activate/deactivate zen mode"),
+	),
+	editorMode: key.NewBinding(
+		key.WithKeys("ctrl+e"),
+		key.WithHelp("ctrl+e", "enter/exit editor mode"),
+	),
+	quit: key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit app")),
+	quickChat: key.NewBinding(
+		key.WithKeys("ctrl+q"),
+		key.WithHelp("ctrl+q", "start quick chat"),
+	),
+	saveQuickChat: key.NewBinding(
+		key.WithKeys("ctrl+x"),
+		key.WithHelp("ctrl+x", "save quick chat"),
+	),
+	jumpToPane: key.NewBinding(
+		key.WithKeys("1", "2", "3", "4"),
+		key.WithHelp("1,2,3,4", "jump to specific pane"),
+	),
+	nextPane: key.NewBinding(
+		key.WithKeys(tea.KeyTab.String()),
+		key.WithHelp("TAB", "move to next pane"),
+	),
+	newSession: key.NewBinding(
+		key.WithKeys("ctrl+n"),
+		key.WithHelp("ctrl+n", "add new session"),
+	),
 }
 
 type MainView struct {
@@ -87,7 +112,11 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 	settingsPane := panes.NewSettingsPane(db, ctx)
 	statusBarPane := panes.NewInfoPane(db, ctx)
 
-	w, h := util.CalcChatPaneSize(util.DefaultTerminalWidth, util.DefaultTerminalHeight, util.NormalMode)
+	w, h := util.CalcChatPaneSize(
+		util.DefaultTerminalWidth,
+		util.DefaultTerminalHeight,
+		util.NormalMode,
+	)
 	chatPane := panes.NewChatPane(ctx, w, h)
 
 	orchestrator := sessions.NewOrchestrator(db, ctx)
@@ -352,6 +381,10 @@ func (m MainView) isFocusChangeAllowed() bool {
 		!m.sessionsPane.AllowFocusChange() ||
 		!m.viewReady ||
 		m.sessionOrchestrator.ProcessingMode == sessions.PROCESSING {
+		log.Println(
+			"Focus change not allowed. Processing mode: ",
+			m.sessionOrchestrator.ProcessingMode,
+		)
 		return false
 	}
 

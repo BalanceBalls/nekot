@@ -2,7 +2,6 @@ package sessions
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"slices"
 	"strings"
@@ -43,17 +42,20 @@ func NewMessageProcessor(
 func (p MessageProcessor) Process(
 	chunk util.ProcessApiCompletionResponse,
 ) (ParsingResult, error) {
-	if p.shouldSkipProcessing(chunk) {
-		return ParsingResult{IsSkipped: true}, nil
-	}
 
 	result := ParsingResult{}
+	result = result.handleTokenStats(chunk)
+
+	if p.shouldSkipProcessing(chunk) {
+		result.IsSkipped = true
+		return result, nil
+	}
+
 	result, nonCancelErr := result.handleErrors(chunk)
 	if nonCancelErr != nil {
 		return result, nonCancelErr
 	}
 
-	result = result.handleTokenStats(chunk)
 	chunk.Result.Choices[0] = p.processReasoningTags(chunk)
 
 	if p.isFinalResponseChunk(chunk) || result.IsCancelled {
@@ -94,19 +96,6 @@ func (p MessageProcessor) IsResponseFinalized() bool {
 			return c.Final
 		},
 	)
-}
-
-func (p MessageProcessor) validateChunkIds() error {
-	if !isChunkOrderingValid(getChunkIds(p.ResponseDataChunks)) {
-
-		return errors.New(
-			"chunk ids order is corrupted. Chunks amount: " + fmt.Sprintf(
-				"%d",
-				len(p.ResponseDataChunks),
-			),
-		)
-	}
-	return nil
 }
 
 func (r ParsingResult) handleErrors(
@@ -246,26 +235,4 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.MessageToSend {
 	newMessage.Content = modelName + newMessage.Content
 
 	return newMessage
-}
-
-func isChunkOrderingValid(ids []int) bool {
-	if len(ids) == 0 {
-		return false
-	}
-
-	for i := 0; i < len(ids)-1; i++ {
-		if ids[i+1] != ids[i]+1 {
-			return false
-		}
-	}
-
-	return true
-}
-
-func getChunkIds(arr []util.ProcessApiCompletionResponse) []int {
-	ids := []int{}
-	for _, msg := range arr {
-		ids = append(ids, msg.ID)
-	}
-	return ids
 }
