@@ -234,7 +234,6 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 ) tea.Cmd {
 
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.CurrentAnswer, m.Settings)
-
 	result, err := p.Process(msg)
 	if err != nil {
 		log.Printf(
@@ -256,14 +255,14 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 		return nil
 	}
 
-	m.ProcessingMode = PROCESSING
-	m.CurrentAnswer = result.CurrentResponse
-
 	if result.IsCancelled {
 		return tea.Batch(
-			m.finishResponseProcessing(result.JSONResponse),
-			util.SendNotificationMsg(util.CancelledNotification))
+			util.SendNotificationMsg(util.CancelledNotification),
+			m.finishResponseProcessing(result.JSONResponse))
 	}
+
+	m.ProcessingMode = PROCESSING
+	m.CurrentAnswer = result.CurrentResponse
 
 	if result.IsFinished {
 		return m.finishResponseProcessing(result.JSONResponse)

@@ -44,27 +44,31 @@ func (p MessageProcessor) Process(
 ) (ParsingResult, error) {
 
 	result := ParsingResult{}
-	result = result.handleTokenStats(chunk)
-
-	if p.shouldSkipProcessing(chunk) {
-		result.IsSkipped = true
-		return result, nil
-	}
-
 	result, nonCancelErr := result.handleErrors(chunk)
 	if nonCancelErr != nil {
 		return result, nonCancelErr
 	}
 
+	if result.IsCancelled {
+		// Save already received chunks
+		result.JSONResponse = p.prepareResponseJSONForDB()
+		return result, nil
+	}
+
+	result = result.handleTokenStats(chunk)
+	if p.shouldSkipProcessing(chunk) {
+		result.IsSkipped = true
+		return result, nil
+	}
+
 	chunk.Result.Choices[0] = p.processReasoningTags(chunk)
 
-	if p.isFinalResponseChunk(chunk) || result.IsCancelled {
+	if p.isFinalResponseChunk(chunk) {
 		result.IsFinished = true
 		result.JSONResponse = p.prepareResponseJSONForDB()
 	}
 
-	p.ResponseDataChunks = append(p.ResponseDataChunks, chunk)
-	result, bufferErr := result.rebuildResponseBuffer(p)
+	result, bufferErr := result.rebuildResponseBuffer(p, chunk)
 	if bufferErr != nil {
 		return ParsingResult{}, bufferErr
 	}
@@ -101,16 +105,17 @@ func (p MessageProcessor) IsResponseFinalized() bool {
 func (r ParsingResult) handleErrors(
 	chunk util.ProcessApiCompletionResponse,
 ) (ParsingResult, error) {
-	if chunk.Err != nil {
-		if errors.Is(chunk.Err, context.Canceled) {
-			log.Println("Context cancelled int handleMsgProcessing")
-			r.IsCancelled = true
-			return r, nil
-		}
-
-		return r, chunk.Err
+	if chunk.Err == nil {
+		return r, nil
 	}
-	return r, nil
+
+	if errors.Is(chunk.Err, context.Canceled) {
+		log.Println("Context cancelled int handleMsgProcessing")
+		r.IsCancelled = true
+		return r, nil
+	}
+
+	return r, chunk.Err
 }
 
 func (r ParsingResult) handleTokenStats(chunk util.ProcessApiCompletionResponse) ParsingResult {
@@ -123,69 +128,25 @@ func (r ParsingResult) handleTokenStats(chunk util.ProcessApiCompletionResponse)
 
 func (r ParsingResult) rebuildResponseBuffer(
 	p MessageProcessor,
+	newChunk util.ProcessApiCompletionResponse,
 ) (ParsingResult, error) {
 
 	updatedResponseBuffer := ""
 
+	p.ResponseDataChunks = append(p.ResponseDataChunks, newChunk)
 	for _, chunk := range p.ResponseDataChunks {
 		if p.shouldSkipProcessing(chunk) {
 			continue
 		}
 
 		choiceString, ok := chunk.Result.Choices[0].Delta["content"].(string)
-		if !ok {
-			continue
-			// r.HasError = true
-			// return r, errors.New("response content is not a string")
+		if ok {
+			updatedResponseBuffer = updatedResponseBuffer + choiceString
 		}
-
-		updatedResponseBuffer = updatedResponseBuffer + choiceString
 	}
 
 	r.CurrentResponse = updatedResponseBuffer
 	return r, nil
-}
-
-func (p MessageProcessor) processReasoningTags(
-	chunk util.ProcessApiCompletionResponse,
-) util.Choice {
-	if len(chunk.Result.Choices) == 0 {
-		return util.Choice{}
-	}
-
-	choice := chunk.Result.Choices[0]
-	if content, ok := choice.Delta["reasoning_content"]; ok {
-		chunkString := content.(string)
-
-		if len(p.CurrentResponseBuffer) == 0 {
-			chunkString = "\n" + "# Thinking..." + "\n<!------------>" + chunkString
-		}
-
-		choice.Delta["content"] = chunkString
-		return choice
-	}
-
-	if content, ok := choice.Delta["content"]; ok && content != nil {
-
-		chunkString := content.(string)
-
-		if strings.Contains(p.CurrentResponseBuffer, "# Thinking...") &&
-			!strings.Contains(p.CurrentResponseBuffer, "# Done thinking") {
-			chunkString = "\n" + "# Done thinking" + "\n" + chunkString
-		}
-
-		if strings.HasPrefix(chunkString, "<think>") {
-			chunkString = "\n" + "# Thinking..." + "\n<!------------>" + chunkString
-		}
-
-		if strings.Contains(chunkString, "</think>") {
-			chunkString = chunkString + "\n" + "# Done thinking"
-		}
-
-		choice.Delta["content"] = chunkString
-	}
-
-	return choice
 }
 
 func (p MessageProcessor) isFinalResponseChunk(msg util.ProcessApiCompletionResponse) bool {
@@ -229,10 +190,69 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.MessageToSend {
 		if content, ok := choice.Delta["content"].(string); ok {
 			newMessage.Content += content
 		}
+
 	}
 
-	modelName := "**" + p.Settings.Model + "**\n"
-	newMessage.Content = modelName + newMessage.Content
+	modelName := "**" + p.Settings.Model + "**"
+	shouldSetName := newMessage.Content != "" && !strings.Contains(newMessage.Content, modelName)
+
+	if shouldSetName {
+		log.Println("model name has been set")
+		newMessage.Content = modelName + "\n" + newMessage.Content
+	}
 
 	return newMessage
+}
+
+func (p MessageProcessor) processReasoningTags(
+	chunk util.ProcessApiCompletionResponse,
+) util.Choice {
+	if len(chunk.Result.Choices) == 0 {
+		return util.Choice{}
+	}
+
+	choice := chunk.Result.Choices[0]
+	if content, ok := choice.Delta["reasoning_content"]; ok {
+		chunkString := content.(string)
+
+		if len(p.CurrentResponseBuffer) == 0 {
+			chunkString = "\n" + "# Thinking..." + "\n<!------------>" + chunkString
+		}
+
+		choice.Delta["content"] = chunkString
+		return choice
+	}
+
+	if content, ok := choice.Delta["reasoning"]; ok {
+		chunkString := content.(string)
+
+		if len(p.CurrentResponseBuffer) == 0 {
+			chunkString = "\n" + "# Thinking..." + "\n<!------------>" + chunkString
+		}
+
+		choice.Delta["content"] = chunkString
+		return choice
+	}
+
+	if content, ok := choice.Delta["content"]; ok && content != nil {
+
+		chunkString := content.(string)
+
+		if strings.Contains(p.CurrentResponseBuffer, "# Thinking...") &&
+			!strings.Contains(p.CurrentResponseBuffer, "# Done thinking") {
+			chunkString = "\n" + "# Done thinking" + "\n" + chunkString
+		}
+
+		if strings.HasPrefix(chunkString, "<think>") {
+			chunkString = "\n" + "# Thinking..." + "\n<!------------>" + chunkString
+		}
+
+		if strings.Contains(chunkString, "</think>") {
+			chunkString = chunkString + "\n" + "# Done thinking"
+		}
+
+		choice.Delta["content"] = chunkString
+	}
+
+	return choice
 }
