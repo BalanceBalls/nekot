@@ -28,14 +28,23 @@ type keyMap struct {
 }
 
 var defaultKeyMap = keyMap{
-	visualLineMode: key.NewBinding(key.WithKeys("V", "v", tea.KeySpace.String()), key.WithHelp("V, v, <space>", "visual line mode")),
-	up:             key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "move up")),
-	down:           key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "move down")),
-	pageUp:         key.NewBinding(key.WithKeys("ctrl+u", "u"), key.WithHelp("ctrl+u", "move up a page")),
-	pageDown:       key.NewBinding(key.WithKeys("ctrl+d", "d"), key.WithHelp("ctrl+d", "move down a page")),
-	copy:           key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy selection")),
-	bottom:         key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "go to bottom")),
-	top:            key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "go to top")),
+	visualLineMode: key.NewBinding(
+		key.WithKeys("V", "v", tea.KeySpace.String()),
+		key.WithHelp("V, v, <space>", "visual line mode"),
+	),
+	up:   key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "move up")),
+	down: key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "move down")),
+	pageUp: key.NewBinding(
+		key.WithKeys("ctrl+u", "u"),
+		key.WithHelp("ctrl+u", "move up a page"),
+	),
+	pageDown: key.NewBinding(
+		key.WithKeys("ctrl+d", "d"),
+		key.WithHelp("ctrl+d", "move down a page"),
+	),
+	copy:   key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy selection")),
+	bottom: key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "go to bottom")),
+	top:    key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "go to top")),
 }
 
 type cursor struct {
@@ -284,8 +293,8 @@ func (s TextSelector) copySelectedLinesToClipboard() {
 }
 
 func filterLine(line string) string {
-	line = strings.Replace(line, "🤖", "", -1)
-	line = strings.Replace(line, "💁", "", -1)
+	line = strings.ReplaceAll(line, "🤖", "")
+	line = strings.ReplaceAll(line, "💁", "")
 	return line
 }
 
@@ -297,7 +306,12 @@ func (s TextSelector) IsSelecting() bool {
 	return s.Selection.Active
 }
 
-func NewTextSelector(w, h int, scrollPos int, sessionData string, colors util.SchemeColors) TextSelector {
+func NewTextSelector(
+	w, h int,
+	scrollPos int,
+	sessionData string,
+	colors util.SchemeColors,
+) TextSelector {
 
 	lines := strings.Split(sessionData, "\n")
 
