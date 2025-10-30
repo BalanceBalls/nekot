@@ -84,8 +84,10 @@ func (l *SessionsList) SetShowStatusBar(show bool) {
 }
 
 func (l *SessionsList) SetSize(w, h int) {
-	l.list.SetWidth(w)
-	l.list.SetHeight(h)
+	if w > 2 && h > 2 {
+		l.list.SetWidth(w)
+		l.list.SetHeight(h)
+	}
 }
 
 func (l SessionsList) IsFiltering() bool {
@@ -113,12 +115,18 @@ func NewSessionsList(items []list.Item, w, h int, colors util.SchemeColors) Sess
 	l.SetShowHelp(false)
 	l.DisableQuitKeybindings()
 
-	l.Paginator.ActiveDot = lipgloss.NewStyle().Foreground(colors.HighlightColor).Render(util.ActiveDot)
-	l.Paginator.InactiveDot = lipgloss.NewStyle().Foreground(colors.DefaultTextColor).Render(util.InactiveDot)
+	l.Paginator.ActiveDot = lipgloss.NewStyle().
+		Foreground(colors.HighlightColor).
+		Render(util.ActiveDot)
+	l.Paginator.InactiveDot = lipgloss.NewStyle().
+		Foreground(colors.DefaultTextColor).
+		Render(util.InactiveDot)
 	selectedItemStyle = selectedItemStyle.Foreground(colors.AccentColor)
 	activeItemStyle = activeItemStyle.Foreground(colors.HighlightColor)
 	itemStyle = itemStyle.Foreground(colors.DefaultTextColor)
-	l.FilterInput.PromptStyle = l.FilterInput.PromptStyle.Foreground(colors.ActiveTabBorderColor).PaddingBottom(0).Margin(0)
+	l.FilterInput.PromptStyle = l.FilterInput.PromptStyle.Foreground(colors.ActiveTabBorderColor).
+		PaddingBottom(0).
+		Margin(0)
 	l.FilterInput.Cursor.Style = l.FilterInput.Cursor.Style.Foreground(colors.NormalTabBorderColor)
 
 	return SessionsList{
