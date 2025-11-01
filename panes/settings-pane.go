@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/BalanceBalls/nekot/clients"
 	"github.com/BalanceBalls/nekot/components"
@@ -61,11 +60,23 @@ var defaultSettingsKeyMap = settingsKeyMap{
 	editSysPrompt: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "s - edit sys prompt")),
 	editMaxTokens: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "change max_tokens")),
 	changeModel:   key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "change current model")),
-	savePreset:    key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "ctrl+p - new preset")),
-	reset:         key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "ctrl+r - reset preset")),
-	presetsMenu:   key.NewBinding(key.WithKeys("]", tea.KeyRight.String()), key.WithHelp("]", "presets menu")),
-	goBack:        key.NewBinding(key.WithKeys(tea.KeyEsc.String(), "["), key.WithHelp("esc, [", "go back")),
-	choose:        key.NewBinding(key.WithKeys(tea.KeyEnter.String())),
+	savePreset: key.NewBinding(
+		key.WithKeys("ctrl+p"),
+		key.WithHelp("ctrl+p", "ctrl+p - new preset"),
+	),
+	reset: key.NewBinding(
+		key.WithKeys("ctrl+r"),
+		key.WithHelp("ctrl+r", "ctrl+r - reset preset"),
+	),
+	presetsMenu: key.NewBinding(
+		key.WithKeys("]", tea.KeyRight.String()),
+		key.WithHelp("]", "presets menu"),
+	),
+	goBack: key.NewBinding(
+		key.WithKeys(tea.KeyEsc.String(), "["),
+		key.WithHelp("esc, [", "go back"),
+	),
+	choose: key.NewBinding(key.WithKeys(tea.KeyEnter.String())),
 }
 
 type SettingsPane struct {
@@ -147,13 +158,18 @@ func NewSettingsPane(db *sql.DB, ctx context.Context) SettingsPane {
 	}
 
 	settingsService = settings.NewSettingsService(db)
-	llmClient := clients.ResolveLlmClient(config.Provider, config.ProviderBaseUrl, config.SystemMessage)
+	llmClient := clients.ResolveLlmClient(
+		config.Provider,
+		config.ProviderBaseUrl,
+		config.SystemMessage,
+	)
 
 	colors := config.ColorScheme.GetColors()
 	listItemSpan = listItemSpan.Foreground(colors.DefaultTextColor)
 	listItemHeading = listItemHeading.Foreground(colors.MainColor)
 	presetItemHeading = presetItemHeading.Foreground(colors.AccentColor)
-	activeHeader = activeHeader.Foreground(colors.DefaultTextColor).BorderForeground(colors.DefaultTextColor)
+	activeHeader = activeHeader.Foreground(colors.DefaultTextColor).
+		BorderForeground(colors.DefaultTextColor)
 	spinnerStyle = spinnerStyle.Foreground(colors.AccentColor)
 	containerStyle := lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder(), true).
@@ -162,7 +178,6 @@ func NewSettingsPane(db *sql.DB, ctx context.Context) SettingsPane {
 	spinner := initSpinner()
 
 	return SettingsPane{
-		mainCtx:         ctx,
 		keyMap:          defaultSettingsKeyMap,
 		colors:          colors,
 		terminalWidth:   util.DefaultTerminalWidth,
@@ -175,19 +190,12 @@ func NewSettingsPane(db *sql.DB, ctx context.Context) SettingsPane {
 		spinner:         spinner,
 		initMode:        true,
 		loading:         true,
+		mainCtx:         ctx,
 	}
 }
 
 func (p *SettingsPane) Init() tea.Cmd {
-	initCtx, cancel := context.
-		WithTimeout(p.mainCtx, time.Duration(util.DefaultRequestTimeOutSec*time.Second))
-
-	settingsLoader := func() tea.Msg {
-		defer cancel()
-		return p.settingsService.GetSettings(initCtx, util.DefaultSettingsId, *p.config)
-	}
-
-	return tea.Batch(p.spinner.Tick, settingsLoader)
+	return p.spinner.Tick
 }
 
 func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {

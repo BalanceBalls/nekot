@@ -149,8 +149,7 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 			updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
 			cmds = append(cmds, SendUpdateCurrentSessionMsg(updatedSession))
 			cmds = append(cmds, SendRefreshSessionsListMsg())
-
-			// TODO: notification
+			cmds = append(cmds, util.SendNotificationMsg(util.SessionSavedNotification))
 		}
 
 	case UpdateCurrentSession:

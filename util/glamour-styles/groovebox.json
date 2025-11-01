@@ -186,6 +186,8 @@
   "definition_description": {
     "block_prefix": "\n🠶 "
   },
-  "html_block": {},
+  "html_block": {
+    "color": "#928374"
+  },
   "html_span": {}
 }

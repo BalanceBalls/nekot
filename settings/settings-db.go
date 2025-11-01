@@ -127,7 +127,13 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 	if !isModelFromSettingsAvailable && len(availableModels) > 0 {
 		modelIdx := rand.IntN(len(availableModels) - 1)
 		settings.Model = availableModels[modelIdx]
-		ss.UpdateSettings(settings)
+		settings, err = ss.UpdateSettings(settings)
+		if err != nil {
+			return UpdateSettingsEvent{
+				Settings: settings,
+				Err:      err,
+			}
+		}
 	}
 
 	return UpdateSettingsEvent{
@@ -136,7 +142,11 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 	}
 }
 
-func (ss *SettingsService) GetProviderModels(ctx context.Context, providerType string, apiUrl string) ([]string, error) {
+func (ss *SettingsService) GetProviderModels(
+	ctx context.Context,
+	providerType string,
+	apiUrl string,
+) ([]string, error) {
 	provider := util.GetOpenAiInferenceProvider(providerType, apiUrl)
 	availableModels := []string{}
 
@@ -155,7 +165,11 @@ func (ss *SettingsService) GetProviderModels(ctx context.Context, providerType s
 			return []string{}, modelsResponse.Err
 		}
 
-		availableModels = util.GetFilteredModelList(providerType, apiUrl, modelsResponse.Result.GetModelNamesFromResponse())
+		availableModels = util.GetFilteredModelList(
+			providerType,
+			apiUrl,
+			modelsResponse.Result.GetModelNamesFromResponse(),
+		)
 
 		if provider == util.Local {
 			return availableModels, nil
@@ -243,7 +257,16 @@ func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 	presets := []util.Settings{}
 	for rows.Next() {
 		preset := util.Settings{}
-		rows.Scan(&preset.ID, &preset.Model, &preset.MaxTokens, &preset.Frequency, &preset.SystemPrompt, &preset.TopP, &preset.Temperature, &preset.PresetName)
+		rows.Scan(
+			&preset.ID,
+			&preset.Model,
+			&preset.MaxTokens,
+			&preset.Frequency,
+			&preset.SystemPrompt,
+			&preset.TopP,
+			&preset.Temperature,
+			&preset.PresetName,
+		)
 		presets = append(presets, preset)
 	}
 	defer rows.Close()

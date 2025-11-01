@@ -138,11 +138,11 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 
 func (m MainView) Init() tea.Cmd {
 	return tea.Batch(
+		m.settingsPane.Init(),
 		m.sessionOrchestrator.Init(),
 		m.promptPane.Init(),
 		m.sessionsPane.Init(),
 		m.chatPane.Init(),
-		m.settingsPane.Init(),
 		func() tea.Msg { return dimensionsPulsar() },
 	)
 }
@@ -208,7 +208,6 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case util.PromptReady:
 		m.error = util.ErrorEvent{}
 		m.sessionOrchestrator.ArrayOfMessages = append(m.sessionOrchestrator.ArrayOfMessages, clients.ConstructUserMessage(msg.Prompt))
-		m.sessionOrchestrator.ProcessingMode = sessions.PROCESSING
 		m.viewMode = util.NormalMode
 
 		completionContext, cancelInference := context.WithCancel(m.context)
