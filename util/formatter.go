@@ -10,13 +10,14 @@ import (
 
 func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors SchemeColors, isQuickChat bool) string {
 	var messages string
+
 	for _, message := range msgsToRender {
 		messageToUse := message.Content
 
-		switch {
-		case message.Role == "user":
+		switch message.Role {
+		case "user":
 			messageToUse = RenderUserMessage(messageToUse, w, colors, false)
-		case message.Role == "assistant":
+		case "assistant":
 			messageToUse = RenderBotMessage(messageToUse, w, colors, false)
 		}
 
@@ -42,10 +43,10 @@ func GetVisualModeView(msgsToRender []MessageToSend, w int, colors SchemeColors)
 	for _, message := range msgsToRender {
 		messageToUse := message.Content
 
-		switch {
-		case message.Role == "user":
+		switch message.Role {
+		case "user":
 			messageToUse = RenderUserMessage(messageToUse, w, colors, true)
-		case message.Role == "assistant":
+		case "assistant":
 			messageToUse = RenderBotMessage(messageToUse, w, colors, true)
 		}
 

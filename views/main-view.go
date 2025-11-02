@@ -137,11 +137,11 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 }
 
 func (m MainView) Init() tea.Cmd {
-	return tea.Batch(
-		m.settingsPane.Init(),
+	return tea.Sequence(
 		m.sessionOrchestrator.Init(),
-		m.promptPane.Init(),
 		m.sessionsPane.Init(),
+		m.settingsPane.Init(),
+		m.promptPane.Init(),
 		m.chatPane.Init(),
 		func() tea.Msg { return dimensionsPulsar() },
 	)

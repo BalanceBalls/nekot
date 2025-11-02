@@ -139,9 +139,15 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		p.sessionsListReady = true
 
 	case util.FocusEvent:
+		width, height := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, tipsOffset)
+		if !p.sessionsListReady {
+			p.sessionsList = components.NewSessionsList([]list.Item{}, width, height, p.colors)
+			p.updateSessionsList()
+			p.operationMode = defaultMode
+			p.sessionsListReady = true
+		}
 		p.isFocused = msg.IsFocused
 		p.operationMode = defaultMode
-		width, height := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, tipsOffset)
 		p.sessionsList.SetSize(width, height)
 
 	case tea.WindowSizeMsg:

@@ -39,6 +39,7 @@ type Orchestrator struct {
 	ArrayOfProcessResult      []util.ProcessApiCompletionResponse
 	ArrayOfMessages           []util.MessageToSend
 	CurrentAnswer             string
+	ResponseBuffer            string
 	AllSessions               []Session
 	ProcessingMode            string
 
@@ -157,16 +158,13 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 			m.sessionService.SweepTemporarySessions()
 			m.userService.UpdateUserCurrentActiveSession(1, msg.Session.ID)
 		}
-		m.CurrentSessionIsTemporary = msg.Session.IsTemporary
-		m.CurrentSessionID = msg.Session.ID
-		m.CurrentSessionName = msg.Session.SessionName
-		m.ArrayOfMessages = msg.Session.Messages
+
+		m.setCurrentSessionData(msg.Session)
 
 	case LoadDataFromDB:
-		m.CurrentSessionIsTemporary = msg.Session.IsTemporary
-		m.CurrentSessionID = msg.CurrentActiveSessionID
-		m.CurrentSessionName = msg.Session.SessionName
-		m.ArrayOfMessages = msg.Session.Messages
+		log.Println("Orchestrator loaded data from db. Session name:", msg.Session.SessionName)
+
+		m.setCurrentSessionData(msg.Session)
 		m.AllSessions = msg.AllSessions
 		m.dataLoaded = true
 
@@ -228,27 +226,39 @@ func (m Orchestrator) GetMessagesAsString() string {
 	return messages
 }
 
+func (m *Orchestrator) setCurrentSessionData(session Session) {
+	m.CurrentSessionIsTemporary = session.IsTemporary
+	m.CurrentSessionID = session.ID
+	m.CurrentSessionName = session.SessionName
+	m.ArrayOfMessages = session.Messages
+}
+
 func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	msg util.ProcessApiCompletionResponse,
 ) tea.Cmd {
 
-	p := NewMessageProcessor(m.ArrayOfProcessResult, m.CurrentAnswer, m.Settings)
+	m.mu.Lock()
+	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.Settings)
 	result, err := p.Process(msg)
+
 	if err != nil {
 		log.Printf(
 			"error occured on processing the following chunk (%s):\n%s",
 			err.Error(),
 			msg,
 		)
+		m.mu.Unlock()
 		return m.resetStateAndCreateError(err.Error())
 	}
 
-	m.appendAndOrderProcessResults(msg)
+	m.appendAndOrderProcessResults(result)
 	m.sessionService.UpdateSessionTokens(
 		m.CurrentSessionID,
 		result.PromptTokens,
 		result.CompletionTokens,
 	)
+
+	m.mu.Unlock()
 
 	if result.IsSkipped {
 		return nil
@@ -284,6 +294,7 @@ func (m *Orchestrator) finishResponseProcessing(response util.MessageToSend) tea
 	err := m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
 	m.ProcessingMode = IDLE
 	m.CurrentAnswer = ""
+	m.ResponseBuffer = ""
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 
 	if err != nil {
@@ -294,9 +305,9 @@ func (m *Orchestrator) finishResponseProcessing(response util.MessageToSend) tea
 	return util.SendProcessingStateChangedMsg(false)
 }
 
-func (m *Orchestrator) appendAndOrderProcessResults(msg util.ProcessApiCompletionResponse) {
-	m.ArrayOfProcessResult = append(m.ArrayOfProcessResult, msg)
-	m.CurrentAnswer = ""
+func (m *Orchestrator) appendAndOrderProcessResults(processingResult ParsingResult) {
+	m.ResponseBuffer = processingResult.CurrentResponse
+	m.ArrayOfProcessResult = processingResult.CurrentResponseDataChunks
 
 	sort.SliceStable(m.ArrayOfProcessResult, func(i, j int) bool {
 		return m.ArrayOfProcessResult[i].ID < m.ArrayOfProcessResult[j].ID
