@@ -294,6 +294,15 @@ func (p *SessionsPane) addNewSession(msg util.AddNewSessionMsg) tea.Cmd {
 }
 
 func (p *SessionsPane) handleUpdateCurrentSession(session sessions.Session) tea.Cmd {
+
+	if !p.sessionsListReady {
+		width, height := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, tipsOffset)
+		p.sessionsList = components.NewSessionsList([]list.Item{}, width, height, p.colors)
+		p.updateSessionsList()
+		p.operationMode = defaultMode
+		p.sessionsListReady = true
+	}
+
 	p.currentSession = session
 	p.userService.UpdateUserCurrentActiveSession(1, session.ID)
 

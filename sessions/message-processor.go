@@ -75,6 +75,8 @@ func (p MessageProcessor) Process(
 		return result, nil
 	}
 
+	chunk.Result.Choices[0] = p.processReasoningTags(chunk)
+
 	if p.isFinalResponseChunk(chunk) {
 		result.IsFinished = true
 		result.JSONResponse = p.prepareResponseJSONForDB()
@@ -166,7 +168,6 @@ func (r ParsingResult) composeProcessingResult(
 
 	updatedResponseBuffer := ""
 
-	newChunk.Result.Choices[0] = p.processReasoningTags(newChunk)
 	p.ResponseDataChunks = append(p.ResponseDataChunks, newChunk)
 	p = p.orderChunks()
 
