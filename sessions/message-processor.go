@@ -121,9 +121,6 @@ func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionRe
 	if content, ok := choice.Delta["content"]; ok && content == nil {
 		return true
 	}
-	if _, ok := choice.Delta["role"]; ok {
-		return true
-	}
 
 	return false
 }
