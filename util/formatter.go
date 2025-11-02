@@ -8,7 +8,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors SchemeColors, isQuickChat bool) string {
+func GetMessagesAsPrettyString(
+	msgsToRender []MessageToSend,
+	w int,
+	colors SchemeColors,
+	isQuickChat bool,
+) string {
 	var messages string
 
 	for _, message := range msgsToRender {
@@ -18,7 +23,7 @@ func GetMessagesAsPrettyString(msgsToRender []MessageToSend, w int, colors Schem
 		case "user":
 			messageToUse = RenderUserMessage(messageToUse, w, colors, false)
 		case "assistant":
-			messageToUse = RenderBotMessage(messageToUse, w, colors, false)
+			messageToUse = RenderBotMessage(message, w, colors, false)
 		}
 
 		if messages == "" {
@@ -47,7 +52,7 @@ func GetVisualModeView(msgsToRender []MessageToSend, w int, colors SchemeColors)
 		case "user":
 			messageToUse = RenderUserMessage(messageToUse, w, colors, true)
 		case "assistant":
-			messageToUse = RenderBotMessage(messageToUse, w, colors, true)
+			messageToUse = RenderBotMessage(message, w, colors, true)
 		}
 
 		if messages == "" {
@@ -94,7 +99,9 @@ func RenderErrorMessage(msg string, width int, colors SchemeColors) string {
 	errMsg, _ := renderer.Render(msg)
 	errOutput := strings.TrimSpace(errMsg)
 
-	instructions, _ := renderer.Render("\n## Inspect the error, fix the problem and restart the app\n\n" + ErrorHelp)
+	instructions, _ := renderer.Render(
+		"\n## Inspect the error, fix the problem and restart the app\n\n" + ErrorHelp,
+	)
 	instructionsOutput := strings.TrimSpace(instructions)
 
 	return lipgloss.NewStyle().
@@ -106,8 +113,13 @@ func RenderErrorMessage(msg string, width int, colors SchemeColors) string {
 		Render(errOutput + "\n\n" + instructionsOutput)
 }
 
-func RenderBotMessage(msg string, width int, colors SchemeColors, isVisualMode bool) string {
-	if msg == "" {
+func RenderBotMessage(
+	msg MessageToSend,
+	width int,
+	colors SchemeColors,
+	isVisualMode bool,
+) string {
+	if msg.Content == "" {
 		return ""
 	}
 
@@ -117,20 +129,25 @@ func RenderBotMessage(msg string, width int, colors SchemeColors, isVisualMode b
 		colors.RendererThemeOption,
 	)
 
+	content := msg.Content
 	// markdown renderer glitches when code block appears on a line with different text
-	if strings.HasPrefix(msg, "```") {
-		msg = "\n" + msg
+	if strings.HasPrefix(content, "```") {
+		content = "\n" + content
 	}
 
 	if isVisualMode {
-		msg = "\n🤖 " + msg
-		userMsg, _ := renderer.Render(msg)
+		content = "\n🤖 " + content
+		userMsg, _ := renderer.Render(content)
 		output := strings.TrimSpace(userMsg)
 		return lipgloss.NewStyle().Render("\n" + output + "\n")
 	}
 
-	msg = "\n🤖 " + msg + "\n"
-	aiResponse, _ := renderer.Render(msg)
+	modelName := ""
+	if len(msg.Model) > 0 {
+		modelName = "**" + msg.Model + "**\n"
+	}
+	content = "\n🤖 " + modelName + content + "\n"
+	aiResponse, _ := renderer.Render(content)
 	output := strings.TrimSpace(aiResponse)
 	return lipgloss.NewStyle().
 		BorderLeft(true).

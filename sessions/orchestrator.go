@@ -179,7 +179,10 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		log.Println(msg)
 		// add the latest message to the array of messages
 		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
-		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
+
+		if !msg.Final {
+			cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
+		}
 	}
 
 	if m.dataLoaded && m.settingsReady && !m.initialized {

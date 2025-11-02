@@ -29,10 +29,22 @@ type chatPaneKeyMap struct {
 }
 
 var defaultChatPaneKeyMap = chatPaneKeyMap{
-	exit:          key.NewBinding(key.WithKeys(tea.KeyEsc.String()), key.WithHelp("esc", "exit insert mode or editor mode")),
-	copyLast:      key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy last message from chat to clipboard")),
-	copyAll:       key.NewBinding(key.WithKeys("Y"), key.WithHelp("Y", "copy all chat to clipboard")),
-	selectionMode: key.NewBinding(key.WithKeys(tea.KeySpace.String(), "v", "V"), key.WithHelp("<space>, v, V", "enter selection mode")),
+	exit: key.NewBinding(
+		key.WithKeys(tea.KeyEsc.String()),
+		key.WithHelp("esc", "exit insert mode or editor mode"),
+	),
+	copyLast: key.NewBinding(
+		key.WithKeys("y"),
+		key.WithHelp("y", "copy last message from chat to clipboard"),
+	),
+	copyAll: key.NewBinding(
+		key.WithKeys("Y"),
+		key.WithHelp("Y", "copy all chat to clipboard"),
+	),
+	selectionMode: key.NewBinding(
+		key.WithKeys(tea.KeySpace.String(), "v", "V"),
+		key.WithHelp("<space>, v, V", "enter selection mode"),
+	),
 }
 
 type ChatPane struct {
@@ -154,7 +166,10 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		paneWidth := p.chatContainer.GetWidth()
 
 		oldContent := util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
-		styledBufferMessage := util.RenderBotMessage(msg.ChunkMessage, paneWidth, p.colors, false)
+		styledBufferMessage := util.RenderBotMessage(util.MessageToSend{
+			Content: msg.ChunkMessage,
+			Role:    "assistant",
+		}, paneWidth, p.colors, false)
 
 		if styledBufferMessage != "" {
 			styledBufferMessage = "\n" + styledBufferMessage
@@ -238,7 +253,10 @@ func (p ChatPane) AllowFocusChange() bool {
 	return !p.selectionView.IsSelecting()
 }
 
-func (p ChatPane) DisplayCompletion(ctx context.Context, orchestrator sessions.Orchestrator) tea.Cmd {
+func (p ChatPane) DisplayCompletion(
+	ctx context.Context,
+	orchestrator sessions.Orchestrator,
+) tea.Cmd {
 	return tea.Batch(
 		orchestrator.GetCompletion(ctx, p.msgChan),
 		waitForActivity(p.msgChan),
@@ -266,7 +284,9 @@ func (p ChatPane) View() string {
 }
 
 func (p ChatPane) DisplayError(error string) string {
-	return p.chatContainer.Render(util.RenderErrorMessage(error, p.chatContainer.GetWidth(), p.colors))
+	return p.chatContainer.Render(
+		util.RenderErrorMessage(error, p.chatContainer.GetWidth(), p.colors),
+	)
 }
 
 func (p ChatPane) SetPaneWitdth(w int) {
@@ -325,7 +345,11 @@ func (p ChatPane) displayManual() ChatPane {
 	return p
 }
 
-func (p ChatPane) displaySession(messages []util.MessageToSend, paneWidth int, useScroll bool) ChatPane {
+func (p ChatPane) displaySession(
+	messages []util.MessageToSend,
+	paneWidth int,
+	useScroll bool,
+) ChatPane {
 	oldContent := util.GetMessagesAsPrettyString(messages, paneWidth, p.colors, p.quickChatActive)
 	p.chatView.SetContent(oldContent)
 	if useScroll {

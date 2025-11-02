@@ -12,14 +12,15 @@ type Settings struct {
 }
 
 type MessageToSend struct {
+	Model   string `json:"model"`
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
 type Choice struct {
-	Index        int                    `json:"index"`
-	Delta        map[string]interface{} `json:"delta"`
-	FinishReason string                 `json:"finish_reason"`
+	Index        int            `json:"index"`
+	Delta        map[string]any `json:"delta"`
+	FinishReason string         `json:"finish_reason"`
 }
 
 type CompletionChunk struct {

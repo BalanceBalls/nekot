@@ -108,6 +108,9 @@ func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) b
 }
 
 func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionResponse) bool {
+	if len(p.ResponseDataChunks) == 0 && chunk.Final {
+		return true
+	}
 
 	if chunk.Result.Choices == nil {
 		return true
@@ -210,8 +213,9 @@ func (p MessageProcessor) isFinalResponseChunk(msg util.ProcessApiCompletionResp
 }
 
 func (p MessageProcessor) prepareResponseJSONForDB() util.MessageToSend {
-	newMessage := util.MessageToSend{Role: "assistant", Content: ""}
+	newMessage := util.MessageToSend{Role: "assistant", Content: "", Model: p.Settings.Model}
 
+	p = p.orderChunks()
 	for _, responseChunk := range p.ResponseDataChunks {
 		if len(responseChunk.Result.Choices) == 0 {
 			continue
@@ -227,20 +231,12 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.MessageToSend {
 		}
 	}
 
-	modelName := "**" + p.Settings.Model + "**"
-	shouldSetName := newMessage.Content != "" && !strings.Contains(newMessage.Content, modelName)
-
-	if shouldSetName {
-		log.Println("model name has been set")
-		newMessage.Content = modelName + "\n" + newMessage.Content
-	}
-
 	newMessage.Content = formatThinkingContent(newMessage.Content)
 	return newMessage
 }
 
 func formatThinkingContent(text string) string {
-	re := regexp.MustCompile(`(?s)<thinkblock>(.*?)</thinkblock>`)
+	re := regexp.MustCompile(`(?s)` + parsingTokenStart + `(.*?)` + parsingTokenEnd)
 
 	return re.ReplaceAllStringFunc(text, func(match string) string {
 		content := strings.TrimPrefix(match, parsingTokenStart)
@@ -272,18 +268,21 @@ func (p MessageProcessor) anyChunkContainsText(text string) bool {
 		return false
 	}
 
-	return slices.ContainsFunc(p.ResponseDataChunks, func(c util.ProcessApiCompletionResponse) bool {
-		if len(c.Result.Choices) == 0 {
+	return slices.ContainsFunc(
+		p.ResponseDataChunks,
+		func(c util.ProcessApiCompletionResponse) bool {
+			if len(c.Result.Choices) == 0 {
+				return false
+			}
+
+			if content, ok := c.Result.Choices[0].Delta["content"]; ok && content != nil {
+				chunkContent := content.(string)
+				return strings.Contains(chunkContent, text)
+			}
+
 			return false
-		}
-
-		if content, ok := c.Result.Choices[0].Delta["content"]; ok && content != nil {
-			chunkContent := content.(string)
-			return strings.Contains(chunkContent, text)
-		}
-
-		return false
-	})
+		},
+	)
 }
 
 func (p MessageProcessor) processReasoningTags(
