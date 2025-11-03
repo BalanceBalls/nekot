@@ -23,10 +23,25 @@ type LlmClient interface {
 // Theses two can be used together, but `exclusion keywords` take presedence over `prefixes`
 var (
 	openAiChatModelsPrefixes = []string{"gpt-", "o1", "o3"}
-	openAiExclusionKeywords  = []string{"audio", "realtime", "instruct"}
+	openAiExclusionKeywords  = []string{
+		"audio",
+		"realtime",
+		"instruct",
+		"image",
+		"transcribe",
+		"tts",
+	}
 
-	geminiExclusionKeywords  = []string{"aqa", "imagen", "embedding", "bison", "vision"}
-	mistralExclusionKeywords = []string{"pixtral", "embed"}
+	geminiExclusionKeywords = []string{
+		"aqa",
+		"imagen",
+		"embedding",
+		"bison",
+		"vision",
+		"veo",
+		"learnlm",
+	}
+	mistralExclusionKeywords = []string{"pixtral", "embed", "voxtral"}
 )
 
 var (
@@ -207,15 +222,9 @@ func isMistralChatModel(model string) bool {
 }
 
 func isOpenAiReasoningModel(model string) bool {
-	if strings.HasPrefix(model, "o") {
-		return true
-	}
-	return false
+	return strings.HasPrefix(model, "o")
 }
 
 func isOpenAiGpt5Model(model string) bool {
-	if strings.HasPrefix(model, "gpt-5") {
-		return true
-	}
-	return false
+	return strings.HasPrefix(model, "gpt-5")
 }

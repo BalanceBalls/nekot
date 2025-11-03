@@ -24,7 +24,12 @@ var theme string
 
 func init() {
 	flag.BoolVar(&purgeCache, "purge-cache", false, "Invalidate models cache")
-	flag.StringVar(&provider, "p", "", "Overrides LLM provider configuration. Available: openai, gemini")
+	flag.StringVar(
+		&provider,
+		"p",
+		"",
+		"Overrides LLM provider configuration. Available: openai, gemini",
+	)
 	flag.StringVar(&baseUrl, "u", "", "Overrides LLM provider base url configuration")
 	flag.StringVar(&theme, "t", "", "Overrides theme configuration")
 }
@@ -39,12 +44,12 @@ func main() {
 	}
 
 	env := os.Getenv("FOO_ENV")
-	if "" == env {
+	if env == "" {
 		env = "development"
 	}
 
 	godotenv.Load(".env." + env + ".local")
-	if "test" != env {
+	if env != "test" {
 		godotenv.Load(".env.local")
 	}
 	godotenv.Load(".env." + env)

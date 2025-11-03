@@ -41,7 +41,10 @@ var defaultSessionsKeyMap = sessionsKeyMap{
 	delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "d delete")),
 	rename: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "e edit")),
 	cancel: key.NewBinding(key.WithKeys(tea.KeyEsc.String()), key.WithHelp("esc", "cancel action")),
-	apply:  key.NewBinding(key.WithKeys(tea.KeyEnter.String()), key.WithHelp("esc", "switch to session/apply renaming")),
+	apply: key.NewBinding(
+		key.WithKeys(tea.KeyEnter.String()),
+		key.WithHelp("esc", "switch to session/apply renaming"),
+	),
 	addNew: key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "ctrl+n add new")),
 }
 
@@ -84,7 +87,7 @@ func NewSessionsPane(db *sql.DB, ctx context.Context) SessionsPane {
 
 	config, ok := config.FromContext(ctx)
 	if !ok {
-		fmt.Println("No config found")
+		util.Slog.Error("failed to extract config from context")
 		panic("No config found in context")
 	}
 	colors := config.ColorScheme.GetColors()
@@ -126,6 +129,7 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		p.updateSessionsList()
 
 	case sessions.LoadDataFromDB:
+		util.Slog.Debug("case LoadDataFromDB: ", "message", msg)
 		p.currentSession = msg.Session
 		p.sessionsListData = msg.AllSessions
 		p.currentSessionId = msg.CurrentActiveSessionID
@@ -136,9 +140,16 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		p.sessionsListReady = true
 
 	case util.FocusEvent:
+		util.Slog.Debug("case FocusEvent: ", "message", msg)
+		width, height := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, tipsOffset)
+		if !p.sessionsListReady {
+			p.sessionsList = components.NewSessionsList([]list.Item{}, width, height, p.colors)
+			p.updateSessionsList()
+			p.operationMode = defaultMode
+			p.sessionsListReady = true
+		}
 		p.isFocused = msg.IsFocused
 		p.operationMode = defaultMode
-		width, height := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, tipsOffset)
 		p.sessionsList.SetSize(width, height)
 
 	case tea.WindowSizeMsg:
@@ -273,7 +284,11 @@ func (p *SessionsPane) addNewSession(msg util.AddNewSessionMsg) tea.Cmd {
 	currentTime := time.Now()
 	formattedTime := currentTime.Format(time.ANSIC)
 	defaultSessionName := fmt.Sprintf("%s", formattedTime)
-	newSession, _ := p.sessionService.InsertNewSession(defaultSessionName, []util.MessageToSend{}, msg.IsTemporary)
+	newSession, _ := p.sessionService.InsertNewSession(
+		defaultSessionName,
+		[]util.MessageToSend{},
+		msg.IsTemporary,
+	)
 
 	cmd := p.handleUpdateCurrentSession(newSession)
 	p.updateSessionsList()
@@ -281,6 +296,15 @@ func (p *SessionsPane) addNewSession(msg util.AddNewSessionMsg) tea.Cmd {
 }
 
 func (p *SessionsPane) handleUpdateCurrentSession(session sessions.Session) tea.Cmd {
+
+	if !p.sessionsListReady {
+		width, height := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, tipsOffset)
+		p.sessionsList = components.NewSessionsList([]list.Item{}, width, height, p.colors)
+		p.updateSessionsList()
+		p.operationMode = defaultMode
+		p.sessionsListReady = true
+	}
+
 	p.currentSession = session
 	p.userService.UpdateUserCurrentActiveSession(1, session.ID)
 

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -48,7 +47,7 @@ func (c OpenAiClient) RequestCompletion(
 	return func() tea.Msg {
 		config, ok := config.FromContext(ctx)
 		if !ok {
-			fmt.Println("No config found")
+			util.Slog.Error("No config found in a context")
 			panic("No config found in context")
 		}
 
@@ -63,7 +62,7 @@ func (c OpenAiClient) RequestCompletion(
 		}
 
 		c.processCompletionResponse(resp, resultChan, &processResultID)
-		return nil // Or return a specific message indicating completion or next steps
+		return nil
 	}
 }
 
@@ -74,7 +73,7 @@ func (c OpenAiClient) RequestModelsList(ctx context.Context) util.ProcessModelsR
 	resp, err := c.getOpenAiAPI(ctx, apiKey, path)
 
 	if err != nil {
-		log.Println("OpenAI: models request error: ", err)
+		util.Slog.Error("OpenAI: failed to fetch a list of models", "error", err.Error())
 		return util.ProcessModelsResponse{Err: err}
 	}
 
@@ -95,7 +94,11 @@ func constructSystemMessage(content string) util.MessageToSend {
 	}
 }
 
-func (c OpenAiClient) constructCompletionRequestPayload(chatMsgs []util.MessageToSend, cfg config.Config, settings util.Settings) ([]byte, error) {
+func (c OpenAiClient) constructCompletionRequestPayload(
+	chatMsgs []util.MessageToSend,
+	cfg config.Config,
+	settings util.Settings,
+) ([]byte, error) {
 	messages := []util.MessageToSend{}
 
 	if util.IsSystemMessageSupported(c.provider, settings.Model) {
@@ -115,7 +118,7 @@ func (c OpenAiClient) constructCompletionRequestPayload(chatMsgs []util.MessageT
 		}
 	}
 
-	log.Println("Constructing message: ", settings.Model)
+	util.Slog.Debug("Constructing message", "model", settings.Model)
 
 	reqParams := map[string]any{
 		"model":      settings.Model,
@@ -140,7 +143,7 @@ func (c OpenAiClient) constructCompletionRequestPayload(chatMsgs []util.MessageT
 
 	body, err := json.Marshal(reqParams)
 	if err != nil {
-		log.Fatalf("Error marshaling JSON: %v", err)
+		util.Slog.Error("error marshaling JSON", "error", err.Error())
 		return nil, err
 	}
 
@@ -150,13 +153,17 @@ func (c OpenAiClient) constructCompletionRequestPayload(chatMsgs []util.MessageT
 func getBaseUrl(configUrl string) string {
 	parsedUrl, err := url.Parse(configUrl)
 	if err != nil {
-		util.Log("Failed to parse openAi api url from config")
+		util.Slog.Error("failed to parse openAi api url from config")
 	}
 	baseUrl := fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Host)
 	return baseUrl
 }
 
-func (c OpenAiClient) getOpenAiAPI(ctx context.Context, apiKey string, path string) (*http.Response, error) {
+func (c OpenAiClient) getOpenAiAPI(
+	ctx context.Context,
+	apiKey string,
+	path string,
+) (*http.Response, error) {
 	baseUrl := getBaseUrl(c.apiUrl)
 	requestUrl := fmt.Sprintf("%s/%s", baseUrl, path)
 
@@ -172,7 +179,11 @@ func (c OpenAiClient) getOpenAiAPI(ctx context.Context, apiKey string, path stri
 	return client.Do(req)
 }
 
-func (c OpenAiClient) postOpenAiAPI(ctx context.Context, apiKey, path string, body []byte) (*http.Response, error) {
+func (c OpenAiClient) postOpenAiAPI(
+	ctx context.Context,
+	apiKey, path string,
+	body []byte,
+) (*http.Response, error) {
 	baseUrl := getBaseUrl(c.apiUrl)
 	requestUrl := fmt.Sprintf("%s/%s", baseUrl, path)
 
@@ -202,13 +213,13 @@ func processModelsListResponse(resp *http.Response) util.ProcessModelsResponse {
 	resBody, err := io.ReadAll(resp.Body)
 
 	if err != nil {
-		util.Log("response body read failed", err)
+		util.Slog.Error("response body read failed", "error", err)
 		return util.ProcessModelsResponse{Err: err}
 	}
 
 	var models util.ModelsListResponse
 	if err = json.Unmarshal(resBody, &models); err != nil {
-		util.Log("response parsing failed", err)
+		util.Slog.Error("response parsing failed", "error", err)
 		return util.ProcessModelsResponse{Err: err}
 	}
 
@@ -237,22 +248,27 @@ func (c OpenAiClient) processCompletionResponse(
 		line, err := scanner.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				log.Println("OpenAI: scanner returned EOF", err)
-				break // End of the stream
+				util.Slog.Warn("OpenAI: scanner returned EOF", "error", err.Error())
+				break
 			}
-			log.Println("OpenAI: Encountered error during receiving respone: ", err)
+
+			util.Slog.Error(
+				"OpenAI: Encountered error during receiving respone: ",
+				"error",
+				err.Error(),
+			)
 			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: err, Final: true}
 			return
 		}
 
 		if line == "data: [DONE]\n" {
-			log.Println("OpenAI: Received [DONE]")
+			util.Slog.Info("OpenAI: Received [DONE]")
 			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: nil, Final: true}
 			return
 		}
 
-		if strings.HasPrefix(line, "data:") {
-			jsonStr := strings.TrimPrefix(line, "data:")
+		if after, ok := strings.CutPrefix(line, "data:"); ok {
+			jsonStr := after
 			resultChan <- processChunk(jsonStr, *processResultID)
 			*processResultID++ // Increment the ID for each processed chunk
 		}
@@ -263,7 +279,7 @@ func processChunk(chunkData string, id int) util.ProcessApiCompletionResponse {
 	var chunk util.CompletionChunk
 	err := json.Unmarshal([]byte(chunkData), &chunk)
 	if err != nil {
-		log.Println("Error unmarshalling:", chunkData, err)
+		util.Slog.Error("Error unmarshalling:", "chunk data", chunkData, "error", err.Error())
 		return util.ProcessApiCompletionResponse{ID: id, Result: util.CompletionChunk{}, Err: err}
 	}
 

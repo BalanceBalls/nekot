@@ -154,8 +154,7 @@ func (ss *SessionService) UpdateSessionMessages(id int, messages []util.MessageT
 	`, jsonData, id)
 
 	if err != nil {
-		// TODO: handle better
-		util.Log("I panic here")
+		util.Slog.Error("failed to update session messages", "error", err.Error())
 		panic(err)
 	}
 	return nil
@@ -171,8 +170,7 @@ func (ss *SessionService) UpdateSessionTokens(id int, promptTokens, completionTo
 	`, promptTokens, completionTokens, id)
 
 	if err != nil {
-		// TODO: handle better
-		util.Log("I panic here")
+		util.Slog.Error("failed to update session token statistics", "error", err.Error())
 		panic(err)
 	}
 	return nil
@@ -191,7 +189,11 @@ func (ss *SessionService) UpdateSessionName(id int, name string) error {
 	return nil
 }
 
-func (ss *SessionService) InsertNewSession(name string, messages []util.MessageToSend, isTemporary bool) (Session, error) {
+func (ss *SessionService) InsertNewSession(
+	name string,
+	messages []util.MessageToSend,
+	isTemporary bool,
+) (Session, error) {
 	// No session found, create a new one
 	newSession := Session{
 		// Initialize your session fields as needed

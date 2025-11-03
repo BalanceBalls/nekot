@@ -5,7 +5,6 @@ import (
 	"embed"
 	"io"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,6 +98,10 @@ func InitDb() *sql.DB {
 	if err != nil {
 		panic(err)
 	}
+	_, err = db.Exec("PRAGMA journal_mode=WAL;")
+	if err != nil {
+		panic(err)
+	}
 
 	// Apply migrations here as necessary
 	// This is a placeholder. Replace with your actual migration logic.
@@ -109,12 +112,12 @@ func InitDb() *sql.DB {
 func migrate(db *sql.DB, dir string) error {
 	err := goose.SetDialect("sqlite")
 	if err != nil {
-		log.Printf("migrate: %v", err)
+		Slog.Error("failed to set sqlite dialect", "error", err)
 		return err
 	}
 	err = goose.Up(db, dir)
 	if err != nil {
-		log.Printf("migrate: %v", err)
+		Slog.Error("failed to run migrations", "error", err)
 		return err
 	}
 	return nil

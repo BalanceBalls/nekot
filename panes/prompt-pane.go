@@ -2,7 +2,6 @@ package panes
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/config"
@@ -29,12 +28,27 @@ type keyMap struct {
 }
 
 var defaultKeyMap = keyMap{
-	insert:    key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "enter insert mode")),
-	clear:     key.NewBinding(key.WithKeys(tea.KeyCtrlR.String()), key.WithHelp("ctrl+r", "clear prompt")),
-	exit:      key.NewBinding(key.WithKeys(tea.KeyEsc.String()), key.WithHelp("esc", "exit insert mode or editor mode")),
-	paste:     key.NewBinding(key.WithKeys(tea.KeyCtrlV.String()), key.WithHelp("ctrl+v", "insert text from clipboard")),
-	pasteCode: key.NewBinding(key.WithKeys(tea.KeyCtrlS.String()), key.WithHelp("ctrl+s", "insert code block from clipboard")),
-	enter:     key.NewBinding(key.WithKeys(tea.KeyEnter.String()), key.WithHelp("enter", "send prompt")),
+	insert: key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "enter insert mode")),
+	clear: key.NewBinding(
+		key.WithKeys(tea.KeyCtrlR.String()),
+		key.WithHelp("ctrl+r", "clear prompt"),
+	),
+	exit: key.NewBinding(
+		key.WithKeys(tea.KeyEsc.String()),
+		key.WithHelp("esc", "exit insert mode or editor mode"),
+	),
+	paste: key.NewBinding(
+		key.WithKeys(tea.KeyCtrlV.String()),
+		key.WithHelp("ctrl+v", "insert text from clipboard"),
+	),
+	pasteCode: key.NewBinding(
+		key.WithKeys(tea.KeyCtrlS.String()),
+		key.WithHelp("ctrl+s", "insert code block from clipboard"),
+	),
+	enter: key.NewBinding(
+		key.WithKeys(tea.KeyEnter.String()),
+		key.WithHelp("enter", "send prompt"),
+	),
 }
 
 type PromptPane struct {
@@ -59,7 +73,7 @@ type PromptPane struct {
 func NewPromptPane(ctx context.Context) PromptPane {
 	config, ok := config.FromContext(ctx)
 	if !ok {
-		fmt.Println("No config found")
+		util.Slog.Error("failed to extract config from context")
 		panic("No config found in context")
 	}
 
@@ -75,7 +89,8 @@ func NewPromptPane(ctx context.Context) PromptPane {
 	textEditor.Placeholder = PlaceholderMsg
 	textEditor.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(colors.ActiveTabBorderColor)
 	textEditor.FocusedStyle.CursorLine.Background(lipgloss.NoColor{})
-	textEditor.FocusedStyle.EndOfBuffer = lipgloss.NewStyle().Foreground(colors.ActiveTabBorderColor)
+	textEditor.FocusedStyle.EndOfBuffer = lipgloss.NewStyle().
+		Foreground(colors.ActiveTabBorderColor)
 	textEditor.FocusedStyle.LineNumber = lipgloss.NewStyle().Foreground(colors.AccentColor)
 
 	textEditor.EndOfBufferCharacter = rune(' ')

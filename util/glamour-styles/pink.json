@@ -21,9 +21,9 @@
     "bold": true
   },
   "h1": {
-		"prefix": " ",
-		"suffix": " ",
-		"color": "15",
+    "prefix": " ",
+    "suffix": " ",
+    "color": "15",
     "background_color": "139",
     "bold": true
   },
@@ -191,6 +191,8 @@
   "definition_list": {},
   "definition_term": {},
   "definition_description": {},
-  "html_block": {},
+  "html_block": {
+    "color": "#928374"
+  },
   "html_span": {}
 }

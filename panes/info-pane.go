@@ -21,6 +21,7 @@ const (
 	cancelledLabelText        = "Inference interrupted"
 	sysPromptChangedLabelText = "System prompt updated"
 	presetSavedLabelText      = "Preset saved"
+	sessionSavedLableText     = "Session saved"
 	idleLabelText             = "IDLE"
 	processingLabelText       = "Processing"
 )
@@ -59,7 +60,7 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 
 	config, ok := config.FromContext(ctx)
 	if !ok {
-		fmt.Println("No config found")
+		util.Slog.Error("failed to extract config from context")
 		panic("No config found in context")
 	}
 	colors := config.ColorScheme.GetColors()
@@ -169,8 +170,12 @@ func (p InfoPane) View() string {
 		processingLabel = p.processingIdleLabel.Render(idleLabelText)
 	}
 
-	promptTokensLablel := p.promptTokensLablel.Render(fmt.Sprintf("IN: %d", p.currentSession.PromptTokens))
-	completionTokensLabel := p.completionTokensLabel.Render(fmt.Sprintf("OUT: %d", p.currentSession.CompletionTokens))
+	promptTokensLablel := p.promptTokensLablel.Render(
+		fmt.Sprintf("IN: %d", p.currentSession.PromptTokens),
+	)
+	completionTokensLabel := p.completionTokensLabel.Render(
+		fmt.Sprintf("OUT: %d", p.currentSession.CompletionTokens),
+	)
 
 	quickChatLabel := ""
 	if p.currentSession.IsTemporary {
@@ -190,6 +195,11 @@ func (p InfoPane) View() string {
 		notificationText := ""
 
 		switch p.notification {
+		case util.SessionSavedNotification:
+			notificationText = sessionSavedLableText
+			notificationLabel = p.notificationLabel.
+				Background(p.colors.AccentColor).
+				Width(paneWidth - 1)
 		case util.PresetSavedNotification:
 			notificationText = presetSavedLabelText
 			notificationLabel = p.notificationLabel.
