@@ -5,7 +5,6 @@ import (
 	"embed"
 	"io"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,12 +112,12 @@ func InitDb() *sql.DB {
 func migrate(db *sql.DB, dir string) error {
 	err := goose.SetDialect("sqlite")
 	if err != nil {
-		log.Printf("migrate: %v", err)
+		Slog.Error("failed to set sqlite dialect", "error", err)
 		return err
 	}
 	err = goose.Up(db, dir)
 	if err != nil {
-		log.Printf("migrate: %v", err)
+		Slog.Error("failed to run migrations", "error", err)
 		return err
 	}
 	return nil

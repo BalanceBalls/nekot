@@ -3,7 +3,6 @@ package components
 import (
 	"fmt"
 	"io"
-	"log"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/util"
@@ -45,7 +44,7 @@ func (d sessionItemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd {
 func (d sessionItemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
 	i, ok := listItem.(SessionListItem)
 	if !ok {
-		log.Println("not okay")
+		util.Slog.Warn("failed to cast to SessionListItem")
 		return
 	}
 

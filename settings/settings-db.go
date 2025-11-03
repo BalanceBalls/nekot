@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -154,7 +153,7 @@ func (ss *SettingsService) GetProviderModels(
 		var cacheErr error
 		availableModels, cacheErr = ss.TryGetModelsCache(int(provider))
 		if cacheErr != nil {
-			log.Println("Faild to get models cache: ", cacheErr)
+			util.Slog.Warn("Faild to get models cache", "error", cacheErr)
 		}
 	}
 
@@ -177,7 +176,7 @@ func (ss *SettingsService) GetProviderModels(
 
 		err := ss.CacheModelsForProvider(int(provider), availableModels)
 		if err != nil {
-			log.Println("Cache update error:", err)
+			util.Slog.Error("failed to update cache", "error", err)
 		}
 	}
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/clients"
@@ -154,7 +153,7 @@ func initSpinner() spinner.Model {
 func NewSettingsPane(db *sql.DB, ctx context.Context) SettingsPane {
 	config, ok := config.FromContext(ctx)
 	if !ok {
-		fmt.Println("No config found")
+		util.Slog.Error("No config found")
 		panic("No config found in context")
 	}
 
@@ -248,13 +247,13 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case settings.UpdateSettingsEvent:
-		log.Println("settings-pane-> case UpdateSettingsEvent: ", msg)
+		util.Slog.Debug("case UpdateSettingsEvent: ", "message", msg)
 		if msg.Err != nil {
 			return p, util.MakeErrorMsg(msg.Err.Error())
 		}
 
 		if p.initMode {
-			log.Println("settings-pane-> case UpdateSettingsEvent: initializing component")
+			util.Slog.Debug("case UpdateSettingsEvent: initializing component", "message", msg)
 			p.settings = msg.Settings
 			models := []list.Item{components.ModelsListItem{Text: msg.Settings.Model}}
 

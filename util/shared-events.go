@@ -75,7 +75,7 @@ func GetNewFocusMode(mode ViewMode, currentFocus Pane, tw int) Pane {
 		}
 	}
 
-	Log("Current focus not found in mode", currentFocus)
+	Slog.Debug("current focus not found in mode", "pane", currentFocus)
 	return currentFocus
 }
 
@@ -146,6 +146,7 @@ type ErrorEvent struct {
 }
 
 func MakeErrorMsg(v string) tea.Cmd {
+	Slog.Error(v)
 	return func() tea.Msg {
 		return ErrorEvent{Message: v}
 	}

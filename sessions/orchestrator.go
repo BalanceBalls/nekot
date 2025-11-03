@@ -3,7 +3,6 @@ package sessions
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"sort"
 	"sync"
 	"time"
@@ -55,7 +54,7 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 
 	config, ok := config.FromContext(ctx)
 	if !ok {
-		fmt.Println("No config found")
+		util.Slog.Error("failed to extract config from context")
 		panic("No config found in context")
 	}
 
@@ -88,7 +87,7 @@ func (m Orchestrator) Init() tea.Cmd {
 
 	settingsData := func() tea.Msg {
 		defer cancel()
-		log.Println("orchestrator.Init(): settings loaded from db")
+		util.Slog.Debug("orchestrator.Init(): settings loaded from db")
 		return m.settingsService.GetSettings(initCtx, util.DefaultSettingsId, m.config)
 	}
 
@@ -117,7 +116,7 @@ func (m Orchestrator) Init() tea.Cmd {
 			return util.MakeErrorMsg(err.Error())
 		}
 
-		log.Println("orchestrator.Init(): sessions data from db loaded")
+		util.Slog.Debug("orchestrator.Init(): settings loaded from db")
 
 		dbLoadEvent := LoadDataFromDB{
 			Session:                mostRecentSession,
@@ -147,7 +146,6 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		cmds = append(cmds, util.SendNotificationMsg(util.CopiedNotification))
 
 	case SaveQuickChat:
-		log.Println("Save quick chat received. IsTemporary: ", m.CurrentSessionIsTemporary)
 		if m.CurrentSessionIsTemporary {
 			m.sessionService.SaveQuickChat(m.CurrentSessionID)
 			updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
@@ -165,8 +163,7 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		m.setCurrentSessionData(msg.Session)
 
 	case LoadDataFromDB:
-		log.Println("Orchestrator loaded data from db. Session name:", msg.Session.SessionName)
-
+		util.Slog.Debug("orchestrator loaded data from db", "Session name:", msg.Session.SessionName)
 		m.setCurrentSessionData(msg.Session)
 		m.AllSessions = msg.AllSessions
 		m.dataLoaded = true
@@ -179,8 +176,7 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		m.settingsReady = true
 
 	case util.ProcessApiCompletionResponse:
-		log.Println(msg)
-		// add the latest message to the array of messages
+		util.Slog.Debug("response chunk recieved", "data", msg)
 		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
 
 		if !msg.Final {
@@ -248,11 +244,7 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	result, err := p.Process(msg)
 
 	if err != nil {
-		log.Printf(
-			"error occured on processing the following chunk (%s):\n%s",
-			err.Error(),
-			msg,
-		)
+		util.Slog.Error("error occured on processing a chunk", "chunk", msg, "error", err.Error())
 		m.mu.Unlock()
 		return m.resetStateAndCreateError(err.Error())
 	}
@@ -290,7 +282,7 @@ func (m *Orchestrator) finishResponseProcessing(response util.MessageToSend) tea
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	log.Println("finishResponse triggered")
+	util.Slog.Info("response received in full, finishing response processing now")
 
 	m.ArrayOfMessages = append(
 		m.ArrayOfMessages,
@@ -304,7 +296,6 @@ func (m *Orchestrator) finishResponseProcessing(response util.MessageToSend) tea
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 
 	if err != nil {
-		util.Log("Error updating session messages", err)
 		return m.resetStateAndCreateError(err.Error())
 	}
 

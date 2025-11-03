@@ -3,7 +3,6 @@ package views
 import (
 	"context"
 	"database/sql"
-	"log"
 	"os"
 	"runtime"
 	"slices"
@@ -107,7 +106,7 @@ func dimensionsPulsar() tea.Msg {
 }
 
 func NewMainView(db *sql.DB, ctx context.Context) MainView {
-	log.Println("initializing main view")
+	util.Slog.Debug("initializing main view")
 	promptPane := panes.NewPromptPane(ctx)
 	sessionsPane := panes.NewSessionsPane(db, ctx)
 	settingsPane := panes.NewSettingsPane(db, ctx)
@@ -381,8 +380,9 @@ func (m MainView) isFocusChangeAllowed() bool {
 		!m.sessionsPane.AllowFocusChange() ||
 		!m.viewReady ||
 		m.sessionOrchestrator.ProcessingMode == sessions.PROCESSING {
-		log.Println(
-			"Focus change not allowed. Processing mode: ",
+		util.Slog.Warn(
+			"focus change not allowed.",
+			"processing mode",
 			m.sessionOrchestrator.ProcessingMode,
 		)
 		return false

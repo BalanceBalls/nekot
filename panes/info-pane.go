@@ -60,7 +60,7 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 
 	config, ok := config.FromContext(ctx)
 	if !ok {
-		fmt.Println("No config found")
+		util.Slog.Error("failed to extract config from context")
 		panic("No config found in context")
 	}
 	colors := config.ColorScheme.GetColors()

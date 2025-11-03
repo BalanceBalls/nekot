@@ -2,7 +2,6 @@ package sessions
 
 import (
 	"errors"
-	"log"
 	"regexp"
 	"slices"
 	"sort"
@@ -101,7 +100,7 @@ func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) b
 	if slices.ContainsFunc(p.ResponseDataChunks, func(c util.ProcessApiCompletionResponse) bool {
 		return c.ID == chunk.ID
 	}) {
-		log.Println("there is already a chunk with id: ", chunk.ID)
+		util.Slog.Debug("there is already a chunk with such id", "id", chunk.ID)
 		return true
 	}
 	return false
@@ -145,7 +144,7 @@ func (r ParsingResult) handleErrors(
 	}
 
 	if errors.Is(chunk.Err, context.Canceled) {
-		log.Println("Context cancelled int handleMsgProcessing")
+		util.Slog.Debug("context cancelled int handleMsgProcessing")
 		r.IsCancelled = true
 		return r, nil
 	}
@@ -198,15 +197,18 @@ func (p MessageProcessor) isFinalResponseChunk(msg util.ProcessApiCompletionResp
 	}
 
 	if choice.FinishReason == "stop" || choice.FinishReason == "length" {
-		log.Println("FinishReason received:", choice.FinishReason)
+		util.Slog.Debug("response finish reason received", "reason", choice.FinishReason)
 		return true
 	}
 
 	data, contentOk := choice.Delta["content"]
-	log.Printf(
-		"Failed to check if response is finished. Finish reason: %s  ;\n HasContent: %t ;\n Content: %s",
+	util.Slog.Error(
+		"failed to check if response is finished",
+		"finish reason",
 		choice.FinishReason,
+		"has content",
 		contentOk,
+		"content",
 		data,
 	)
 	return false

@@ -3,7 +3,6 @@ package components
 import (
 	"fmt"
 	"io"
-	"log"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/settings"
@@ -101,7 +100,7 @@ func (l *PresetsList) removePreset() {
 	preset, idx := l.getCurrentPreset()
 	err := l.service.RemovePreset(preset.Id)
 	if err != nil {
-		log.Println(err)
+		util.Slog.Error("failed to remove a preset", "error", err.Error())
 		return
 	}
 	l.list.RemoveItem(idx)
@@ -155,11 +154,17 @@ func NewPresetsList(
 	l.SetFilteringEnabled(true)
 	l.DisableQuitKeybindings()
 
-	l.Paginator.ActiveDot = lipgloss.NewStyle().Foreground(colors.HighlightColor).Render(util.ActiveDot)
-	l.Paginator.InactiveDot = lipgloss.NewStyle().Foreground(colors.DefaultTextColor).Render(util.InactiveDot)
+	l.Paginator.ActiveDot = lipgloss.NewStyle().
+		Foreground(colors.HighlightColor).
+		Render(util.ActiveDot)
+	l.Paginator.InactiveDot = lipgloss.NewStyle().
+		Foreground(colors.DefaultTextColor).
+		Render(util.InactiveDot)
 	listItemSpan = listItemSpan.Foreground(colors.DefaultTextColor)
 	listItemSpanSelected = listItemSpanSelected.Foreground(colors.AccentColor)
-	l.FilterInput.PromptStyle = l.FilterInput.PromptStyle.Foreground(colors.ActiveTabBorderColor).PaddingBottom(0).Margin(0)
+	l.FilterInput.PromptStyle = l.FilterInput.PromptStyle.Foreground(colors.ActiveTabBorderColor).
+		PaddingBottom(0).
+		Margin(0)
 	l.FilterInput.Cursor.Style = l.FilterInput.Cursor.Style.Foreground(colors.NormalTabBorderColor)
 
 	return PresetsList{

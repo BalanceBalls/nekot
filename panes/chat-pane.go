@@ -3,7 +3,6 @@ package panes
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
@@ -84,7 +83,7 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 
 	config, ok := config.FromContext(ctx)
 	if !ok {
-		fmt.Println("No config found")
+		util.Slog.Error("failed to extract config from context")
 		panic("No config found in context")
 	}
 	colors := config.ColorScheme.GetColors()
@@ -158,7 +157,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p, nil
 
 	case sessions.LoadDataFromDB:
-		log.Println("chat-pane-> case LoadDataFromDB: ", msg)
+		util.Slog.Debug("case LoadDataFromDB: ", "message", msg)
 		return p.initializePane(msg.Session)
 
 	case sessions.UpdateCurrentSession:

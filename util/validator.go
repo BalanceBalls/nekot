@@ -3,7 +3,6 @@ package util
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"slices"
 	"strconv"
@@ -48,7 +47,7 @@ var MaxTokensValidator = func(input string) error {
 	}
 
 	if val <= min || val > max {
-		log.Printf("value %d out of range (%d, %d)", val, min, max)
+		logOutOfRange(val, min, max)
 		return fmt.Errorf("value %d out of range (%d, %d)", val, min, max)
 	}
 
@@ -62,7 +61,7 @@ func validateFloat(input string, allowNegative bool) (float64, error) {
 
 	value, err := strconv.ParseFloat(input, 64)
 	if err != nil {
-		log.Printf("'%s' is not a floating-point number.\n", input)
+		Slog.Error("input is not a floating-point number", "input", input)
 		return -1, err
 	}
 
@@ -101,14 +100,26 @@ func validateRangedFloat(input string, min, max float64, minStrict, maxStrict bo
 	}
 
 	if isLess(value, min, minStrict) {
-		log.Printf("value %f out of range (%f, %f)", value, min, max)
+		logOutOfRange(value, min, max)
 		return fmt.Errorf("value %f out of range (%f, %f)", value, min, max)
 	}
 
 	if isGreater(value, max, maxStrict) {
-		log.Printf("value %f out of range (%f, %f)", value, min, max)
+		logOutOfRange(value, min, max)
 		return fmt.Errorf("value %f out of range (%f, %f)", value, min, max)
 	}
 
 	return err
+}
+
+func logOutOfRange(value any, min any, max any) {
+	Slog.Error(
+		"value out of range",
+		"value",
+		value,
+		"range min",
+		min,
+		"range max",
+		max,
+	)
 }

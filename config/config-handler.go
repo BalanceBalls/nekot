@@ -52,7 +52,7 @@ var configEmbed embed.FS
 func createConfig() (string, error) {
 	appPath, err := util.GetAppDataPath()
 	if err != nil {
-		fmt.Println("Error getting app path:", err)
+		util.Slog.Error("failed to get app path", "error", err.Error())
 		panic(err)
 	}
 
@@ -149,7 +149,10 @@ func (c Config) checkApiKeys() {
 		apiKey := os.Getenv("GEMINI_API_KEY")
 		if "" == apiKey {
 			fmt.Println("GEMINI_API_KEY not set; set it in your profile")
-			fmt.Printf("export GEMINI_API_KEY=your_key in the config for :%v \n", os.Getenv("SHELL"))
+			fmt.Printf(
+				"export GEMINI_API_KEY=your_key in the config for :%v \n",
+				os.Getenv("SHELL"),
+			)
 			fmt.Println("Exiting...")
 			os.Exit(1)
 		}
@@ -157,7 +160,10 @@ func (c Config) checkApiKeys() {
 		apiKey := os.Getenv("OPENAI_API_KEY")
 		if "" == apiKey {
 			fmt.Println("OPENAI_API_KEY not set; set it in your profile")
-			fmt.Printf("export OPENAI_API_KEY=your_key in the config for :%v \n", os.Getenv("SHELL"))
+			fmt.Printf(
+				"export OPENAI_API_KEY=your_key in the config for :%v \n",
+				os.Getenv("SHELL"),
+			)
 			fmt.Println("Exiting...")
 			os.Exit(1)
 		}

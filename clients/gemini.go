@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -55,7 +54,7 @@ func (c GeminiClient) RequestCompletion(
 		}
 		defer client.Close()
 
-		log.Println("Gemini: sending message to " + modelSettings.Model)
+		util.Slog.Debug("constructing message", "model", modelSettings.Model)
 
 		model := client.GenerativeModel(modelNamePrefix + modelSettings.Model)
 		setParams(model, *config, modelSettings)
@@ -71,7 +70,11 @@ func (c GeminiClient) RequestCompletion(
 		for {
 			resp, err := iter.Next()
 			if err == iterator.Done {
-				log.Println("Gemini: Iterator done. processResultID: ", processResultID)
+				util.Slog.Debug(
+					"Gemini: Iterator done. processResultID: ",
+					"result id",
+					processResultID,
+				)
 				sendCompensationChunk(resultChan, processResultID)
 				return nil
 			}
@@ -79,7 +82,11 @@ func (c GeminiClient) RequestCompletion(
 			if err != nil {
 				var apiErr *googleapi.Error
 				if errors.As(err, &apiErr) {
-					log.Println("Gemini: Encountered error while receiving response:", apiErr.Body)
+					util.Slog.Error(
+						"Gemini: Encountered error while receiving response",
+						"error",
+						apiErr.Body,
+					)
 					resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: apiErr}
 				} else {
 					resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err}
@@ -89,7 +96,7 @@ func (c GeminiClient) RequestCompletion(
 
 			result, err := processResponseChunk(resp, processResultID)
 			if err != nil {
-				log.Println("Gemini: Encountered error during chunks processing:", err)
+				util.Slog.Error("Gemini: Encountered error during chunks processing", "error", err)
 				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err}
 				break
 			}
@@ -199,7 +206,7 @@ func sendCompensationChunk(resultChan chan util.ProcessApiCompletionResponse, id
 		Result: chunk,
 		Final:  false,
 	}
-	log.Println("Gemini: compensation chunk sent")
+	util.Slog.Debug("Gemini: compensation chunk sent")
 }
 
 func setParams(model *genai.GenerativeModel, cfg config.Config, settings util.Settings) {
@@ -304,7 +311,7 @@ func handleFinishReason(reason genai.FinishReason) (string, error) {
 		)
 	case genai.FinishReasonSafety:
 	default:
-		log.Println(fmt.Sprintf("unexpected genai.FinishReason: %#v", reason))
+		util.Slog.Error(fmt.Sprintf("unexpected genai.FinishReason", "finish reason", reason))
 		return "", errors.New("GeminiAPI: unsupported finish reason")
 	}
 
