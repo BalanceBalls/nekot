@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/clients"
@@ -247,11 +248,13 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case settings.UpdateSettingsEvent:
+		log.Println("settings-pane-> case UpdateSettingsEvent: ", msg)
 		if msg.Err != nil {
 			return p, util.MakeErrorMsg(msg.Err.Error())
 		}
 
 		if p.initMode {
+			log.Println("settings-pane-> case UpdateSettingsEvent: initializing component")
 			p.settings = msg.Settings
 			models := []list.Item{components.ModelsListItem{Text: msg.Settings.Model}}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -129,6 +130,8 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		p.updateSessionsList()
 
 	case sessions.LoadDataFromDB:
+
+		log.Println("sessions-pane-> case LoadDataFromDB: ", msg)
 		p.currentSession = msg.Session
 		p.sessionsListData = msg.AllSessions
 		p.currentSessionId = msg.CurrentActiveSessionID
@@ -139,6 +142,7 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		p.sessionsListReady = true
 
 	case util.FocusEvent:
+		log.Println("sessions-pane-> case FocusEvent: ", msg)
 		width, height := util.CalcSessionsListSize(p.terminalWidth, p.terminalHeight, tipsOffset)
 		if !p.sessionsListReady {
 			p.sessionsList = components.NewSessionsList([]list.Item{}, width, height, p.colors)

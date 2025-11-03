@@ -107,6 +107,7 @@ func dimensionsPulsar() tea.Msg {
 }
 
 func NewMainView(db *sql.DB, ctx context.Context) MainView {
+	log.Println("initializing main view")
 	promptPane := panes.NewPromptPane(ctx)
 	sessionsPane := panes.NewSessionsPane(db, ctx)
 	settingsPane := panes.NewSettingsPane(db, ctx)

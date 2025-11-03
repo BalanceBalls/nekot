@@ -99,6 +99,10 @@ func InitDb() *sql.DB {
 	if err != nil {
 		panic(err)
 	}
+	_, err = db.Exec("PRAGMA journal_mode=WAL;")
+	if err != nil {
+		panic(err)
+	}
 
 	// Apply migrations here as necessary
 	// This is a placeholder. Replace with your actual migration logic.

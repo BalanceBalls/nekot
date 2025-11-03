@@ -3,6 +3,7 @@ package panes
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
@@ -157,6 +158,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p, nil
 
 	case sessions.LoadDataFromDB:
+		log.Println("chat-pane-> case LoadDataFromDB: ", msg)
 		return p.initializePane(msg.Session)
 
 	case sessions.UpdateCurrentSession:

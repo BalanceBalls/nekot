@@ -152,7 +152,11 @@ func (c GeminiClient) RequestModelsList(ctx context.Context) util.ProcessModelsR
 // Gemini may include actual sources with the response chunks which is pretty neat
 // The citations are collected from each chunk and sent together as the last chunk
 // because displaying citations all around the response is ugly
-func sendCitationsChunk(resultChan chan util.ProcessApiCompletionResponse, id int, citations []string) {
+func sendCitationsChunk(
+	resultChan chan util.ProcessApiCompletionResponse,
+	id int,
+	citations []string,
+) {
 	var chunk util.CompletionChunk
 	chunk.ID = fmt.Sprint(id)
 
@@ -193,7 +197,7 @@ func sendCompensationChunk(resultChan chan util.ProcessApiCompletionResponse, id
 	resultChan <- util.ProcessApiCompletionResponse{
 		ID:     id,
 		Result: chunk,
-		Final:  true,
+		Final:  false,
 	}
 	log.Println("Gemini: compensation chunk sent")
 }
@@ -241,7 +245,8 @@ func processResponseChunk(response *genai.GenerateContentResponse, id int) (proc
 		}
 
 		if len(candidate.Content.Parts) > 0 {
-			if candidate.CitationMetadata != nil && len(candidate.CitationMetadata.CitationSources) > 0 {
+			if candidate.CitationMetadata != nil &&
+				len(candidate.CitationMetadata.CitationSources) > 0 {
 				for _, source := range candidate.CitationMetadata.CitationSources {
 					if source.URI != nil {
 						sourceString := fmt.Sprintf("\t> [](%s)", *source.URI)
@@ -294,7 +299,9 @@ func handleFinishReason(reason genai.FinishReason) (string, error) {
 	case genai.FinishReasonOther:
 	case genai.FinishReasonUnspecified:
 	case genai.FinishReasonRecitation:
-		return "", errors.New("LLM stopped responding due to response containing copyright material")
+		return "", errors.New(
+			"LLM stopped responding due to response containing copyright material",
+		)
 	case genai.FinishReasonSafety:
 	default:
 		log.Println(fmt.Sprintf("unexpected genai.FinishReason: %#v", reason))

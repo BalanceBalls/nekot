@@ -88,6 +88,7 @@ func (m Orchestrator) Init() tea.Cmd {
 
 	settingsData := func() tea.Msg {
 		defer cancel()
+		log.Println("orchestrator.Init(): settings loaded from db")
 		return m.settingsService.GetSettings(initCtx, util.DefaultSettingsId, m.config)
 	}
 
@@ -115,6 +116,8 @@ func (m Orchestrator) Init() tea.Cmd {
 		if err != nil {
 			return util.MakeErrorMsg(err.Error())
 		}
+
+		log.Println("orchestrator.Init(): sessions data from db loaded")
 
 		dbLoadEvent := LoadDataFromDB{
 			Session:                mostRecentSession,
