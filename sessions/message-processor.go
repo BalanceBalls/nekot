@@ -34,7 +34,7 @@ var (
 	thinkingStartText     = "# Thinking..."
 	thinkingDoneText      = "# Done thinking"
 	legacyThinkStartToken = "<think>"
-	legacyThinkEndToken   = "<think>"
+	legacyThinkEndToken   = "</think>"
 	parsingTokenStart     = "<thinkblock>"
 	parsingTokenEnd       = "</thinkblock>"
 	startThinkFormatting  = "\n" + thinkingStartText + "\n" + parsingTokenStart

@@ -12,7 +12,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
 
 ## Features
  * 📦 **Single binary** - lightweight, zero dependencies, use anywhere without any requirements
- * 🤖 **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, and more)
+ * 🤖 **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, llama-cpp and more)
  * 🌟 **Support for Gemini API**
  * 💬 **Chat sessions** management and quick chats
  * ⚙️ **Settings presets** (configure different personas with unique settings)
