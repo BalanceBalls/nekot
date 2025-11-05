@@ -3,6 +3,7 @@ package sessions
 import (
 	"database/sql"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -15,12 +16,6 @@ import (
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/net/context"
-)
-
-const (
-	IDLE       = "idle"
-	PROCESSING = "processing"
-	ERROR      = "error"
 )
 
 type Orchestrator struct {
@@ -39,6 +34,7 @@ type Orchestrator struct {
 	ArrayOfMessages           []util.MessageToSend
 	CurrentAnswer             string
 	ResponseBuffer            string
+	ResponseProcessingState   ProcessingState
 	AllSessions               []Session
 	ProcessingMode            string
 
@@ -66,15 +62,15 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 	)
 
 	return Orchestrator{
-		mainCtx:              ctx,
-		config:               *config,
-		ArrayOfProcessResult: []util.ProcessApiCompletionResponse{},
-		sessionService:       ss,
-		userService:          us,
-		settingsService:      settingsService,
-		InferenceClient:      llmClient,
-		ProcessingMode:       IDLE,
-		mu:                   &sync.RWMutex{},
+		mainCtx:                 ctx,
+		config:                  *config,
+		ArrayOfProcessResult:    []util.ProcessApiCompletionResponse{},
+		sessionService:          ss,
+		userService:             us,
+		settingsService:         settingsService,
+		InferenceClient:         llmClient,
+		ResponseProcessingState: Idle,
+		mu:                      &sync.RWMutex{},
 	}
 }
 
@@ -179,9 +175,8 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		util.Slog.Debug("response chunk recieved", "data", msg)
 		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
 
-		if !msg.Final {
-			cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
-		}
+		// if m.ResponseProcessingState != Finalized {
+		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
 	}
 
 	if m.dataLoaded && m.settingsReady && !m.initialized {
@@ -197,6 +192,19 @@ func (m Orchestrator) GetCompletion(
 	resp chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
 	return m.InferenceClient.RequestCompletion(ctx, m.ArrayOfMessages, m.Settings, resp)
+}
+
+func (m Orchestrator) IsIdle() bool {
+	return m.ResponseProcessingState == Idle
+}
+
+func (m Orchestrator) IsProcessing() bool {
+	processingStates := []ProcessingState{
+		ProcessingChunks,
+		AwaitingFinalization,
+		Finalized,
+	}
+	return slices.Contains(processingStates, m.ResponseProcessingState)
 }
 
 func (m Orchestrator) GetLatestBotMessage() (string, error) {
@@ -240,8 +248,16 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 ) tea.Cmd {
 
 	m.mu.Lock()
-	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.Settings)
+	util.Slog.Debug("processing state before new chunk",
+		"state", m.ResponseProcessingState,
+		"chunks ready", len(m.ArrayOfProcessResult))
+
+	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
 	result, err := p.Process(msg)
+
+	util.Slog.Debug("processed chunk",
+		"id", msg.ID,
+		"chunks ready", len(result.CurrentResponseDataChunks))
 
 	if err != nil {
 		util.Slog.Error("error occured on processing a chunk", "chunk", msg, "error", err.Error())
@@ -249,12 +265,8 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 		return m.resetStateAndCreateError(err.Error())
 	}
 
+	m.handleTokenStatsUpdate(result)
 	m.appendAndOrderProcessResults(result)
-	m.sessionService.UpdateSessionTokens(
-		m.CurrentSessionID,
-		result.PromptTokens,
-		result.CompletionTokens,
-	)
 
 	m.mu.Unlock()
 
@@ -268,10 +280,9 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 			m.finishResponseProcessing(result.JSONResponse))
 	}
 
-	m.ProcessingMode = PROCESSING
 	m.CurrentAnswer = result.CurrentResponse
 
-	if result.IsFinished {
+	if result.State == Finalized {
 		return m.finishResponseProcessing(result.JSONResponse)
 	}
 
@@ -283,6 +294,7 @@ func (m *Orchestrator) finishResponseProcessing(response util.MessageToSend) tea
 	defer m.mu.Unlock()
 
 	util.Slog.Info("response received in full, finishing response processing now")
+	util.Slog.Info("final response message", "content", response)
 
 	m.ArrayOfMessages = append(
 		m.ArrayOfMessages,
@@ -290,9 +302,9 @@ func (m *Orchestrator) finishResponseProcessing(response util.MessageToSend) tea
 	)
 
 	err := m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
-	m.ProcessingMode = IDLE
 	m.CurrentAnswer = ""
 	m.ResponseBuffer = ""
+	m.ResponseProcessingState = Idle
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 
 	if err != nil {
@@ -302,9 +314,20 @@ func (m *Orchestrator) finishResponseProcessing(response util.MessageToSend) tea
 	return util.SendProcessingStateChangedMsg(false)
 }
 
-func (m *Orchestrator) appendAndOrderProcessResults(processingResult ParsingResult) {
+func (m *Orchestrator) handleTokenStatsUpdate(processingResult ProcessingResult) {
+	if processingResult.PromptTokens > 0 && processingResult.CompletionTokens > 0 {
+		m.sessionService.UpdateSessionTokens(
+			m.CurrentSessionID,
+			processingResult.PromptTokens,
+			processingResult.CompletionTokens,
+		)
+	}
+}
+
+func (m *Orchestrator) appendAndOrderProcessResults(processingResult ProcessingResult) {
 	m.ResponseBuffer = processingResult.CurrentResponse
 	m.ArrayOfProcessResult = processingResult.CurrentResponseDataChunks
+	m.ResponseProcessingState = processingResult.State
 
 	sort.SliceStable(m.ArrayOfProcessResult, func(i, j int) bool {
 		return m.ArrayOfProcessResult[i].ID < m.ArrayOfProcessResult[j].ID
@@ -312,8 +335,8 @@ func (m *Orchestrator) appendAndOrderProcessResults(processingResult ParsingResu
 }
 
 func (m *Orchestrator) resetStateAndCreateError(errMsg string) tea.Cmd {
-	m.ProcessingMode = ERROR
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 	m.CurrentAnswer = ""
+	m.ResponseProcessingState = Idle
 	return tea.Batch(util.MakeErrorMsg(errMsg), util.SendProcessingStateChangedMsg(false))
 }

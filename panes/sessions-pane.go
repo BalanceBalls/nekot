@@ -129,7 +129,7 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		p.updateSessionsList()
 
 	case sessions.LoadDataFromDB:
-		util.Slog.Debug("case LoadDataFromDB: ", "message", msg)
+		// util.Slog.Debug("case LoadDataFromDB: ", "message", msg)
 		p.currentSession = msg.Session
 		p.sessionsListData = msg.AllSessions
 		p.currentSessionId = msg.CurrentActiveSessionID

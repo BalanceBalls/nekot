@@ -115,6 +115,7 @@ func (c GeminiClient) RequestCompletion(
 					processResultID++
 				}
 				sendCompensationChunk(resultChan, processResultID)
+				break
 			}
 		}
 
@@ -204,7 +205,7 @@ func sendCompensationChunk(resultChan chan util.ProcessApiCompletionResponse, id
 	resultChan <- util.ProcessApiCompletionResponse{
 		ID:     id,
 		Result: chunk,
-		Final:  false,
+		Final:  true,
 	}
 	util.Slog.Debug("Gemini: compensation chunk sent")
 }

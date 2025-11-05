@@ -157,7 +157,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p, nil
 
 	case sessions.LoadDataFromDB:
-		util.Slog.Debug("case LoadDataFromDB: ", "message", msg)
+		// util.Slog.Debug("case LoadDataFromDB: ", "message", msg)
 		return p.initializePane(msg.Session)
 
 	case sessions.UpdateCurrentSession:

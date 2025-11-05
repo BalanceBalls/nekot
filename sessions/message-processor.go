@@ -11,19 +11,20 @@ import (
 	"golang.org/x/net/context"
 )
 
-type ParsingResult struct {
+type ProcessingResult struct {
 	IsSkipped                 bool
 	IsCancelled               bool
 	HasError                  bool
-	IsFinished                bool
 	PromptTokens              int
 	CompletionTokens          int
 	CurrentResponse           string
 	CurrentResponseDataChunks []util.ProcessApiCompletionResponse
 	JSONResponse              util.MessageToSend
+	State                     ProcessingState
 }
 
 type MessageProcessor struct {
+	CurrentState          ProcessingState
 	Settings              util.Settings
 	CurrentResponseBuffer string
 	ResponseDataChunks    []util.ProcessApiCompletionResponse
@@ -43,50 +44,92 @@ var (
 func NewMessageProcessor(
 	chunks []util.ProcessApiCompletionResponse,
 	currentResponse string,
+	processingState ProcessingState,
 	settings util.Settings,
 ) MessageProcessor {
 	return MessageProcessor{
 		Settings:              settings,
 		CurrentResponseBuffer: currentResponse,
 		ResponseDataChunks:    chunks,
+		CurrentState:          processingState,
 	}
+}
+
+type ProcessingState int
+
+const (
+	Idle ProcessingState = iota
+	ProcessingChunks
+	AwaitingFinalization
+	Finalized
+	Error
+)
+
+var stageChangeMap = map[ProcessingState][]ProcessingState{
+	Idle:                 {ProcessingChunks, Error},
+	ProcessingChunks:     {AwaitingFinalization, Finalized, Error},
+	AwaitingFinalization: {Finalized, Error},
 }
 
 func (p MessageProcessor) Process(
 	chunk util.ProcessApiCompletionResponse,
-) (ParsingResult, error) {
+) (ProcessingResult, error) {
 
-	result := ParsingResult{}
-	result, nonCancelErr := result.handleErrors(chunk)
+	result := ProcessingResult{
+		State:                     p.CurrentState,
+		CurrentResponse:           p.CurrentResponseBuffer,
+		CurrentResponseDataChunks: p.ResponseDataChunks,
+	}
+
+	result, nonCancelErr := p.handleErrors(result, chunk)
 	if nonCancelErr != nil {
 		return result, nonCancelErr
 	}
 
 	if result.IsCancelled {
-		// Save already received chunks
-		result.JSONResponse = p.prepareResponseJSONForDB()
+		result = p.finalizeProcessing(result)
+		return result, nil
+	}
+
+	if p.isDuplicate(chunk) {
+		result.IsSkipped = true
+		util.Slog.Debug("skipped duplicate chunk", "id", chunk.ID)
 		return result, nil
 	}
 
 	result = result.handleTokenStats(chunk)
-	if p.shouldSkipProcessing(chunk) || p.isDuplicate(chunk) {
-		result.IsSkipped = true
+
+	if p.isFinalChunk(chunk) {
+		result.CurrentResponseDataChunks = append(p.ResponseDataChunks, chunk)
+		result = p.finalizeProcessing(result)
 		return result, nil
 	}
 
+	if p.shouldSkipProcessing(chunk) {
+		result.IsSkipped = true
+		result.CurrentResponseDataChunks = append(p.ResponseDataChunks, chunk)
+		return result, nil
+	}
+
+	result.State = p.setProcessingState(ProcessingChunks)
 	chunk.Result.Choices[0] = p.processReasoningTags(chunk)
 
-	if p.isFinalResponseChunk(chunk) {
-		result.IsFinished = true
-		result.JSONResponse = p.prepareResponseJSONForDB()
+	if p.isLastResponseChunk(chunk) {
+		result.State = p.setProcessingState(AwaitingFinalization)
 	}
 
 	result, bufferErr := result.composeProcessingResult(p, chunk)
 	if bufferErr != nil {
-		return ParsingResult{}, bufferErr
+		return ProcessingResult{}, bufferErr
 	}
 
 	return result, nil
+}
+
+func (p MessageProcessor) finalizeProcessing(result ProcessingResult) ProcessingResult {
+	result.JSONResponse = p.prepareResponseJSONForDB()
+	result.State = p.setProcessingState(Finalized)
+	return result
 }
 
 func (p MessageProcessor) orderChunks() MessageProcessor {
@@ -94,6 +137,20 @@ func (p MessageProcessor) orderChunks() MessageProcessor {
 		return p.ResponseDataChunks[i].ID < p.ResponseDataChunks[j].ID
 	})
 	return p
+}
+
+func (p MessageProcessor) setProcessingState(newState ProcessingState) ProcessingState {
+	if p.CurrentState == newState {
+		return newState
+	}
+
+	if slices.Contains(stageChangeMap[p.CurrentState], newState) {
+		util.Slog.Debug("state changed", "old state", p.CurrentState, "new state", newState)
+		return newState
+	}
+
+	util.Slog.Warn("state change not allowed", "old state", p.CurrentState, "new state", newState)
+	return p.CurrentState
 }
 
 func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) bool {
@@ -107,10 +164,6 @@ func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) b
 }
 
 func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionResponse) bool {
-	if len(p.ResponseDataChunks) == 0 && chunk.Final {
-		return true
-	}
-
 	if chunk.Result.Choices == nil {
 		return true
 	}
@@ -127,32 +180,25 @@ func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionRe
 	return false
 }
 
-func (p MessageProcessor) IsResponseFinalized() bool {
-	return slices.ContainsFunc(
-		p.ResponseDataChunks,
-		func(c util.ProcessApiCompletionResponse) bool {
-			return c.Final
-		},
-	)
-}
-
-func (r ParsingResult) handleErrors(
+func (p MessageProcessor) handleErrors(
+	result ProcessingResult,
 	chunk util.ProcessApiCompletionResponse,
-) (ParsingResult, error) {
+) (ProcessingResult, error) {
 	if chunk.Err == nil {
-		return r, nil
+		return result, nil
 	}
 
 	if errors.Is(chunk.Err, context.Canceled) {
 		util.Slog.Debug("context cancelled int handleMsgProcessing")
-		r.IsCancelled = true
-		return r, nil
+		result.IsCancelled = true
+		return result, nil
 	}
 
-	return r, chunk.Err
+	result.State = p.setProcessingState(Error)
+	return result, chunk.Err
 }
 
-func (r ParsingResult) handleTokenStats(chunk util.ProcessApiCompletionResponse) ParsingResult {
+func (r ProcessingResult) handleTokenStats(chunk util.ProcessApiCompletionResponse) ProcessingResult {
 	if chunk.Result.Usage != nil {
 		r.PromptTokens = chunk.Result.Usage.Prompt
 		r.CompletionTokens = chunk.Result.Usage.Completion
@@ -160,10 +206,10 @@ func (r ParsingResult) handleTokenStats(chunk util.ProcessApiCompletionResponse)
 	return r
 }
 
-func (r ParsingResult) composeProcessingResult(
+func (r ProcessingResult) composeProcessingResult(
 	p MessageProcessor,
 	newChunk util.ProcessApiCompletionResponse,
-) (ParsingResult, error) {
+) (ProcessingResult, error) {
 
 	updatedResponseBuffer := ""
 
@@ -186,11 +232,15 @@ func (r ParsingResult) composeProcessingResult(
 	return r, nil
 }
 
-func (p MessageProcessor) isFinalResponseChunk(msg util.ProcessApiCompletionResponse) bool {
+func (p MessageProcessor) isFinalChunk(msg util.ProcessApiCompletionResponse) bool {
 	if msg.Final {
 		return true
 	}
 
+	return false
+}
+
+func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionResponse) bool {
 	choice := msg.Result.Choices[0]
 	if _, ok := choice.Delta["content"]; ok && choice.FinishReason == "" {
 		return false
@@ -204,12 +254,9 @@ func (p MessageProcessor) isFinalResponseChunk(msg util.ProcessApiCompletionResp
 	data, contentOk := choice.Delta["content"]
 	util.Slog.Error(
 		"failed to check if response is finished",
-		"finish reason",
-		choice.FinishReason,
-		"has content",
-		contentOk,
-		"content",
-		data,
+		"finish reason", choice.FinishReason,
+		"has content", contentOk,
+		"content", data,
 	)
 	return false
 }
@@ -219,12 +266,12 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.MessageToSend {
 
 	p = p.orderChunks()
 	for _, responseChunk := range p.ResponseDataChunks {
-		if len(responseChunk.Result.Choices) == 0 {
-			continue
+		if p.isFinalChunk(responseChunk) {
+			break
 		}
 
-		if p.isFinalResponseChunk(responseChunk) {
-			break
+		if len(responseChunk.Result.Choices) == 0 {
+			continue
 		}
 
 		choice := responseChunk.Result.Choices[0]
@@ -298,6 +345,7 @@ func (p MessageProcessor) processReasoningTags(
 	choice := chunk.Result.Choices[0]
 
 	if chunkString, ok := getReasoningContent(choice.Delta); ok {
+		// TODO: also check current response buffer ORRR filter out duplicates at response finalization
 		if !p.anyChunkContainsText(thinkingStartText) {
 			chunkString = startThinkFormatting + chunkString
 		}
