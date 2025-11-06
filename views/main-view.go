@@ -207,7 +207,14 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case util.PromptReady:
 		m.error = util.ErrorEvent{}
-		m.sessionOrchestrator.ArrayOfMessages = append(m.sessionOrchestrator.ArrayOfMessages, clients.ConstructUserMessage(msg.Prompt))
+
+		turn := clients.ConstructUserMessage(msg.Prompt)
+		m.sessionOrchestrator.ArrayOfMessages = append(
+			m.sessionOrchestrator.ArrayOfMessages,
+			util.MessageToSend{
+				Role:    turn.Role,
+				Content: turn.Content,
+			})
 		m.viewMode = util.NormalMode
 
 		completionContext, cancelInference := context.WithCancel(m.context)

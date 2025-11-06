@@ -16,7 +16,7 @@ import (
 
 const ResponseWaitingMsg = "> Please wait ..."
 const InitializingMsg = "Components initializing ..."
-const PlaceholderMsg = "Press i to type. Use ctrl+e to expand/collapse editor"
+const PlaceholderMsg = "Press i to type • ctrl+e expand/collapse editor • ctrl+r clear"
 
 type keyMap struct {
 	insert    key.Binding
@@ -277,6 +277,10 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 
 				switch p.viewMode {
 				case util.TextEditMode:
+					if strings.TrimSpace(p.textEditor.Value()) == "" {
+						break
+					}
+
 					if !p.textEditor.Focused() {
 						promptText := p.textEditor.Value()
 						p.textEditor.SetValue("")
@@ -299,6 +303,10 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 							util.SendViewModeChangedMsg(util.NormalMode))
 					}
 				default:
+					if strings.TrimSpace(p.input.Value()) == "" {
+						break
+					}
+
 					promptText := p.input.Value()
 					p.input.SetValue("")
 					p.input.Blur()

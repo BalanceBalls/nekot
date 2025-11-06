@@ -12,6 +12,13 @@ type Settings struct {
 }
 
 type MessageToSend struct {
+	Model    string `json:"model"`
+	Role     string `json:"role"`
+	Content  string `json:"content"`
+	Resoning string `json:"reasoning"`
+}
+
+type OpenAIConversationTurn struct {
 	Model   string `json:"model"`
 	Role    string `json:"role"`
 	Content string `json:"content"`

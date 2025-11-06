@@ -2,7 +2,6 @@ package sessions
 
 import (
 	"errors"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -31,14 +30,8 @@ type MessageProcessor struct {
 }
 
 var (
-	thinkingStartText     = "# Thinking..."
-	thinkingDoneText      = "# Done thinking"
 	legacyThinkStartToken = "<think>"
 	legacyThinkEndToken   = "</think>"
-	parsingTokenStart     = "<thinkblock>"
-	parsingTokenEnd       = "</thinkblock>"
-	startThinkFormatting  = "\n" + thinkingStartText + "\n" + parsingTokenStart
-	endThinkFormatting    = parsingTokenEnd + "\n" + thinkingDoneText + "\n"
 )
 
 func NewMessageProcessor(
@@ -112,7 +105,6 @@ func (p MessageProcessor) Process(
 	}
 
 	result.State = p.setProcessingState(ProcessingChunks)
-	chunk.Result.Choices[0] = p.processReasoningTags(chunk)
 
 	if p.isLastResponseChunk(chunk) {
 		result.State = p.setProcessingState(AwaitingFinalization)
@@ -173,7 +165,11 @@ func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionRe
 	}
 
 	choice := chunk.Result.Choices[0]
-	if content, ok := choice.Delta["content"]; ok && content == nil {
+
+	_, hasReasoning := getReasoningContent(choice.Delta)
+	_, hasContent := getContent(choice.Delta)
+
+	if !hasContent && !hasReasoning {
 		return true
 	}
 
@@ -221,9 +217,12 @@ func (r ProcessingResult) composeProcessingResult(
 			continue
 		}
 
-		choiceString, ok := chunk.Result.Choices[0].Delta["content"].(string)
-		if ok {
+		if choiceString, ok := getContent(chunk.Result.Choices[0].Delta); ok {
 			updatedResponseBuffer = updatedResponseBuffer + choiceString
+		}
+
+		if reasoning, ok := p.getChunkReasoningData(chunk); ok {
+			updatedResponseBuffer = updatedResponseBuffer + reasoning
 		}
 	}
 
@@ -233,16 +232,12 @@ func (r ProcessingResult) composeProcessingResult(
 }
 
 func (p MessageProcessor) isFinalChunk(msg util.ProcessApiCompletionResponse) bool {
-	if msg.Final {
-		return true
-	}
-
-	return false
+	return msg.Final
 }
 
 func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionResponse) bool {
 	choice := msg.Result.Choices[0]
-	if _, ok := choice.Delta["content"]; ok && choice.FinishReason == "" {
+	if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
 		return false
 	}
 
@@ -262,7 +257,10 @@ func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionRespo
 }
 
 func (p MessageProcessor) prepareResponseJSONForDB() util.MessageToSend {
-	newMessage := util.MessageToSend{Role: "assistant", Content: "", Model: p.Settings.Model}
+	newMessage := util.MessageToSend{
+		Role:    "assistant",
+		Content: "",
+		Model:   p.Settings.Model}
 
 	p = p.orderChunks()
 	for _, responseChunk := range p.ResponseDataChunks {
@@ -275,41 +273,25 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.MessageToSend {
 		}
 
 		choice := responseChunk.Result.Choices[0]
-		if content, ok := choice.Delta["content"].(string); ok {
+		if content, ok := getContent(choice.Delta); ok && content != "" {
 			newMessage.Content += content
+			continue
+		}
+
+		if reasoning, ok := p.getChunkReasoningData(responseChunk); ok {
+			newMessage.Resoning += reasoning
 		}
 	}
 
-	newMessage.Content = formatThinkingContent(newMessage.Content)
+	newMessage.Resoning = formatThinkingContent(newMessage.Resoning)
 	return newMessage
 }
 
 func formatThinkingContent(text string) string {
-	re := regexp.MustCompile(`(?s)` + parsingTokenStart + `(.*?)` + parsingTokenEnd)
+	text = strings.ReplaceAll(text, legacyThinkStartToken, "")
+	text = strings.ReplaceAll(text, legacyThinkEndToken, "")
 
-	return re.ReplaceAllStringFunc(text, func(match string) string {
-		content := strings.TrimPrefix(match, parsingTokenStart)
-		content = strings.TrimSuffix(content, parsingTokenEnd)
-
-		if content == "" {
-			return match
-		}
-
-		lines := strings.Split(content, "\n")
-
-		var builder strings.Builder
-		builder.WriteString("\n")
-
-		for i, line := range lines {
-			if i > 0 {
-				builder.WriteString("\n")
-			}
-			builder.WriteString("<div>" + line + "</div>")
-		}
-
-		builder.WriteString("\n")
-		return builder.String()
-	})
+	return text
 }
 
 func (p MessageProcessor) anyChunkContainsText(text string) bool {
@@ -324,9 +306,19 @@ func (p MessageProcessor) anyChunkContainsText(text string) bool {
 				return false
 			}
 
-			if content, ok := c.Result.Choices[0].Delta["content"]; ok && content != nil {
-				chunkContent := content.(string)
-				return strings.Contains(chunkContent, text)
+			delta := c.Result.Choices[0].Delta
+			contentMatch := false
+			reasoningMatch := false
+			if content, ok := getContent(delta); ok {
+				contentMatch = strings.Contains(content, text)
+			}
+
+			if reasoning, ok := getReasoningContent(delta); ok {
+				reasoningMatch = strings.Contains(reasoning, text)
+			}
+
+			if contentMatch || reasoningMatch {
+				return true
 			}
 
 			return false
@@ -334,49 +326,58 @@ func (p MessageProcessor) anyChunkContainsText(text string) bool {
 	)
 }
 
-func (p MessageProcessor) processReasoningTags(
+func (p MessageProcessor) getChunkReasoningData(
 	chunk util.ProcessApiCompletionResponse,
-) util.Choice {
-
+) (string, bool) {
 	if len(chunk.Result.Choices) == 0 {
-		return util.Choice{}
+		return "", false
 	}
 
 	choice := chunk.Result.Choices[0]
 
-	if chunkString, ok := getReasoningContent(choice.Delta); ok {
-		// TODO: also check current response buffer ORRR filter out duplicates at response finalization
-		if !p.anyChunkContainsText(thinkingStartText) {
-			chunkString = startThinkFormatting + chunkString
-		}
-		choice.Delta["content"] = chunkString
-		return choice
+	// check for reasoning and reasoning_content fields in response
+	if reasoning, ok := getReasoningContent(choice.Delta); ok {
+		return reasoning, true
 	}
 
-	if p.isPrevChunkReasoning() {
-		if content, ok := choice.Delta["content"]; ok && content != nil {
-			if chunkString, isString := content.(string); isString {
-				choice.Delta["content"] = endThinkFormatting + chunkString
-				return choice
-			}
-		}
+	if _, ok := getContent(choice.Delta); !ok {
+		return "", false
 	}
 
-	if content, ok := choice.Delta["content"]; ok && content != nil {
-		if chunkString, isString := content.(string); isString {
-
-			if strings.HasPrefix(chunkString, legacyThinkStartToken) {
-				chunkString = startThinkFormatting + chunkString
-			}
-			if strings.Contains(chunkString, legacyThinkEndToken) {
-				chunkString += endThinkFormatting
-			}
-
-			choice.Delta["content"] = chunkString
-		}
+	chunkString, ok := getContent(choice.Delta)
+	if !ok {
+		return "", false
 	}
 
-	return choice
+	// if chunk specifically contains <think> or </think> tokens
+	if strings.HasPrefix(chunkString, legacyThinkStartToken) {
+		return chunkString, true
+	}
+	if strings.Contains(chunkString, legacyThinkEndToken) {
+		return chunkString, true
+	}
+
+	// previous chunks have <think> token but no closing token </think>
+	if p.anyChunkContainsText(legacyThinkStartToken) &&
+		!p.anyChunkContainsText(legacyThinkEndToken) {
+		return chunkString, true
+	}
+
+	// any chunk contains closing token </think>
+	if p.anyChunkContainsText(legacyThinkEndToken) {
+		return "", false
+	}
+
+	return "", false
+}
+
+func getContent(delta map[string]any) (string, bool) {
+	if content, ok := delta["content"]; ok && content != nil {
+		if strContent, isString := content.(string); isString {
+			return strContent, true
+		}
+	}
+	return "", false
 }
 
 func getReasoningContent(delta map[string]any) (string, bool) {
@@ -387,22 +388,6 @@ func getReasoningContent(delta map[string]any) (string, bool) {
 			}
 		}
 	}
+
 	return "", false
-}
-
-func (p *MessageProcessor) isPrevChunkReasoning() bool {
-	if len(p.ResponseDataChunks) == 0 {
-		return false
-	}
-
-	prevChunk := p.ResponseDataChunks[len(p.ResponseDataChunks)-1]
-	if len(prevChunk.Result.Choices) == 0 {
-		return false
-	}
-
-	prevDelta := prevChunk.Result.Choices[0].Delta
-	_, hasReasoningContent := prevDelta["reasoning_content"]
-	_, hasReasoning := prevDelta["reasoning"]
-
-	return hasReasoningContent || hasReasoning
 }

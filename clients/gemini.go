@@ -328,15 +328,25 @@ func buildChatHistory(msgs []util.MessageToSend) []*genai.Content {
 			role = "model"
 		}
 
+		messageContent := ""
+		if singleMessage.Resoning != "" {
+			messageContent += singleMessage.Resoning
+		}
 		if singleMessage.Content != "" {
+			messageContent += singleMessage.Content
+		}
+
+		if messageContent != "" {
 			message := genai.Content{
 				Parts: []genai.Part{
-					genai.Text(singleMessage.Content),
+					genai.Text(messageContent),
 				},
 				Role: role,
 			}
 			chat = append(chat, &message)
 		}
+
+		util.Slog.Debug("constructed turn", "data", messageContent)
 	}
 
 	return chat
