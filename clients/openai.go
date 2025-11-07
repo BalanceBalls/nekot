@@ -80,15 +80,15 @@ func (c OpenAiClient) RequestModelsList(ctx context.Context) util.ProcessModelsR
 	return processModelsListResponse(resp)
 }
 
-func ConstructUserMessage(content string) util.MessageToSend {
-	return util.MessageToSend{
+func ConstructUserMessage(content string) util.OpenAIConversationTurn {
+	return util.OpenAIConversationTurn{
 		Role:    "user",
 		Content: content,
 	}
 }
 
-func constructSystemMessage(content string) util.MessageToSend {
-	return util.MessageToSend{
+func constructSystemMessage(content string) util.OpenAIConversationTurn {
+	return util.OpenAIConversationTurn{
 		Role:    "system",
 		Content: content,
 	}
@@ -99,7 +99,7 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 	cfg config.Config,
 	settings util.Settings,
 ) ([]byte, error) {
-	messages := []util.MessageToSend{}
+	messages := []util.OpenAIConversationTurn{}
 
 	if util.IsSystemMessageSupported(c.provider, settings.Model) {
 		if cfg.SystemMessage != "" || settings.SystemPrompt != nil {
@@ -113,8 +113,24 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 	}
 
 	for _, singleMessage := range chatMsgs {
+		messageContent := ""
+		if singleMessage.Resoning != "" {
+			messageContent += singleMessage.Resoning
+		}
+
 		if singleMessage.Content != "" {
-			messages = append(messages, singleMessage)
+			messageContent += singleMessage.Content
+		}
+
+		if messageContent != "" {
+			conversationTurn := util.OpenAIConversationTurn{
+				Model:   singleMessage.Model,
+				Role:    singleMessage.Role,
+				Content: messageContent,
+			}
+
+			util.Slog.Debug("constructed turn", "data", conversationTurn)
+			messages = append(messages, conversationTurn)
 		}
 	}
 

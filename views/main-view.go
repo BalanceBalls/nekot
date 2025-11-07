@@ -162,7 +162,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.promptPane, cmd = m.promptPane.Update(msg)
 	cmds = append(cmds, cmd)
 
-	if m.sessionOrchestrator.ProcessingMode == sessions.IDLE {
+	if m.sessionOrchestrator.ResponseProcessingState == sessions.Idle {
 		m.sessionsPane, cmd = m.sessionsPane.Update(msg)
 		cmds = append(cmds, cmd)
 		m.settingsPane, cmd = m.settingsPane.Update(msg)
@@ -172,7 +172,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case util.ErrorEvent:
-		m.sessionOrchestrator.ProcessingMode = sessions.IDLE
+		m.sessionOrchestrator.ResponseProcessingState = sessions.Idle
 		m.error = msg
 		m.viewReady = true
 		cmds = append(cmds, util.SendProcessingStateChangedMsg(false))
@@ -207,7 +207,14 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case util.PromptReady:
 		m.error = util.ErrorEvent{}
-		m.sessionOrchestrator.ArrayOfMessages = append(m.sessionOrchestrator.ArrayOfMessages, clients.ConstructUserMessage(msg.Prompt))
+
+		turn := clients.ConstructUserMessage(msg.Prompt)
+		m.sessionOrchestrator.ArrayOfMessages = append(
+			m.sessionOrchestrator.ArrayOfMessages,
+			util.MessageToSend{
+				Role:    turn.Role,
+				Content: turn.Content,
+			})
 		m.viewMode = util.NormalMode
 
 		completionContext, cancelInference := context.WithCancel(m.context)
@@ -379,11 +386,11 @@ func (m MainView) isFocusChangeAllowed() bool {
 		!m.settingsPane.AllowFocusChange() ||
 		!m.sessionsPane.AllowFocusChange() ||
 		!m.viewReady ||
-		m.sessionOrchestrator.ProcessingMode == sessions.PROCESSING {
+		m.sessionOrchestrator.IsProcessing() {
 		util.Slog.Warn(
 			"focus change not allowed.",
 			"processing mode",
-			m.sessionOrchestrator.ProcessingMode,
+			m.sessionOrchestrator.ResponseProcessingState,
 		)
 		return false
 	}

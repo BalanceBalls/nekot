@@ -129,11 +129,30 @@ func RenderBotMessage(
 		colors.RendererThemeOption,
 	)
 
-	content := msg.Content
-	// markdown renderer glitches when code block appears on a line with different text
-	if strings.HasPrefix(content, "```") {
-		content = "\n" + content
+	content := ""
+	if msg.Resoning != "" {
+		reasoningLines := strings.Split(msg.Resoning, "\n")
+
+		content += "\n" + "## Reasoning content:" + "\n"
+		content += "<div>--------------------</div>\n"
+
+		for _, reasoningLine := range reasoningLines {
+			if reasoningLine == "" || reasoningLine == "\n" {
+				continue
+			}
+
+			content += "<div>" + reasoningLine + "</div>\n"
+		}
+		content += "<div>--------------------</div>\n"
+		content += "\n  \n"
 	}
+
+	// markdown renderer glitches when code block appears on a line with different text
+	if strings.HasPrefix(msg.Content, "```") {
+		msg.Content = "\n" + msg.Content
+	}
+
+	content += msg.Content
 
 	if isVisualMode {
 		content = "\n🤖 " + content
@@ -146,7 +165,7 @@ func RenderBotMessage(
 	if len(msg.Model) > 0 {
 		modelName = "**" + msg.Model + "**\n"
 	}
-	content = "\n🤖 " + modelName + content + "\n"
+	content = "\n 🤖 " + modelName + content + "\n"
 	aiResponse, _ := renderer.Render(content)
 	output := strings.TrimSpace(aiResponse)
 	return lipgloss.NewStyle().

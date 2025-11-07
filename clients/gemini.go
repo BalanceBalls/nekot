@@ -115,6 +115,7 @@ func (c GeminiClient) RequestCompletion(
 					processResultID++
 				}
 				sendCompensationChunk(resultChan, processResultID)
+				break
 			}
 		}
 
@@ -204,7 +205,7 @@ func sendCompensationChunk(resultChan chan util.ProcessApiCompletionResponse, id
 	resultChan <- util.ProcessApiCompletionResponse{
 		ID:     id,
 		Result: chunk,
-		Final:  false,
+		Final:  true,
 	}
 	util.Slog.Debug("Gemini: compensation chunk sent")
 }
@@ -327,15 +328,25 @@ func buildChatHistory(msgs []util.MessageToSend) []*genai.Content {
 			role = "model"
 		}
 
+		messageContent := ""
+		if singleMessage.Resoning != "" {
+			messageContent += singleMessage.Resoning
+		}
 		if singleMessage.Content != "" {
+			messageContent += singleMessage.Content
+		}
+
+		if messageContent != "" {
 			message := genai.Content{
 				Parts: []genai.Part{
-					genai.Text(singleMessage.Content),
+					genai.Text(messageContent),
 				},
 				Role: role,
 			}
 			chat = append(chat, &message)
 		}
+
+		util.Slog.Debug("constructed turn", "data", messageContent)
 	}
 
 	return chat
