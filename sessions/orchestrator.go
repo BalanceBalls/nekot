@@ -31,7 +31,7 @@ type Orchestrator struct {
 	CurrentSessionName        string
 	CurrentSessionIsTemporary bool
 	ArrayOfProcessResult      []util.ProcessApiCompletionResponse
-	ArrayOfMessages           []util.MessageToSend
+	ArrayOfMessages           []util.LocalStoreMessage
 	CurrentAnswer             string
 	ResponseBuffer            string
 	ResponseProcessingState   ProcessingState
@@ -172,7 +172,7 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		m.settingsReady = true
 
 	case util.ProcessApiCompletionResponse:
-		util.Slog.Debug("response chunk recieved", "data", msg)
+		// util.Slog.Debug("response chunk recieved", "data", msg)
 		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
 		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
 	}
@@ -246,16 +246,16 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 ) tea.Cmd {
 
 	m.mu.Lock()
-	util.Slog.Debug("processing state before new chunk",
-		"state", m.ResponseProcessingState,
-		"chunks ready", len(m.ArrayOfProcessResult))
+	// util.Slog.Debug("processing state before new chunk",
+	// 	"state", m.ResponseProcessingState,
+	// 	"chunks ready", len(m.ArrayOfProcessResult))
 
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
 	result, err := p.Process(msg)
 
-	util.Slog.Debug("processed chunk",
-		"id", msg.ID,
-		"chunks ready", len(result.CurrentResponseDataChunks))
+	// util.Slog.Debug("processed chunk",
+	// 	"id", msg.ID,
+	// 	"chunks ready", len(result.CurrentResponseDataChunks))
 
 	if err != nil {
 		util.Slog.Error("error occured on processing a chunk", "chunk", msg, "error", err.Error())
@@ -287,7 +287,7 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	return nil
 }
 
-func (m *Orchestrator) finishResponseProcessing(response util.MessageToSend) tea.Cmd {
+func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage) tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

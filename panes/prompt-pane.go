@@ -2,6 +2,7 @@ package panes
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/config"
@@ -275,6 +276,8 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		case key.Matches(msg, p.keys.enter):
 			if p.isFocused && p.isSessionIdle {
 
+				attachments := p.parseAttachments()
+
 				switch p.viewMode {
 				case util.TextEditMode:
 					if strings.TrimSpace(p.textEditor.Value()) == "" {
@@ -299,7 +302,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 						}
 
 						return p, tea.Batch(
-							util.SendPromptReadyMsg(promptText),
+							util.SendPromptReadyMsg(promptText, attachments),
 							util.SendViewModeChangedMsg(util.NormalMode))
 					}
 				default:
@@ -313,7 +316,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 
 					p.inputMode = util.PromptNormalMode
 
-					return p, util.SendPromptReadyMsg(promptText)
+					return p, util.SendPromptReadyMsg(promptText, attachments)
 				}
 			}
 
@@ -338,6 +341,51 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 	}
 
 	return p, tea.Batch(cmds...)
+}
+
+func (p *PromptPane) parseAttachments() []util.Attachment {
+	imgTagRegex := regexp.MustCompile(`\[img=[^\]]+\]`)
+	fileTagRegex := regexp.MustCompile(`\[file=[^\]]+\]`)
+
+	content := ""
+	if p.viewMode == util.TextEditMode {
+		content = p.textEditor.Value()
+	} else {
+		content = p.input.Value()
+	}
+
+	re := regexp.MustCompile(`\[(img|file)=([^\]]+)\]`)
+	matches := re.FindAllStringSubmatch(content, -1)
+
+	var attachments []util.Attachment
+	for _, match := range matches {
+		attachments = append(attachments, util.Attachment{
+			Type: match[1],
+			Path: match[2],
+		})
+
+		switch match[1] {
+		case "img":
+			content = imgTagRegex.ReplaceAllString(content, "")
+		case "file":
+			content = fileTagRegex.ReplaceAllString(content, "")
+		}
+	}
+
+	if len(attachments) == 0 {
+		util.Slog.Debug("no attachments found in the prompt")
+		return attachments
+	}
+
+	util.Slog.Debug("attachments parsed", "attachments", attachments)
+
+	if p.viewMode == util.TextEditMode {
+		p.textEditor.SetValue(content)
+	} else {
+		p.input.SetValue(content)
+	}
+
+	return attachments
 }
 
 func (p *PromptPane) insertBufferContentAsCodeBlock() {

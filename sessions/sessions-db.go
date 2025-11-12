@@ -10,7 +10,7 @@ import (
 
 type Session struct {
 	ID               int
-	Messages         []util.MessageToSend
+	Messages         []util.LocalStoreMessage
 	CreatedAt        string
 	SessionName      string
 	PromptTokens     int
@@ -40,7 +40,7 @@ SELECT sessions_id, sessions_messages, sessions_created_at, sessions_session_nam
 	// so we create a latest sesion
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return ss.InsertNewSession("default", []util.MessageToSend{}, false)
+			return ss.InsertNewSession("default", []util.LocalStoreMessage{}, false)
 		} else {
 			// An error occurred that isn't due to no rows being found
 			return Session{}, err
@@ -141,7 +141,7 @@ func (ss *SessionService) GetAllSessions() ([]Session, error) {
 	return sessions, nil
 }
 
-func (ss *SessionService) UpdateSessionMessages(id int, messages []util.MessageToSend) error {
+func (ss *SessionService) UpdateSessionMessages(id int, messages []util.LocalStoreMessage) error {
 	jsonData, err := json.Marshal(messages)
 	if err != nil {
 		return err
@@ -191,7 +191,7 @@ func (ss *SessionService) UpdateSessionName(id int, name string) error {
 
 func (ss *SessionService) InsertNewSession(
 	name string,
-	messages []util.MessageToSend,
+	messages []util.LocalStoreMessage,
 	isTemporary bool,
 ) (Session, error) {
 	// No session found, create a new one
@@ -199,8 +199,8 @@ func (ss *SessionService) InsertNewSession(
 		// Initialize your session fields as needed
 		// ID will be set by the database if using auto-increment
 		IsTemporary: isTemporary,
-		SessionName: name,                   // Set a default or generate a name
-		Messages:    []util.MessageToSend{}, // Assuming Messages is a slice of Message
+		SessionName: name,                       // Set a default or generate a name
+		Messages:    []util.LocalStoreMessage{}, // Assuming Messages is a slice of Message
 	}
 
 	insertSQL := `INSERT INTO sessions (sessions_session_name, sessions_messages, is_temporary) VALUES (?, ?, ?);`

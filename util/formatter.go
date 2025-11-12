@@ -9,7 +9,7 @@ import (
 )
 
 func GetMessagesAsPrettyString(
-	msgsToRender []MessageToSend,
+	msgsToRender []LocalStoreMessage,
 	w int,
 	colors SchemeColors,
 	isQuickChat bool,
@@ -42,7 +42,7 @@ func GetMessagesAsPrettyString(
 	return messages
 }
 
-func GetVisualModeView(msgsToRender []MessageToSend, w int, colors SchemeColors) string {
+func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeColors) string {
 	var messages string
 	w = w - TextSelectorMaxWidthCorrection
 	for _, message := range msgsToRender {
@@ -114,7 +114,7 @@ func RenderErrorMessage(msg string, width int, colors SchemeColors) string {
 }
 
 func RenderBotMessage(
-	msg MessageToSend,
+	msg LocalStoreMessage,
 	width int,
 	colors SchemeColors,
 	isVisualMode bool,

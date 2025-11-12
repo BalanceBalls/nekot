@@ -114,12 +114,16 @@ func SendProcessingStateChangedMsg(isProcessing bool) tea.Cmd {
 }
 
 type PromptReady struct {
-	Prompt string
+	Prompt      string
+	Attachments []Attachment
 }
 
-func SendPromptReadyMsg(prompt string) tea.Cmd {
+func SendPromptReadyMsg(prompt string, attachments []Attachment) tea.Cmd {
 	return func() tea.Msg {
-		return PromptReady{Prompt: prompt}
+		return PromptReady{
+			Prompt:      prompt,
+			Attachments: attachments,
+		}
 	}
 }
 

@@ -36,7 +36,7 @@ func NewGeminiClient(systemMessage string) *GeminiClient {
 
 func (c GeminiClient) RequestCompletion(
 	ctx context.Context,
-	chatMsgs []util.MessageToSend,
+	chatMsgs []util.LocalStoreMessage,
 	modelSettings util.Settings,
 	resultChan chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
@@ -319,7 +319,7 @@ func handleFinishReason(reason genai.FinishReason) (string, error) {
 	return "", nil
 }
 
-func buildChatHistory(msgs []util.MessageToSend) []*genai.Content {
+func buildChatHistory(msgs []util.LocalStoreMessage) []*genai.Content {
 	chat := []*genai.Content{}
 
 	for _, singleMessage := range msgs {

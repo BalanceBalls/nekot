@@ -49,11 +49,11 @@ func SendRefreshSessionsListMsg() tea.Cmd {
 }
 
 type ResponseChunkProcessed struct {
-	PreviousMsgArray []util.MessageToSend
+	PreviousMsgArray []util.LocalStoreMessage
 	ChunkMessage     string
 }
 
-func SendResponseChunkProcessedMsg(msg string, previousMsgs []util.MessageToSend) tea.Cmd {
+func SendResponseChunkProcessedMsg(msg string, previousMsgs []util.LocalStoreMessage) tea.Cmd {
 	return func() tea.Msg {
 		return ResponseChunkProcessed{
 			PreviousMsgArray: previousMsgs,

@@ -55,7 +55,7 @@ type ChatPane struct {
 	isChatContainerFocused bool
 	msgChan                chan util.ProcessApiCompletionResponse
 	viewMode               util.ViewMode
-	sessionContent         []util.MessageToSend
+	sessionContent         []util.LocalStoreMessage
 
 	terminalWidth  int
 	terminalHeight int
@@ -167,7 +167,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		paneWidth := p.chatContainer.GetWidth()
 
 		oldContent := util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
-		styledBufferMessage := util.RenderBotMessage(util.MessageToSend{
+		styledBufferMessage := util.RenderBotMessage(util.LocalStoreMessage{
 			Content: msg.ChunkMessage,
 			Role:    "assistant",
 		}, paneWidth, p.colors, false)
@@ -342,12 +342,12 @@ func (p ChatPane) displayManual() ChatPane {
 	manual := util.GetManual(p.terminalWidth, p.colors)
 	p.chatView.SetContent(manual)
 	p.chatView.GotoTop()
-	p.sessionContent = []util.MessageToSend{}
+	p.sessionContent = []util.LocalStoreMessage{}
 	return p
 }
 
 func (p ChatPane) displaySession(
-	messages []util.MessageToSend,
+	messages []util.LocalStoreMessage,
 	paneWidth int,
 	useScroll bool,
 ) ChatPane {
