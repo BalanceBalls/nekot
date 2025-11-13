@@ -286,7 +286,7 @@ func (p *SessionsPane) addNewSession(msg util.AddNewSessionMsg) tea.Cmd {
 	defaultSessionName := fmt.Sprintf("%s", formattedTime)
 	newSession, _ := p.sessionService.InsertNewSession(
 		defaultSessionName,
-		[]util.MessageToSend{},
+		[]util.LocalStoreMessage{},
 		msg.IsTemporary,
 	)
 

@@ -20,6 +20,8 @@ type contextKey string
 // Define a constant for your config context key
 const configKey contextKey = "config"
 
+var TRUE bool = true
+
 // WithConfig returns a new context with the provided config
 func WithConfig(ctx context.Context, config *Config) context.Context {
 	return context.WithValue(ctx, configKey, config)
@@ -32,12 +34,14 @@ func FromContext(ctx context.Context) (*Config, bool) {
 }
 
 type Config struct {
-	ChatGPTApiUrl   string           `json:"chatGPTAPiUrl"`
-	ProviderBaseUrl string           `json:"providerBaseUrl"`
-	SystemMessage   string           `json:"systemMessage"`
-	DefaultModel    string           `json:"defaultModel"`
-	Provider        string           `json:"provider"`
-	ColorScheme     util.ColorScheme `json:"colorScheme"`
+	ChatGPTApiUrl                   string           `json:"chatGPTAPiUrl"`
+	ProviderBaseUrl                 string           `json:"providerBaseUrl"`
+	SystemMessage                   string           `json:"systemMessage"`
+	DefaultModel                    string           `json:"defaultModel"`
+	Provider                        string           `json:"provider"`
+	ColorScheme                     util.ColorScheme `json:"colorScheme"`
+	MaxAttachmentSizeMb             int              `json:"maxAttachmentSizeMb"`
+	IncludeReasoningTokensInContext *bool            `json:"includeReasoningTokensInContext"`
 }
 
 type StartupFlags struct {
@@ -147,7 +151,7 @@ func (c Config) checkApiKeys() {
 	switch c.Provider {
 	case util.GeminiProviderType:
 		apiKey := os.Getenv("GEMINI_API_KEY")
-		if "" == apiKey {
+		if apiKey == "" {
 			fmt.Println("GEMINI_API_KEY not set; set it in your profile")
 			fmt.Printf(
 				"export GEMINI_API_KEY=your_key in the config for :%v \n",
@@ -158,7 +162,7 @@ func (c Config) checkApiKeys() {
 		}
 	case util.OpenAiProviderType:
 		apiKey := os.Getenv("OPENAI_API_KEY")
-		if "" == apiKey {
+		if apiKey == "" {
 			fmt.Println("OPENAI_API_KEY not set; set it in your profile")
 			fmt.Printf(
 				"export OPENAI_API_KEY=your_key in the config for :%v \n",
@@ -178,6 +182,14 @@ func (c *Config) setDefaults() {
 
 	if c.Provider == "" {
 		c.Provider = util.OpenAiProviderType
+	}
+
+	if c.MaxAttachmentSizeMb == 0 {
+		c.MaxAttachmentSizeMb = 10
+	}
+
+	if c.IncludeReasoningTokensInContext == nil {
+		c.IncludeReasoningTokensInContext = &TRUE
 	}
 }
 

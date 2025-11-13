@@ -11,7 +11,7 @@ import (
 type LlmClient interface {
 	RequestCompletion(
 		ctx context.Context,
-		chatMsgs []MessageToSend,
+		chatMsgs []LocalStoreMessage,
 		modelSettings Settings,
 		resultChan chan ProcessApiCompletionResponse,
 	) tea.Cmd
