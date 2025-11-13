@@ -2,9 +2,11 @@ package clients
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/config"
@@ -61,7 +63,10 @@ func (c GeminiClient) RequestCompletion(
 
 		currentPrompt := chatMsgs[len(chatMsgs)-1].Content
 		cs := model.StartChat()
-		cs.History = buildChatHistory(chatMsgs)
+		cs.History, err = buildChatHistory(chatMsgs, *config.IncludeReasoningTokensInContext)
+		if err != nil {
+			return util.MakeErrorMsg(err.Error())
+		}
 
 		iter := cs.SendMessageStream(ctx, genai.Text(currentPrompt))
 
@@ -133,7 +138,7 @@ func (c GeminiClient) RequestModelsList(ctx context.Context) util.ProcessModelsR
 	modelsIter := client.ListModels(ctx)
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return util.ProcessModelsResponse{Err: errors.New("Timedout during fetching models")}
+		return util.ProcessModelsResponse{Err: errors.New("timed out during fetching models")}
 	}
 
 	var modelsList []util.ModelDescription
@@ -319,7 +324,7 @@ func handleFinishReason(reason genai.FinishReason) (string, error) {
 	return "", nil
 }
 
-func buildChatHistory(msgs []util.LocalStoreMessage) []*genai.Content {
+func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*genai.Content, error) {
 	chat := []*genai.Content{}
 
 	for _, singleMessage := range msgs {
@@ -329,7 +334,7 @@ func buildChatHistory(msgs []util.LocalStoreMessage) []*genai.Content {
 		}
 
 		messageContent := ""
-		if singleMessage.Resoning != "" {
+		if singleMessage.Resoning != "" && includeReasoning {
 			messageContent += singleMessage.Resoning
 		}
 		if singleMessage.Content != "" {
@@ -343,11 +348,27 @@ func buildChatHistory(msgs []util.LocalStoreMessage) []*genai.Content {
 				},
 				Role: role,
 			}
+
+			if len(singleMessage.Attachments) != 0 {
+				for _, item := range singleMessage.Attachments {
+					decodedBytes, err := base64.StdEncoding.DecodeString(singleMessage.Attachments[0].Content)
+
+					if err != nil {
+						util.Slog.Error("failed to decode file bytes", "item", item.Path, "error", err.Error())
+						return nil, errors.New("could not prepare attachments for request")
+					}
+
+					extension := filepath.Ext(item.Path)
+					extension = strings.TrimPrefix(extension, ".")
+					part := genai.ImageData(extension, decodedBytes)
+					message.Parts = append(message.Parts, part)
+				}
+			}
 			chat = append(chat, &message)
 		}
 
 		util.Slog.Debug("constructed turn", "data", messageContent)
 	}
 
-	return chat
+	return chat, nil
 }

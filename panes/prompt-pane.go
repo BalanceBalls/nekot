@@ -359,12 +359,15 @@ func (p *PromptPane) parseAttachments() []util.Attachment {
 
 	var attachments []util.Attachment
 	for _, match := range matches {
+		attachmentType := match[1]
+		attachmentPath := match[2]
+
 		attachments = append(attachments, util.Attachment{
-			Type: match[1],
-			Path: match[2],
+			Type: attachmentType,
+			Path: attachmentPath,
 		})
 
-		switch match[1] {
+		switch attachmentType {
 		case "img":
 			content = imgTagRegex.ReplaceAllString(content, "")
 		case "file":

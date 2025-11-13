@@ -33,8 +33,8 @@ type OpenAIConversationTurn struct {
 
 type OpenAiContent struct {
 	Type     string      `json:"type"`
-	Text     string      `json:"text"`
-	ImageURL OpenAiImage `json:"image_url"`
+	Text     string      `json:"text,omitempty"`
+	ImageURL OpenAiImage `json:"image_url,omitempty"`
 }
 
 type OpenAiImage struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"runtime"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 
+	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/panes"
 	"github.com/BalanceBalls/nekot/sessions"
 	"github.com/BalanceBalls/nekot/util"
@@ -86,6 +88,7 @@ type MainView struct {
 	infoPane     panes.InfoPane
 	loadedDeps   []util.AsyncDependency
 
+	config              config.Config
 	sessionOrchestrator sessions.Orchestrator
 	context             context.Context
 	completionContext   context.Context
@@ -118,9 +121,15 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		util.NormalMode,
 	)
 	chatPane := panes.NewChatPane(ctx, w, h)
-
 	orchestrator := sessions.NewOrchestrator(db, ctx)
 
+	config, ok := config.FromContext(ctx)
+	if !ok {
+		util.Slog.Error("failed to extract config from context")
+		panic("No config found in context")
+	}
+
+	util.Slog.Debug("config loaded", "values", config)
 	return MainView{
 		keys:                defaultKeyMap,
 		viewMode:            util.NormalMode,
@@ -132,6 +141,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		settingsPane:        settingsPane,
 		infoPane:            statusBarPane,
 		chatPane:            chatPane,
+		config:              *config,
 		context:             ctx,
 	}
 }
@@ -216,7 +226,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			util.Slog.Debug("preparing attachments")
 
 			for _, attachment := range msg.Attachments {
-				b64, err := FileToBase64(attachment.Path)
+				b64, err := m.fileToBase64(attachment.Path)
 				if err != nil {
 					util.Slog.Error("failed to convert attachment to base64", "error", err.Error())
 				}
@@ -400,11 +410,17 @@ func (m *MainView) resetFocus() {
 	m.promptPane, _ = m.promptPane.Update(util.MakeFocusMsg(m.focused == util.PromptPane))
 }
 
-func FileToBase64(filePath string) (string, error) {
+func (m MainView) fileToBase64(filePath string) (string, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		util.Slog.Error("failed to read file", "path", filePath, "error", err.Error())
 		return "", err
+	}
+
+	maxSize := 1024 * 1024 * m.config.MaxAttachmentSizeMb
+	if len(data) > maxSize {
+		util.Slog.Error("attchment exceeds allowed size limit", "path", filePath, "size (kb)", len(data)*1024)
+		return "", fmt.Errorf("attchment exceeds allowed size limit of %dMB", maxSize)
 	}
 
 	base64Str := base64.StdEncoding.EncodeToString(data)

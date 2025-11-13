@@ -1,6 +1,7 @@
 package util
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -21,7 +22,7 @@ func GetMessagesAsPrettyString(
 
 		switch message.Role {
 		case "user":
-			messageToUse = RenderUserMessage(messageToUse, w, colors, false)
+			messageToUse = RenderUserMessage(message, w, colors, false)
 		case "assistant":
 			messageToUse = RenderBotMessage(message, w, colors, false)
 		}
@@ -50,7 +51,7 @@ func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeCol
 
 		switch message.Role {
 		case "user":
-			messageToUse = RenderUserMessage(messageToUse, w, colors, true)
+			messageToUse = RenderUserMessage(message, w, colors, true)
 		case "assistant":
 			messageToUse = RenderBotMessage(message, w, colors, true)
 		}
@@ -66,12 +67,13 @@ func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeCol
 	return messages
 }
 
-func RenderUserMessage(msg string, width int, colors SchemeColors, isVisualMode bool) string {
+func RenderUserMessage(userMessage LocalStoreMessage, width int, colors SchemeColors, isVisualMode bool) string {
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),
 		glamour.WithWordWrap(width-WordWrapDelta),
 		colors.RendererThemeOption,
 	)
+	msg := userMessage.Content
 	if isVisualMode {
 		msg = "\n💁 " + msg
 		userMsg, _ := renderer.Render(msg)
@@ -80,6 +82,15 @@ func RenderUserMessage(msg string, width int, colors SchemeColors, isVisualMode 
 	}
 
 	msg = "\n💁 " + msg + "\n"
+	if len(userMessage.Attachments) != 0 {
+		attachments := "\n *Attachments:* \n"
+		for _, file := range userMessage.Attachments {
+			fileName := filepath.Base(file.Path)
+			attachments += "# [" + fileName + "]"
+		}
+		msg += attachments
+	}
+
 	userMsg, _ := renderer.Render(msg)
 	output := strings.TrimSpace(userMsg)
 	return lipgloss.NewStyle().

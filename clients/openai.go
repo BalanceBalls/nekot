@@ -99,18 +99,6 @@ func constructUserMessage(msg util.LocalStoreMessage) util.OpenAIConversationTur
 				},
 			}
 			content = append(content, image)
-			// 	switch attachment.Type {
-			// 	case "img":
-			// 		image := util.OpenAiContent{
-			// 			Type: "image_url",
-			// 			ImageURL: util.OpenAiImage{
-			// 				URL: getImageURLString(attachment),
-			// 			},
-			// 		}
-			// 		content = append(content, image)
-			// 	case "file":
-			// 		continue
-			// 	}
 		}
 	}
 
@@ -121,10 +109,8 @@ func constructUserMessage(msg util.LocalStoreMessage) util.OpenAIConversationTur
 }
 
 func getImageURLString(attachment util.Attachment) string {
-	util.Slog.Debug("preparing image for request", "attachment", attachment.Path)
 	extension := filepath.Ext(attachment.Path)
 	extension = strings.TrimPrefix(extension, ".")
-	util.Slog.Debug("extracted attachment extension", "result", extension)
 	content := "data:image/" + extension + ";base64," + attachment.Content
 	return content
 }
@@ -161,8 +147,7 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 
 	for _, singleMessage := range chatMsgs {
 		messageContent := ""
-		// TODO: maybe add a flag to config to allow excluding reasoning from context
-		if singleMessage.Resoning != "" {
+		if singleMessage.Resoning != "" && *cfg.IncludeReasoningTokensInContext {
 			messageContent += singleMessage.Resoning
 		}
 
@@ -170,12 +155,9 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 			messageContent += singleMessage.Content
 		}
 
-		util.Slog.Debug("will constract a message", "data", singleMessage)
-
 		if messageContent != "" {
 			singleMessage.Content = messageContent
 			conversationTurn := constructUserMessage(singleMessage)
-			util.Slog.Debug("constructed turn", "data", conversationTurn)
 			messages = append(messages, conversationTurn)
 		}
 	}
