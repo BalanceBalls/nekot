@@ -385,6 +385,8 @@ func (p *PromptPane) parseAttachments() []util.Attachment {
 		attachmentType := match[1]
 		attachmentPath := match[2]
 
+		attachmentPath = filepath.Clean(attachmentPath)
+		attachmentPath = strings.ReplaceAll(attachmentPath, `\ `, " ")
 		attachments = append(attachments, util.Attachment{
 			Type: attachmentType,
 			Path: attachmentPath,
@@ -399,12 +401,10 @@ func (p *PromptPane) parseAttachments() []util.Attachment {
 	}
 
 	if len(attachments) == 0 {
-		util.Slog.Debug("no attachments found in the prompt")
 		return attachments
 	}
 
 	p.attachments = attachments
-	util.Slog.Debug("attachments parsed", "attachments", attachments)
 
 	if p.viewMode == util.TextEditMode {
 		p.textEditor.SetValue(content)
@@ -455,6 +455,7 @@ func (p PromptPane) View() string {
 		}
 
 		infoBlockContent := infoLabel.Render("Use ctrl+a to attach an image")
+
 		if len(p.attachments) != 0 {
 			imageBlocks := []string{"Attachments: "}
 			for _, image := range p.attachments {
@@ -463,6 +464,10 @@ func (p PromptPane) View() string {
 			}
 
 			infoBlockContent = lipgloss.JoinHorizontal(lipgloss.Left, imageBlocks...)
+		}
+
+		if p.operation == util.SystemMessageEditing {
+			infoBlockContent = infoLabel.Render("Editing system prompt")
 		}
 
 		return lipgloss.JoinVertical(lipgloss.Left,

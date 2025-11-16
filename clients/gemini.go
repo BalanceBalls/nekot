@@ -351,7 +351,7 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 
 			if len(singleMessage.Attachments) != 0 {
 				for _, item := range singleMessage.Attachments {
-					decodedBytes, err := base64.StdEncoding.DecodeString(singleMessage.Attachments[0].Content)
+					decodedBytes, err := base64.StdEncoding.DecodeString(item.Content)
 
 					if err != nil {
 						util.Slog.Error("failed to decode file bytes", "item", item.Path, "error", err.Error())

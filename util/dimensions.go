@@ -111,7 +111,7 @@ func CalcChatPaneSize(tw, th int, mode ViewMode) (w, h int) {
 			paneWidth = twoThirds(tw)
 		}
 	case ZenMode:
-		paneHeight = th - PromptPaneHeight - 1
+		paneHeight = th - PromptPaneHeight
 		paneWidth = tw - DefaultElementsPadding
 	case TextEditMode:
 		paneHeight = twoThirds(th) - EditModeUIElementsSum - 1
