@@ -81,12 +81,12 @@ func RenderUserMessage(userMessage LocalStoreMessage, width int, colors SchemeCo
 		return lipgloss.NewStyle().Render("\n" + output + "\n")
 	}
 
-	msg = "\n💁 " + msg + "\n"
+	msg = "\n💁 **[Prooompter]**\n" + msg + "\n"
 	if len(userMessage.Attachments) != 0 {
 		attachments := "\n *Attachments:* \n"
 		for _, file := range userMessage.Attachments {
 			fileName := filepath.Base(file.Path)
-			attachments += "# [" + fileName + "]"
+			attachments += "# [" + fileName + "] \n"
 		}
 		msg += attachments
 	}
@@ -174,7 +174,7 @@ func RenderBotMessage(
 
 	modelName := ""
 	if len(msg.Model) > 0 {
-		modelName = "**" + msg.Model + "**\n"
+		modelName = "**[" + msg.Model + "]**\n"
 	}
 	content = "\n 🤖 " + modelName + content + "\n"
 	aiResponse, _ := renderer.Render(content)

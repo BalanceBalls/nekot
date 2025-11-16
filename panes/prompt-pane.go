@@ -2,6 +2,7 @@ package panes
 
 import (
 	"context"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -52,15 +53,26 @@ var defaultKeyMap = keyMap{
 	),
 }
 
+var infoBlockStyle = lipgloss.NewStyle()
+
+var infoLabel = lipgloss.NewStyle().
+	BorderLeft(true).
+	BorderStyle(lipgloss.InnerHalfBlockBorder()).
+	Bold(true).
+	MarginRight(1).
+	PaddingRight(1).
+	PaddingLeft(1)
+
 type PromptPane struct {
-	input      textinput.Model
-	textEditor textarea.Model
-	container  lipgloss.Style
-	inputMode  util.PrompInputMode
-	colors     util.SchemeColors
-	keys       keyMap
+	input          textinput.Model
+	textEditor     textarea.Model
+	inputContainer lipgloss.Style
+	inputMode      util.PrompInputMode
+	colors         util.SchemeColors
+	keys           keyMap
 
 	pendingInsert  string
+	attachments    []util.Attachment
 	operation      util.Operation
 	viewMode       util.ViewMode
 	isSessionIdle  bool
@@ -106,6 +118,10 @@ func NewPromptPane(ctx context.Context) PromptPane {
 		BorderForeground(colors.ActiveTabBorderColor).
 		MarginTop(util.PromptPaneMarginTop)
 
+	infoLabel = infoLabel.
+		BorderLeftForeground(colors.ActiveTabBorderColor).
+		Foreground(colors.DefaultTextColor)
+
 	return PromptPane{
 		mainCtx:        ctx,
 		operation:      util.NoOperaton,
@@ -114,7 +130,7 @@ func NewPromptPane(ctx context.Context) PromptPane {
 		colors:         colors,
 		input:          input,
 		textEditor:     textEditor,
-		container:      container,
+		inputContainer: container,
 		inputMode:      util.PromptNormalMode,
 		isSessionIdle:  true,
 		isFocused:      true,
@@ -140,7 +156,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		default:
 			// TODO: maybe there is a way to adjust heihgt for long inputs?
 			// TODO: move to dimensions?
-			if len(p.input.Value()) > p.container.GetWidth()-4 {
+			if len(p.input.Value()) > p.inputContainer.GetWidth()-4 {
 				p.input, cmd = p.input.Update(msg)
 				cmds = append(cmds, util.SwitchToEditor(p.input.Value(), util.NoOperaton, true))
 			} else {
@@ -148,6 +164,10 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 			}
 		}
 		cmds = append(cmds, cmd)
+
+		if p.operation == util.NoOperaton {
+			p.parseAttachments()
+		}
 	}
 
 	switch msg := msg.(type) {
@@ -189,7 +209,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 
 			p.input.SetValue(currentInput)
 		}
-		p.container = p.container.MaxWidth(p.terminalWidth).Width(w)
+		p.inputContainer = p.inputContainer.MaxWidth(p.terminalWidth).Width(w)
 
 	case util.ProcessingStateChanged:
 		p.isSessionIdle = msg.IsProcessing == false
@@ -199,11 +219,11 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 
 		if p.isFocused {
 			p.inputMode = util.PromptNormalMode
-			p.container = p.container.BorderForeground(p.colors.ActiveTabBorderColor)
+			p.inputContainer = p.inputContainer.BorderForeground(p.colors.ActiveTabBorderColor)
 			p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.ActiveTabBorderColor)
 		} else {
 			p.inputMode = util.PromptNormalMode
-			p.container = p.container.BorderForeground(p.colors.NormalTabBorderColor)
+			p.inputContainer = p.inputContainer.BorderForeground(p.colors.NormalTabBorderColor)
 			p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.NormalTabBorderColor)
 			p.input.Blur()
 		}
@@ -221,7 +241,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		} else {
 			p.input.Width = w
 		}
-		p.container = p.container.MaxWidth(p.terminalWidth).Width(w)
+		p.inputContainer = p.inputContainer.MaxWidth(p.terminalWidth).Width(w)
 
 	case tea.KeyMsg:
 		if !p.ready {
@@ -244,6 +264,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 			}
 
 		case key.Matches(msg, p.keys.clear):
+			p.attachments = []util.Attachment{}
 			switch p.viewMode {
 			case util.TextEditMode:
 				p.textEditor.Reset()
@@ -276,8 +297,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		case key.Matches(msg, p.keys.enter):
 			if p.isFocused && p.isSessionIdle {
 
-				attachments := p.parseAttachments()
-
+				attachments := p.attachments
 				switch p.viewMode {
 				case util.TextEditMode:
 					if strings.TrimSpace(p.textEditor.Value()) == "" {
@@ -301,6 +321,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 							)
 						}
 
+						p.attachments = []util.Attachment{}
 						return p, tea.Batch(
 							util.SendPromptReadyMsg(promptText, attachments),
 							util.SendViewModeChangedMsg(util.NormalMode))
@@ -316,6 +337,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 
 					p.inputMode = util.PromptNormalMode
 
+					p.attachments = []util.Attachment{}
 					return p, util.SendPromptReadyMsg(promptText, attachments)
 				}
 			}
@@ -343,6 +365,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 	return p, tea.Batch(cmds...)
 }
 
+// TODO: filter out unsupported image formats. Send notification if format is not supported
 func (p *PromptPane) parseAttachments() []util.Attachment {
 	imgTagRegex := regexp.MustCompile(`\[img=[^\]]+\]`)
 	fileTagRegex := regexp.MustCompile(`\[file=[^\]]+\]`)
@@ -357,7 +380,7 @@ func (p *PromptPane) parseAttachments() []util.Attachment {
 	re := regexp.MustCompile(`\[(img|file)=([^\]]+)\]`)
 	matches := re.FindAllStringSubmatch(content, -1)
 
-	var attachments []util.Attachment
+	attachments := p.attachments
 	for _, match := range matches {
 		attachmentType := match[1]
 		attachmentPath := match[2]
@@ -380,6 +403,7 @@ func (p *PromptPane) parseAttachments() []util.Attachment {
 		return attachments
 	}
 
+	p.attachments = attachments
 	util.Slog.Debug("attachments parsed", "attachments", attachments)
 
 	if p.viewMode == util.TextEditMode {
@@ -429,8 +453,23 @@ func (p PromptPane) View() string {
 		if p.viewMode == util.TextEditMode {
 			content = p.textEditor.View()
 		}
-		return p.container.Render(content)
+
+		infoBlockContent := infoLabel.Render("Use ctrl+a to attach an image")
+		if len(p.attachments) != 0 {
+			imageBlocks := []string{"Attachments: "}
+			for _, image := range p.attachments {
+				fileName := filepath.Base(image.Path)
+				imageBlocks = append(imageBlocks, infoLabel.Render(fileName))
+			}
+
+			infoBlockContent = lipgloss.JoinHorizontal(lipgloss.Left, imageBlocks...)
+		}
+
+		return lipgloss.JoinVertical(lipgloss.Left,
+			p.inputContainer.Render(content),
+			infoBlockStyle.Render(infoBlockContent),
+		)
 	}
 
-	return p.container.Render(ResponseWaitingMsg)
+	return p.inputContainer.Render(ResponseWaitingMsg)
 }

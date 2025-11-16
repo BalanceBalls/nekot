@@ -12,11 +12,11 @@ const (
 
 // Panes
 const (
-	PromptPaneHeight      = 5
+	PromptPaneHeight      = 6
 	PromptPanePadding     = 2
 	PromptPaneMarginTop   = 0
 	StatusBarPaneHeight   = 5
-	EditModeUiElementsSum = 4
+	EditModeUIElementsSum = 4
 
 	ChatPaneMarginRight = 1
 	SidePaneLeftPadding = 5
@@ -111,10 +111,10 @@ func CalcChatPaneSize(tw, th int, mode ViewMode) (w, h int) {
 			paneWidth = twoThirds(tw)
 		}
 	case ZenMode:
-		paneHeight = th - PromptPaneHeight
+		paneHeight = th - PromptPaneHeight - 1
 		paneWidth = tw - DefaultElementsPadding
 	case TextEditMode:
-		paneHeight = twoThirds(th) - EditModeUiElementsSum
+		paneHeight = twoThirds(th) - EditModeUIElementsSum - 1
 		paneWidth = tw - DefaultElementsPadding
 	}
 
