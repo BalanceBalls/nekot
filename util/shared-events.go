@@ -44,6 +44,7 @@ const (
 	ZenMode ViewMode = iota
 	TextEditMode
 	NormalMode
+	FilePickerMode
 )
 
 type Operation int
