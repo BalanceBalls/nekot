@@ -266,6 +266,9 @@ func (p *PromptPane) keyExit() tea.Cmd {
 
 		p.textEditor.Blur()
 
+	case util.FilePickerMode:
+		break
+
 	default:
 		if !p.input.Focused() {
 			p.input.Reset()
@@ -373,7 +376,8 @@ func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
 				Type: "img",
 				Path: attachmentPath,
 			})
-			cmds = append(cmds, util.SendViewModeChangedMsg(util.NormalMode))
+
+			cmds = append(cmds, util.SendViewModeChangedMsg(p.filePicker.PrevView))
 			p.filePicker.SelectedFile = ""
 		} else {
 			p.filePicker, cmd = p.filePicker.Update(msg)
@@ -451,7 +455,9 @@ func (p *PromptPane) handleWindowSizeMsg(msg tea.WindowSizeMsg) tea.Cmd {
 func (p *PromptPane) handleViewModeChange(msg util.ViewModeChanged) tea.Cmd {
 	var cmd tea.Cmd
 
-	prev := p.viewMode
+	prevMode := p.viewMode
+	currentInput := p.getCurrentInput()
+
 	p.viewMode = msg.Mode
 	p.inputMode = util.PromptNormalMode
 
@@ -459,13 +465,13 @@ func (p *PromptPane) handleViewModeChange(msg util.ViewModeChanged) tea.Cmd {
 
 	switch p.viewMode {
 	case util.TextEditMode:
-		cmd = p.openTextEditor("", util.NoOperaton, false)
+		cmd = p.openTextEditor(currentInput, util.NoOperaton, false)
 
 	case util.FilePickerMode:
-		cmd = p.openFilePicker(prev)
+		cmd = p.openFilePicker(prevMode, currentInput)
 
 	default:
-		cmd = p.openInputField(prev)
+		cmd = p.openInputField(prevMode, currentInput)
 	}
 
 	p.inputContainer = p.inputContainer.MaxWidth(p.terminalWidth).Width(w)
@@ -473,11 +479,23 @@ func (p *PromptPane) handleViewModeChange(msg util.ViewModeChanged) tea.Cmd {
 	return cmd
 }
 
-func (p *PromptPane) openInputField(previousViewMode util.ViewMode) tea.Cmd {
+func (p *PromptPane) getCurrentInput() string {
+
+	if p.textEditor.Value() != "" {
+		return p.textEditor.Value()
+	}
+
+	if p.input.Value() != "" {
+		return p.input.Value()
+	}
+
+	return ""
+}
+
+func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
 	w, _ := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 	if previousViewMode == util.TextEditMode {
 		p.input.Width = w
-		currentInput := p.textEditor.Value()
 		p.textEditor.Blur()
 		p.textEditor.Reset()
 
@@ -492,19 +510,15 @@ func (p *PromptPane) openInputField(previousViewMode util.ViewMode) tea.Cmd {
 	return p.input.Cursor.BlinkCmd()
 }
 
-func (p *PromptPane) openFilePicker(previousViewMode util.ViewMode) tea.Cmd {
+func (p *PromptPane) openFilePicker(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
 	w, h := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-	p.filePicker = components.NewFilePicker(previousViewMode, "", p.colors)
+	p.filePicker = components.NewFilePicker(previousViewMode, currentInput, p.colors)
 	p.filePicker.SetSize(w, h)
 	return p.filePicker.Init()
 }
 
 func (p *PromptPane) openTextEditor(content string, op util.Operation, isFocused bool) tea.Cmd {
 	p.operation = op
-
-	if content == "" {
-		content = p.input.Value()
-	}
 
 	p.input.Blur()
 	p.input.Reset()

@@ -11,17 +11,20 @@ import (
 )
 
 type FilePicker struct {
-	filepicker    filepicker.Model
 	SelectedFile  string
 	PrevView      util.ViewMode
 	PrevInputData string
+	filepicker    filepicker.Model
 	quitting      bool
 	err           error
 }
 
-func NewFilePicker(prevView util.ViewMode, prevInput string, colors util.SchemeColors) FilePicker {
+func NewFilePicker(
+	prevView util.ViewMode,
+	prevInput string,
+	colors util.SchemeColors,
+) FilePicker {
 	fp := filepicker.New()
-	fp.ShowSize = true
 
 	fp.Styles.Directory = fp.Styles.Directory.
 		Foreground(colors.HighlightColor)
@@ -35,8 +38,10 @@ func NewFilePicker(prevView util.ViewMode, prevInput string, colors util.SchemeC
 	fp.Styles.Selected = fp.Styles.Selected.
 		Foreground(colors.ActiveTabBorderColor)
 
-	// fp.AllowedTypes = []string{}                           //[]string{".png", ".jpg", ".jpeg", ".webp", ".gif"}
+	fp.AllowedTypes = []string{".png", ".jpg", ".jpeg", ".webp", ".gif"}
 	fp.CurrentDirectory, _ = os.UserHomeDir()
+	fp.ShowPermissions = false
+	fp.ShowSize = true
 
 	filePicker := FilePicker{
 		filepicker:    fp,

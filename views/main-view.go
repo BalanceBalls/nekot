@@ -229,7 +229,9 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				b64, err := m.fileToBase64(attachment.Path)
 				if err != nil {
 					util.Slog.Error("failed to convert attachment to base64", "error", err.Error())
+					return m, util.MakeErrorMsg(err.Error())
 				}
+
 				t := util.Attachment{
 					Path:    attachment.Path,
 					Content: b64,
@@ -420,7 +422,9 @@ func (m MainView) fileToBase64(filePath string) (string, error) {
 	maxSize := 1024 * 1024 * m.config.MaxAttachmentSizeMb
 	if len(data) > maxSize {
 		util.Slog.Error("attchment exceeds allowed size limit", "path", filePath, "size (kb)", len(data)*1024)
-		return "", fmt.Errorf("attchment exceeds allowed size limit of %dMB", maxSize)
+		return "", fmt.Errorf("attchment exceeds allowed size limit of %d MB \n Attachment: %s",
+			m.config.MaxAttachmentSizeMb,
+			filePath)
 	}
 
 	base64Str := base64.StdEncoding.EncodeToString(data)

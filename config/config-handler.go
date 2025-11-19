@@ -185,7 +185,7 @@ func (c *Config) setDefaults() {
 	}
 
 	if c.MaxAttachmentSizeMb == 0 {
-		c.MaxAttachmentSizeMb = 10
+		c.MaxAttachmentSizeMb = 3
 	}
 
 	if c.IncludeReasoningTokensInContext == nil {
