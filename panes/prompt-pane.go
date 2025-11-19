@@ -347,8 +347,8 @@ func (p *PromptPane) keyPaste() tea.Cmd {
 		content := strings.TrimSpace(buffer)
 
 		if p.viewMode != util.TextEditMode && strings.Contains(content, "\n") {
-			cmd = util.SendViewModeChangedMsg(util.TextEditMode)
-			p.pendingInsert = content
+			cmd = util.SwitchToEditor(content, util.NoOperaton, true)
+			p.pendingInsert = ""
 		}
 
 		clipboard.WriteAll(content)
@@ -398,7 +398,7 @@ func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 		default:
 			// TODO: maybe there is a way to adjust heihgt for long inputs?
 			// TODO: move to dimensions?
-			if len(p.input.Value()) > p.inputContainer.GetWidth()-4 {
+			if lipgloss.Width(p.input.Value()) > p.input.Width-4 {
 				p.input, cmd = p.input.Update(msg)
 				cmds = append(cmds, util.SwitchToEditor(p.input.Value(), util.NoOperaton, true))
 			} else {
@@ -539,7 +539,6 @@ func (p *PromptPane) openTextEditor(content string, op util.Operation, isFocused
 	return nil
 }
 
-// TODO: filter out unsupported image formats. Send notification if format is not supported
 func (p *PromptPane) parseAttachments() []util.Attachment {
 	imgTagRegex := regexp.MustCompile(`\[img=[^\]]+\]`)
 	fileTagRegex := regexp.MustCompile(`\[file=[^\]]+\]`)

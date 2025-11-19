@@ -69,7 +69,7 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 		switch msg.String() {
 		case "esc", "q":
 			m.quitting = true
-			return m, util.SendViewModeChangedMsg(util.NormalMode)
+			return m, util.SendViewModeChangedMsg(m.PrevView)
 		}
 
 	case clearErrorMsg:
