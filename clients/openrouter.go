@@ -44,16 +44,7 @@ func (c OpenrouterClient) RequestCompletion(
 		setRequestParams(&request, modelSettings)
 		setRequestContext(&request, *config, modelSettings, chatMsgs)
 
-		stream, err := client.CreateChatCompletionStream(
-			context.Background(), openrouter.ChatCompletionRequest{
-				Model: "qwen/qwen3-235b-a22b-07-25:free",
-				Messages: []openrouter.ChatCompletionMessage{
-					openrouter.UserMessage("Hello, how are you?"),
-				},
-				Stream: true,
-			},
-		)
-
+		stream, err := client.CreateChatCompletionStream(ctx, request)
 		if err != nil {
 			return util.MakeErrorMsg(err.Error())
 		}
@@ -67,7 +58,7 @@ func (c OpenrouterClient) RequestCompletion(
 
 			if err != nil && err != io.EOF {
 				util.Slog.Error(
-					"Gemini: Encountered error while receiving response",
+					"Openrouter: Encountered error while receiving response",
 					"error",
 					err.Error(),
 				)
@@ -77,8 +68,9 @@ func (c OpenrouterClient) RequestCompletion(
 
 			processResultID++
 			if errors.Is(err, io.EOF) {
-				fmt.Println("EOF, stream finished")
-				return nil
+				util.Slog.Info("Openrouter: Received [DONE]")
+				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: nil, Final: true}
+				break
 			}
 
 			result, err := processCompletionChunk(response)
@@ -97,7 +89,6 @@ func (c OpenrouterClient) RequestCompletion(
 
 		return nil
 	}
-
 }
 
 func (c OpenrouterClient) RequestModelsList(ctx context.Context) util.ProcessModelsResponse {
@@ -219,6 +210,7 @@ func setRequestParams(
 	r *openrouter.ChatCompletionRequest,
 	settings util.Settings) {
 
+	r.Stream = true
 	r.Model = settings.Model
 	r.MaxTokens = settings.MaxTokens
 
