@@ -61,17 +61,41 @@ func (c OpenrouterClient) RequestCompletion(
 
 		util.Slog.Debug("constructing message", "model", modelSettings.Model)
 
+		processResultID := util.ChunkIndexStart
 		for {
 			response, err := stream.Recv()
+
 			if err != nil && err != io.EOF {
+				util.Slog.Error(
+					"Gemini: Encountered error while receiving response",
+					"error",
+					err.Error(),
+				)
+				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err}
+				break
 			}
+
+			processResultID++
 			if errors.Is(err, io.EOF) {
 				fmt.Println("EOF, stream finished")
 				return nil
 			}
-			json, err := json.MarshalIndent(response, "", "  ")
-			fmt.Println(string(json))
+
+			result, err := processCompletionChunk(response)
+			if err != nil {
+				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err}
+				break
+			}
+
+			resultChan <- util.ProcessApiCompletionResponse{
+				ID:     processResultID,
+				Result: result,
+				Err:    nil,
+				Final:  false,
+			}
 		}
+
+		return nil
 	}
 
 }
@@ -209,4 +233,51 @@ func setRequestParams(
 	if settings.Frequency != nil {
 		r.FrequencyPenalty = *settings.Frequency
 	}
+}
+
+func processCompletionChunk(chunk openrouter.ChatCompletionStreamResponse) (util.CompletionChunk, error) {
+	result := util.CompletionChunk{
+		ID:               chunk.ID,
+		Object:           chunk.Object,
+		Created:          int(chunk.Created),
+		Model:            chunk.Model,
+		SystemFingerpint: chunk.SystemFingerprint,
+	}
+
+	if chunk.Usage != nil {
+		result.Usage = &util.TokenUsage{
+			Prompt:     chunk.Usage.PromptTokens,
+			Completion: chunk.Usage.CompletionTokens,
+			Total:      chunk.Usage.TotalTokens,
+		}
+	}
+
+	if chunk.Choices != nil {
+		choices := []util.Choice{}
+
+		for _, choice := range chunk.Choices {
+
+			delta, err := json.Marshal(choice.Delta)
+			if err != nil {
+				return result, err
+			}
+
+			var deltaMap map[string]interface{}
+			err = json.Unmarshal(delta, &deltaMap)
+			if err != nil {
+				return result, err
+			}
+
+			c := util.Choice{
+				Index:        choice.Index,
+				Delta:        deltaMap,
+				FinishReason: string(choice.FinishReason),
+			}
+			choices = append(choices, c)
+		}
+
+		result.Choices = choices
+	}
+
+	return result, nil
 }
