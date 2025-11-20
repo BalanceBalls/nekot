@@ -8,6 +8,8 @@ func ResolveLlmClient(apiType string, apiUrl string, systemMessage string) util.
 		return NewOpenAiClient(apiUrl, systemMessage)
 	case util.GeminiProviderType:
 		return NewGeminiClient(systemMessage)
+	case util.OpenrouterProviderType:
+		return NewOpenrouterClient(systemMessage)
 	default:
 		panic("Api type not supported: " + apiType)
 	}

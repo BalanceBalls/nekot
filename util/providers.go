@@ -51,8 +51,9 @@ var (
 )
 
 const (
-	OpenAiProviderType = "openai"
-	GeminiProviderType = "gemini"
+	OpenAiProviderType     = "openai"
+	GeminiProviderType     = "gemini"
+	OpenrouterProviderType = "openrouter"
 )
 
 type ApiProvider int
@@ -62,12 +63,15 @@ const (
 	Local
 	Mistral
 	Gemini
+	Openrouter
 )
 
 func GetFilteredModelList(providerType string, apiUrl string, models []string) []string {
 	var modelNames []string
 
 	switch providerType {
+	case OpenrouterProviderType:
+		return models
 	case OpenAiProviderType:
 		modelNames = filterOpenAiApiModels(apiUrl, models)
 	case GeminiProviderType:

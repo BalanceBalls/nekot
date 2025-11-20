@@ -103,7 +103,7 @@ func constructUserMessage(msg util.LocalStoreMessage) util.OpenAIConversationTur
 	}
 
 	return util.OpenAIConversationTurn{
-		Role:    "user",
+		Role:    msg.Role,
 		Content: content,
 	}
 }

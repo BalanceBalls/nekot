@@ -51,6 +51,7 @@ func (c GeminiClient) RequestCompletion(
 		}
 
 		client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+
 		if err != nil {
 			return util.MakeErrorMsg(err.Error())
 		}

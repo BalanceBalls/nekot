@@ -96,6 +96,8 @@ func createConfig() (string, error) {
 
 func validateConfig(config Config) bool {
 	switch config.Provider {
+	case util.OpenrouterProviderType:
+		return true
 	case util.GeminiProviderType:
 		return true
 	case util.OpenAiProviderType:
@@ -149,6 +151,17 @@ func CreateAndValidateConfig(flags StartupFlags) Config {
 
 func (c Config) checkApiKeys() {
 	switch c.Provider {
+	case util.OpenrouterProviderType:
+		apiKey := os.Getenv("OPENROUTER_API_KEY")
+		if apiKey == "" {
+			fmt.Println("OPENROUTER_API_KEY not set; set it in your profile")
+			fmt.Printf(
+				"export OPENROUTER_API_KEY=your_key in the config for :%v \n",
+				os.Getenv("SHELL"),
+			)
+			fmt.Println("Exiting...")
+			os.Exit(1)
+		}
 	case util.GeminiProviderType:
 		apiKey := os.Getenv("GEMINI_API_KEY")
 		if apiKey == "" {
