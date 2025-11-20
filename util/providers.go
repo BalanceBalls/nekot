@@ -156,6 +156,8 @@ func TransformRequestHeaders(provider ApiProvider, params map[string]any) map[st
 
 func GetOpenAiInferenceProvider(providerType string, apiUrl string) ApiProvider {
 	switch providerType {
+	case OpenrouterProviderType:
+		return Openrouter
 	case GeminiProviderType:
 		return Gemini
 	case OpenAiProviderType:

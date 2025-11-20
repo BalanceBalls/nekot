@@ -46,7 +46,8 @@ func (c OpenrouterClient) RequestCompletion(
 
 		stream, err := client.CreateChatCompletionStream(ctx, request)
 		if err != nil {
-			return util.MakeErrorMsg(err.Error())
+			resultChan <- util.ProcessApiCompletionResponse{ID: util.ChunkIndexStart, Err: err, Final: true}
+			return nil
 		}
 		defer stream.Close()
 
@@ -62,7 +63,7 @@ func (c OpenrouterClient) RequestCompletion(
 					"error",
 					err.Error(),
 				)
-				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err}
+				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err, Final: true}
 				break
 			}
 
@@ -96,7 +97,6 @@ func (c OpenrouterClient) RequestModelsList(ctx context.Context) util.ProcessMod
 
 	client.ListUserModels(ctx)
 	models, err := client.ListModels(ctx)
-	util.Slog.Debug("fetched models", "data", models)
 
 	if err != nil {
 		util.Slog.Error("failed to fetch models", "error", err.Error())
