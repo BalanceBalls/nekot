@@ -254,7 +254,7 @@ func processCompletionChunk(chunk openrouter.ChatCompletionStreamResponse) (util
 				return result, err
 			}
 
-			var deltaMap map[string]interface{}
+			var deltaMap map[string]any
 			err = json.Unmarshal(delta, &deltaMap)
 			if err != nil {
 				return result, err

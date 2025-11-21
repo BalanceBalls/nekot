@@ -14,6 +14,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
  * 📦 **Single binary** - lightweight, zero dependencies, use anywhere without any requirements
  * 🤖 **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, llama-cpp and more)
  * 🌟 **Support for Gemini API**
+ * 🔀 **Support for OpenRouter API**
  * 💬 **Chat sessions** management and quick chats
  * ⚙️ **Settings presets** (configure different personas with unique settings)
  * ✂️ **Convenient text selection** tool (vim-like line selection)
@@ -70,7 +71,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/
 
 ## Setting API keys
 
-To use the app, you will need to set `OPENAI_API_KEY` or/and `GEMINI_API_KEY` env variables depending on your needs
+To use the app, you will need to set `OPENAI_API_KEY` or/and `GEMINI_API_KEY`, `OPENROUTER_API_KEY` env variables depending on your needs
 
 <details>
 
@@ -95,6 +96,14 @@ Set up your api key - [how to get an api key](https://aistudio.google.com/apikey
 ```bash
 export  GEMINI_API_KEY="some-key" # you would want to export this in your .zshrc or .bashrc
 ```
+
+### OpenRouter API
+
+Set up your api key - [how to get an api key](https://openrouter.ai/docs/api-reference/authentication)
+
+```bash
+export  OPENROUTER_API_KEY="some-key" # you would want to export this in your .zshrc or .bashrc
+```
 </details>
 
 ## Config
@@ -110,7 +119,7 @@ We provide a `config.json` file within your directory for easy access to essenti
   "systemMessage": "",
   "defaultModel": "",
   "colorScheme": "groove", // pink, blue, groove
-  "provider": "openai" // openai, gemini
+  "provider": "openai" // openai, gemini, openrouter
 }
 ```
 
@@ -126,9 +135,10 @@ You can change API provider using the `provider` field.
 Available providers:
  * `openai` **default**
  * `gemini`
+ * `openrouter`
 
 To use **GeminiAPI**, just set `"provider": "gemini"` (make sure to set GEMINI_API_KEY env variable).
-When using the `gemini` provider, `providerBaseUrl` param is not used.
+When using the `gemini` or `openrouter` providers, `providerBaseUrl` param is not used.
 
 ### Themes
 You can change colorscheme using the `colorScheme` field.
@@ -159,6 +169,7 @@ To switch between openai and gemini APIs you can use `-p` flag:
 ```bash
 nekot -p openai
 nekot -p gemini
+nekot -p openrouter
 ```
 
 ### Provider url
