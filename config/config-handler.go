@@ -110,7 +110,7 @@ func validateConfig(config Config) bool {
 		// Add any other validation logic here
 		return true
 	default:
-		fmt.Println("Incorrect provider type. Supported values: 'openai', 'gemini'")
+		fmt.Println("Incorrect provider type. Supported values: 'openai', 'gemini', 'openrouter'")
 		return false
 	}
 }

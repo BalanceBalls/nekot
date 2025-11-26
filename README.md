@@ -15,6 +15,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
  * 🤖 **Support for OpenAI compatible APIs** (ChatGPT, Mistral, Ollama, LMStudio, llama-cpp and more)
  * 🌟 **Support for Gemini API**
  * 🔀 **Support for OpenRouter API**
+ * 🖼️ **Images support**
  * 💬 **Chat sessions** management and quick chats
  * ⚙️ **Settings presets** (configure different personas with unique settings)
  * ✂️ **Convenient text selection** tool (vim-like line selection)
@@ -119,7 +120,9 @@ We provide a `config.json` file within your directory for easy access to essenti
   "systemMessage": "",
   "defaultModel": "",
   "colorScheme": "groove", // pink, blue, groove
-  "provider": "openai" // openai, gemini, openrouter
+  "provider": "openai", // openai, gemini, openrouter
+  "maxAttachmentSizeMb": 3,
+  "includeReasoningTokensInContext": true
 }
 ```
 
@@ -127,6 +130,8 @@ We provide a `config.json` file within your directory for easy access to essenti
  - `chatGPTApiUrl` [obsolete]: same as `providerBaseUrl`
  - `systemMessage` field is available for customizing system prompt messages. **Better to set it from the app**
  - `defaultModel` field sets the default model.  **Better to set it from the app**
+ - `maxAttachmentSizeMb` field sets maximum allowed image size
+ - `includeReasoningTokensInContext` field sets whether to include reasoning tokens in the next request or not.
 
 ### Providers
 
@@ -212,6 +217,7 @@ nekot -t blue
     \```
 - `esc`: Exit insert mode for the prompt
     * When in 'Prompt editor' mode, pressing `esc` second time will close editor
+- `ctrl+a`: open file picker for attaching images. You can also attach images by typing: [img=/path/to/image]
 
 ## Chat Messages Pane
 
