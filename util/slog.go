@@ -24,8 +24,14 @@ func init() {
 		panic(err)
 	}
 
+	logLevel := slog.LevelWarn
+	env := os.Getenv("NEKOT_ENV")
+	if env == "test" {
+		logLevel = slog.LevelDebug
+	}
+
 	opts := slog.HandlerOptions{
-		Level:     slog.LevelDebug,
+		Level:     logLevel,
 		AddSource: true,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.SourceKey {
