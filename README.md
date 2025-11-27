@@ -24,7 +24,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
 
 ## Demo
 
-![tui demo](./docs/images/nekot-demo.mp4)
+![tui demo](./docs/images/nekot-demo.gif)
 
 ## App installation
 
