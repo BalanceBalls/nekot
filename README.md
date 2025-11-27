@@ -24,7 +24,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
 
 ## Demo
 
-![tui demo](./docs/images/nekot-demo.gif)
+![tui demo](./docs/images/nekot-demo.mp4)
 
 ## App installation
 
@@ -301,6 +301,7 @@ rc-nekot
   nice terminal layouts!
 - [bubbles](https://github.com/charmbracelet/bubbles): Some general use
   components for Bubble Tea apps!
+- [operouter-sdk](https://github.com/reVrost/go-openrouter) openrouter api sdk
 
 ## Contributors
 

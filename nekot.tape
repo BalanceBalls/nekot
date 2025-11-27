@@ -8,16 +8,17 @@ Set Theme "ayu"
 Set Height 1600
 Set Width 2000
 Set Framerate 30
-Set PlaybackSpeed 0.35
-Set TypingSpeed 100ms
+Set FontSize 24
+Set TypingSpeed 70ms
 Set Margin 15
-Set MarginFill "#98971a"
+Set MarginFill "#2c2d2e"
 Set BorderRadius 15
 Set Padding 5
 
 Hide
-Type "./nekot"
+Type "./nekot -p openrouter"
 Enter
+
 Show
 
 Sleep 3s
@@ -31,7 +32,7 @@ Sleep 1s
 Type "/"
 Sleep 1s
 
-Type "gemini-2.0-flash"
+Type "qwenvl8"
 Sleep 1s
 
 Enter
@@ -46,31 +47,24 @@ Sleep 1s
 Type "i"
 Sleep 1s
 
-Type "Explain the following go code:"
+Type "print the code from the image and briefly explain it"
 Sleep 0.5s
-Ctrl+e
+Ctrl+a
 Sleep 0.5s
-Type "i"
-Sleep 0.5s
+Type "j"
+Sleep 0.2s
+Type "j"
+Sleep 0.2s
 Enter
-Sleep 0.5s
-Type "```go"
-Enter
-Sleep 0.5s
-
-Ctrl+v
-Sleep 0.5s
-
-Enter
-Type "```"
 Sleep 0.5s
 
 Escape
 Sleep 1s
 Enter
 
-Sleep 7s
+Sleep 9s
 
+Escape
 Type "2"
 Sleep 1s
 
@@ -78,15 +72,15 @@ Space
 Sleep 1s
 
 Type "kkkk"
-Sleep 1s
+Sleep 0.5s
 
 Space
-Sleep 1s
+Sleep 0.5s
 
 Type "3j"
-Sleep 1s
+Sleep 0.5s
 Type "9j"
-Sleep 2s
+Sleep 1s
 
 Type "y"
 Sleep 3s
