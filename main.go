@@ -43,7 +43,7 @@ func main() {
 		ProviderUrl: baseUrl,
 	}
 
-	env := os.Getenv("FOO_ENV")
+	env := os.Getenv("NEKOT_ENV")
 	if env == "" {
 		env = "development"
 	}

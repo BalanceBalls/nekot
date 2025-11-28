@@ -18,7 +18,7 @@ type ProcessingResult struct {
 	CompletionTokens          int
 	CurrentResponse           string
 	CurrentResponseDataChunks []util.ProcessApiCompletionResponse
-	JSONResponse              util.MessageToSend
+	JSONResponse              util.LocalStoreMessage
 	State                     ProcessingState
 }
 
@@ -247,7 +247,7 @@ func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionRespo
 	}
 
 	data, contentOk := choice.Delta["content"]
-	util.Slog.Warn(
+	util.Slog.Debug(
 		"failed to check if response is finished",
 		"finish reason", choice.FinishReason,
 		"has content", contentOk,
@@ -256,8 +256,8 @@ func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionRespo
 	return false
 }
 
-func (p MessageProcessor) prepareResponseJSONForDB() util.MessageToSend {
-	newMessage := util.MessageToSend{
+func (p MessageProcessor) prepareResponseJSONForDB() util.LocalStoreMessage {
+	newMessage := util.LocalStoreMessage{
 		Role:    "assistant",
 		Content: "",
 		Model:   p.Settings.Model}

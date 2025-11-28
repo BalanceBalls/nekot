@@ -11,7 +11,7 @@ import (
 type LlmClient interface {
 	RequestCompletion(
 		ctx context.Context,
-		chatMsgs []MessageToSend,
+		chatMsgs []LocalStoreMessage,
 		modelSettings Settings,
 		resultChan chan ProcessApiCompletionResponse,
 	) tea.Cmd
@@ -51,8 +51,9 @@ var (
 )
 
 const (
-	OpenAiProviderType = "openai"
-	GeminiProviderType = "gemini"
+	OpenAiProviderType     = "openai"
+	GeminiProviderType     = "gemini"
+	OpenrouterProviderType = "openrouter"
 )
 
 type ApiProvider int
@@ -62,12 +63,15 @@ const (
 	Local
 	Mistral
 	Gemini
+	Openrouter
 )
 
 func GetFilteredModelList(providerType string, apiUrl string, models []string) []string {
 	var modelNames []string
 
 	switch providerType {
+	case OpenrouterProviderType:
+		return models
 	case OpenAiProviderType:
 		modelNames = filterOpenAiApiModels(apiUrl, models)
 	case GeminiProviderType:
@@ -152,6 +156,8 @@ func TransformRequestHeaders(provider ApiProvider, params map[string]any) map[st
 
 func GetOpenAiInferenceProvider(providerType string, apiUrl string) ApiProvider {
 	switch providerType {
+	case OpenrouterProviderType:
+		return Openrouter
 	case GeminiProviderType:
 		return Gemini
 	case OpenAiProviderType:

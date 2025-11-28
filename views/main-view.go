@@ -3,6 +3,8 @@ package views
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"fmt"
 	"os"
 	"runtime"
 	"slices"
@@ -13,7 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 
-	"github.com/BalanceBalls/nekot/clients"
+	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/panes"
 	"github.com/BalanceBalls/nekot/sessions"
 	"github.com/BalanceBalls/nekot/util"
@@ -86,6 +88,7 @@ type MainView struct {
 	infoPane     panes.InfoPane
 	loadedDeps   []util.AsyncDependency
 
+	config              config.Config
 	sessionOrchestrator sessions.Orchestrator
 	context             context.Context
 	completionContext   context.Context
@@ -118,9 +121,15 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		util.NormalMode,
 	)
 	chatPane := panes.NewChatPane(ctx, w, h)
-
 	orchestrator := sessions.NewOrchestrator(db, ctx)
 
+	config, ok := config.FromContext(ctx)
+	if !ok {
+		util.Slog.Error("failed to extract config from context")
+		panic("No config found in context")
+	}
+
+	util.Slog.Debug("config loaded", "values", config)
 	return MainView{
 		keys:                defaultKeyMap,
 		viewMode:            util.NormalMode,
@@ -132,6 +141,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		settingsPane:        settingsPane,
 		infoPane:            statusBarPane,
 		chatPane:            chatPane,
+		config:              *config,
 		context:             ctx,
 	}
 }
@@ -208,12 +218,35 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case util.PromptReady:
 		m.error = util.ErrorEvent{}
 
-		turn := clients.ConstructUserMessage(msg.Prompt)
+		util.Slog.Debug("prompt ready message received", "msg", msg)
+
+		loadedAttachments := []util.Attachment{}
+		if len(msg.Attachments) != 0 {
+
+			util.Slog.Debug("preparing attachments")
+
+			for _, attachment := range msg.Attachments {
+				b64, err := m.fileToBase64(attachment.Path)
+				if err != nil {
+					util.Slog.Error("failed to convert attachment to base64", "error", err.Error())
+					return m, util.MakeErrorMsg(err.Error())
+				}
+
+				t := util.Attachment{
+					Path:    attachment.Path,
+					Content: b64,
+					Type:    mapAttachmentType(attachment.Type),
+				}
+				loadedAttachments = append(loadedAttachments, t)
+			}
+		}
+
 		m.sessionOrchestrator.ArrayOfMessages = append(
 			m.sessionOrchestrator.ArrayOfMessages,
-			util.MessageToSend{
-				Role:    turn.Role,
-				Content: turn.Content,
+			util.LocalStoreMessage{
+				Role:        "user",
+				Content:     msg.Prompt,
+				Attachments: loadedAttachments,
 			})
 		m.viewMode = util.NormalMode
 
@@ -377,6 +410,36 @@ func (m *MainView) resetFocus() {
 	m.settingsPane, _ = m.settingsPane.Update(util.MakeFocusMsg(m.focused == util.SettingsPane))
 	m.chatPane, _ = m.chatPane.Update(util.MakeFocusMsg(m.focused == util.ChatPane))
 	m.promptPane, _ = m.promptPane.Update(util.MakeFocusMsg(m.focused == util.PromptPane))
+}
+
+func (m MainView) fileToBase64(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		util.Slog.Error("failed to read file", "path", filePath, "error", err.Error())
+		return "", err
+	}
+
+	maxSize := 1024 * 1024 * m.config.MaxAttachmentSizeMb
+	if len(data) > maxSize {
+		util.Slog.Error("attchment exceeds allowed size limit", "path", filePath, "size (kb)", len(data)*1024)
+		return "", fmt.Errorf("attchment exceeds allowed size limit of %d MB \n Attachment: %s",
+			m.config.MaxAttachmentSizeMb,
+			filePath)
+	}
+
+	base64Str := base64.StdEncoding.EncodeToString(data)
+	return base64Str, nil
+}
+
+func mapAttachmentType(attachmentType string) string {
+	switch attachmentType {
+	case "img":
+		return "image_url"
+	case "file":
+		// https: //platform.openai.com/docs/guides/pdf-files?api-mode=chat#base64-encoded-files
+		return "input_file"
+	}
+	return ""
 }
 
 // TODO: use event to lock/unlock allowFocusChange flag

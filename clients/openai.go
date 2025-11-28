@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/config"
@@ -36,7 +37,7 @@ func NewOpenAiClient(apiUrl, systemMessage string) *OpenAiClient {
 
 func (c OpenAiClient) RequestCompletion(
 	ctx context.Context,
-	chatMsgs []util.MessageToSend,
+	chatMsgs []util.LocalStoreMessage,
 	modelSettings util.Settings,
 	resultChan chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
@@ -80,22 +81,54 @@ func (c OpenAiClient) RequestModelsList(ctx context.Context) util.ProcessModelsR
 	return processModelsListResponse(resp)
 }
 
-func ConstructUserMessage(content string) util.OpenAIConversationTurn {
+func constructUserMessage(msg util.LocalStoreMessage) util.OpenAIConversationTurn {
+	content := []util.OpenAiContent{
+		{
+			Type: "text",
+			Text: msg.Content,
+		},
+	}
+
+	if len(msg.Attachments) != 0 {
+		for _, attachment := range msg.Attachments {
+			data := getImageURLString(attachment)
+			image := util.OpenAiContent{
+				Type: "image_url",
+				ImageURL: util.OpenAiImage{
+					URL: data,
+				},
+			}
+			content = append(content, image)
+		}
+	}
+
 	return util.OpenAIConversationTurn{
-		Role:    "user",
+		Role:    msg.Role,
 		Content: content,
 	}
+}
+
+func getImageURLString(attachment util.Attachment) string {
+	extension := filepath.Ext(attachment.Path)
+	extension = strings.TrimPrefix(extension, ".")
+	content := "data:image/" + extension + ";base64," + attachment.Content
+	return content
 }
 
 func constructSystemMessage(content string) util.OpenAIConversationTurn {
 	return util.OpenAIConversationTurn{
-		Role:    "system",
-		Content: content,
+		Role: "system",
+		Content: []util.OpenAiContent{
+			{
+				Type: "text",
+				Text: content,
+			},
+		},
 	}
 }
 
 func (c OpenAiClient) constructCompletionRequestPayload(
-	chatMsgs []util.MessageToSend,
+	chatMsgs []util.LocalStoreMessage,
 	cfg config.Config,
 	settings util.Settings,
 ) ([]byte, error) {
@@ -114,7 +147,7 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 
 	for _, singleMessage := range chatMsgs {
 		messageContent := ""
-		if singleMessage.Resoning != "" {
+		if singleMessage.Resoning != "" && *cfg.IncludeReasoningTokensInContext {
 			messageContent += singleMessage.Resoning
 		}
 
@@ -123,13 +156,8 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 		}
 
 		if messageContent != "" {
-			conversationTurn := util.OpenAIConversationTurn{
-				Model:   singleMessage.Model,
-				Role:    singleMessage.Role,
-				Content: messageContent,
-			}
-
-			util.Slog.Debug("constructed turn", "data", conversationTurn)
+			singleMessage.Content = messageContent
+			conversationTurn := constructUserMessage(singleMessage)
 			messages = append(messages, conversationTurn)
 		}
 	}

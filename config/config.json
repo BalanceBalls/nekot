@@ -3,5 +3,7 @@
   "systemMessage": "",
   "defaultModel": "",
   "colorScheme": "groove",
-  "provider": "openai"
+  "provider": "openai",
+	"maxAttachmentSizeMb": 10,
+	"includeReasoningTokensInContext": true
 }

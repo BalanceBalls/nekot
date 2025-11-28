@@ -11,17 +11,34 @@ type Settings struct {
 	PresetName   string
 }
 
-type MessageToSend struct {
-	Model    string `json:"model"`
-	Role     string `json:"role"`
-	Content  string `json:"content"`
-	Resoning string `json:"reasoning"`
+type LocalStoreMessage struct {
+	Model       string       `json:"model"`
+	Role        string       `json:"role"`
+	Content     string       `json:"content"`
+	Resoning    string       `json:"reasoning"`
+	Attachments []Attachment `json:"attachments"`
+}
+
+type Attachment struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	Type    string `json:"type"`
 }
 
 type OpenAIConversationTurn struct {
-	Model   string `json:"model"`
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Model   string          `json:"model"`
+	Role    string          `json:"role"`
+	Content []OpenAiContent `json:"content"`
+}
+
+type OpenAiContent struct {
+	Type     string      `json:"type"`
+	Text     string      `json:"text,omitempty"`
+	ImageURL OpenAiImage `json:"image_url,omitempty"`
+}
+
+type OpenAiImage struct {
+	URL string `json:"url"`
 }
 
 type Choice struct {

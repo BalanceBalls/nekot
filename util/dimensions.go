@@ -1,6 +1,8 @@
 package util
 
-import "math"
+import (
+	"math"
+)
 
 // Defaults
 const (
@@ -12,11 +14,11 @@ const (
 
 // Panes
 const (
-	PromptPaneHeight      = 5
+	PromptPaneHeight      = 6
 	PromptPanePadding     = 2
 	PromptPaneMarginTop   = 0
 	StatusBarPaneHeight   = 5
-	EditModeUiElementsSum = 4
+	EditModeUIElementsSum = 4
 
 	ChatPaneMarginRight = 1
 	SidePaneLeftPadding = 5
@@ -79,13 +81,18 @@ func ensureNonNegative(number int) int {
 	return number
 }
 
-func CalcPromptPaneSize(tw, th int, isTextEditMode bool) (w, h int) {
-	if !isTextEditMode {
-		return tw - PromptPanePadding, PromptPaneHeight
+func CalcPromptPaneSize(tw, th int, mode ViewMode) (w, h int) {
+
+	switch mode {
+	case TextEditMode:
+		paneHeight := oneThird(th)
+		return tw - PromptPanePadding, paneHeight
+	case FilePickerMode:
+		paneHeight := oneThird(th)
+		return tw - PromptPanePadding, paneHeight
 	}
 
-	paneHeight := oneThird(th)
-	return tw - PromptPanePadding, paneHeight
+	return tw - PromptPanePadding, PromptPaneHeight
 }
 
 func CalcVisualModeViewSize(tw, th int) (w, h int) {
@@ -114,7 +121,10 @@ func CalcChatPaneSize(tw, th int, mode ViewMode) (w, h int) {
 		paneHeight = th - PromptPaneHeight
 		paneWidth = tw - DefaultElementsPadding
 	case TextEditMode:
-		paneHeight = twoThirds(th) - EditModeUiElementsSum
+		paneHeight = twoThirds(th) - EditModeUIElementsSum - 1
+		paneWidth = tw - DefaultElementsPadding
+	case FilePickerMode:
+		paneHeight = twoThirds(th) - EditModeUIElementsSum - 2
 		paneWidth = tw - DefaultElementsPadding
 	}
 

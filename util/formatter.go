@@ -1,6 +1,7 @@
 package util
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 )
 
 func GetMessagesAsPrettyString(
-	msgsToRender []MessageToSend,
+	msgsToRender []LocalStoreMessage,
 	w int,
 	colors SchemeColors,
 	isQuickChat bool,
@@ -21,7 +22,7 @@ func GetMessagesAsPrettyString(
 
 		switch message.Role {
 		case "user":
-			messageToUse = RenderUserMessage(messageToUse, w, colors, false)
+			messageToUse = RenderUserMessage(message, w, colors, false)
 		case "assistant":
 			messageToUse = RenderBotMessage(message, w, colors, false)
 		}
@@ -42,7 +43,7 @@ func GetMessagesAsPrettyString(
 	return messages
 }
 
-func GetVisualModeView(msgsToRender []MessageToSend, w int, colors SchemeColors) string {
+func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeColors) string {
 	var messages string
 	w = w - TextSelectorMaxWidthCorrection
 	for _, message := range msgsToRender {
@@ -50,7 +51,7 @@ func GetVisualModeView(msgsToRender []MessageToSend, w int, colors SchemeColors)
 
 		switch message.Role {
 		case "user":
-			messageToUse = RenderUserMessage(messageToUse, w, colors, true)
+			messageToUse = RenderUserMessage(message, w, colors, true)
 		case "assistant":
 			messageToUse = RenderBotMessage(message, w, colors, true)
 		}
@@ -66,12 +67,13 @@ func GetVisualModeView(msgsToRender []MessageToSend, w int, colors SchemeColors)
 	return messages
 }
 
-func RenderUserMessage(msg string, width int, colors SchemeColors, isVisualMode bool) string {
+func RenderUserMessage(userMessage LocalStoreMessage, width int, colors SchemeColors, isVisualMode bool) string {
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),
 		glamour.WithWordWrap(width-WordWrapDelta),
 		colors.RendererThemeOption,
 	)
+	msg := userMessage.Content
 	if isVisualMode {
 		msg = "\n💁 " + msg
 		userMsg, _ := renderer.Render(msg)
@@ -79,7 +81,16 @@ func RenderUserMessage(msg string, width int, colors SchemeColors, isVisualMode 
 		return lipgloss.NewStyle().Render("\n" + output + "\n")
 	}
 
-	msg = "\n💁 " + msg + "\n"
+	msg = "\n💁 **[Prooompter]**\n" + msg + "\n"
+	if len(userMessage.Attachments) != 0 {
+		attachments := "\n *Attachments:* \n"
+		for _, file := range userMessage.Attachments {
+			fileName := filepath.Base(file.Path)
+			attachments += "# [" + fileName + "] \n"
+		}
+		msg += attachments
+	}
+
 	userMsg, _ := renderer.Render(msg)
 	output := strings.TrimSpace(userMsg)
 	return lipgloss.NewStyle().
@@ -114,7 +125,7 @@ func RenderErrorMessage(msg string, width int, colors SchemeColors) string {
 }
 
 func RenderBotMessage(
-	msg MessageToSend,
+	msg LocalStoreMessage,
 	width int,
 	colors SchemeColors,
 	isVisualMode bool,
@@ -163,7 +174,7 @@ func RenderBotMessage(
 
 	modelName := ""
 	if len(msg.Model) > 0 {
-		modelName = "**" + msg.Model + "**\n"
+		modelName = "**[" + msg.Model + "]**\n"
 	}
 	content = "\n 🤖 " + modelName + content + "\n"
 	aiResponse, _ := renderer.Render(content)
