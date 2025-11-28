@@ -247,7 +247,7 @@ func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionRespo
 	}
 
 	data, contentOk := choice.Delta["content"]
-	util.Slog.Warn(
+	util.Slog.Debug(
 		"failed to check if response is finished",
 		"finish reason", choice.FinishReason,
 		"has content", contentOk,
