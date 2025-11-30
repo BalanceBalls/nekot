@@ -217,12 +217,13 @@ func (r ProcessingResult) composeProcessingResult(
 			continue
 		}
 
-		if choiceString, ok := getContent(chunk.Result.Choices[0].Delta); ok {
-			updatedResponseBuffer = updatedResponseBuffer + choiceString
-		}
-
 		if reasoning, ok := p.getChunkReasoningData(chunk); ok {
 			updatedResponseBuffer = updatedResponseBuffer + reasoning
+			continue
+		}
+
+		if choiceString, ok := getContent(chunk.Result.Choices[0].Delta); ok {
+			updatedResponseBuffer = updatedResponseBuffer + choiceString
 		}
 	}
 
@@ -273,13 +274,14 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.LocalStoreMessage {
 		}
 
 		choice := responseChunk.Result.Choices[0]
-		if content, ok := getContent(choice.Delta); ok && content != "" {
-			newMessage.Content += content
-			continue
-		}
 
 		if reasoning, ok := p.getChunkReasoningData(responseChunk); ok {
 			newMessage.Resoning += reasoning
+			continue
+		}
+
+		if content, ok := getContent(choice.Delta); ok && content != "" {
+			newMessage.Content += content
 		}
 	}
 

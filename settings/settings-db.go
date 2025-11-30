@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -124,7 +125,7 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 	}
 
 	if !isModelFromSettingsAvailable && len(availableModels) > 0 {
-		modelIdx := rand.IntN(len(availableModels) - 1)
+		modelIdx := rand.IntN(int(math.Max(1, float64(len(availableModels)-1))))
 		settings.Model = availableModels[modelIdx]
 		settings, err = ss.UpdateSettings(settings)
 		if err != nil {
