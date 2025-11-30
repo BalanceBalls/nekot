@@ -217,7 +217,7 @@ func (r ProcessingResult) composeProcessingResult(
 			continue
 		}
 
-		if reasoning, ok := p.getChunkReasoningData(chunk); ok {
+		if reasoning, ok := p.getChunkReasoningData(chunk, p.ResponseDataChunks); ok {
 			updatedResponseBuffer = updatedResponseBuffer + reasoning
 			continue
 		}
@@ -264,7 +264,9 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.LocalStoreMessage {
 		Model:   p.Settings.Model}
 
 	p = p.orderChunks()
+	processed := []util.ProcessApiCompletionResponse{}
 	for _, responseChunk := range p.ResponseDataChunks {
+		processed = append(processed, responseChunk)
 		if p.isFinalChunk(responseChunk) {
 			break
 		}
@@ -274,8 +276,7 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.LocalStoreMessage {
 		}
 
 		choice := responseChunk.Result.Choices[0]
-
-		if reasoning, ok := p.getChunkReasoningData(responseChunk); ok {
+		if reasoning, ok := p.getChunkReasoningData(responseChunk, processed); ok {
 			newMessage.Resoning += reasoning
 			continue
 		}
@@ -285,7 +286,7 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.LocalStoreMessage {
 		}
 	}
 
-	newMessage.Resoning = formatThinkingContent(newMessage.Resoning)
+	// newMessage.Resoning = formatThinkingContent(newMessage.Resoning)
 	return newMessage
 }
 
@@ -296,13 +297,13 @@ func formatThinkingContent(text string) string {
 	return text
 }
 
-func (p MessageProcessor) anyChunkContainsText(text string) bool {
-	if len(p.ResponseDataChunks) == 0 {
+func anyChunkContainsText(chunks []util.ProcessApiCompletionResponse, text string) bool {
+	if len(chunks) == 0 {
 		return false
 	}
 
 	return slices.ContainsFunc(
-		p.ResponseDataChunks,
+		chunks,
 		func(c util.ProcessApiCompletionResponse) bool {
 			if len(c.Result.Choices) == 0 {
 				return false
@@ -330,6 +331,7 @@ func (p MessageProcessor) anyChunkContainsText(text string) bool {
 
 func (p MessageProcessor) getChunkReasoningData(
 	chunk util.ProcessApiCompletionResponse,
+	previousChunks []util.ProcessApiCompletionResponse,
 ) (string, bool) {
 	if len(chunk.Result.Choices) == 0 {
 		return "", false
@@ -352,7 +354,7 @@ func (p MessageProcessor) getChunkReasoningData(
 	}
 
 	// if chunk specifically contains <think> or </think> tokens
-	if strings.HasPrefix(chunkString, legacyThinkStartToken) {
+	if strings.Contains(chunkString, legacyThinkStartToken) {
 		return chunkString, true
 	}
 	if strings.Contains(chunkString, legacyThinkEndToken) {
@@ -360,13 +362,13 @@ func (p MessageProcessor) getChunkReasoningData(
 	}
 
 	// previous chunks have <think> token but no closing token </think>
-	if p.anyChunkContainsText(legacyThinkStartToken) &&
-		!p.anyChunkContainsText(legacyThinkEndToken) {
+	if anyChunkContainsText(previousChunks, legacyThinkStartToken) &&
+		!anyChunkContainsText(previousChunks, legacyThinkEndToken) {
 		return chunkString, true
 	}
 
 	// any chunk contains closing token </think>
-	if p.anyChunkContainsText(legacyThinkEndToken) {
+	if anyChunkContainsText(previousChunks, legacyThinkEndToken) {
 		return "", false
 	}
 

@@ -293,6 +293,7 @@ func (c OpenAiClient) processCompletionResponse(
 		if err != nil {
 			if err == io.EOF {
 				util.Slog.Warn("OpenAI: scanner returned EOF", "error", err.Error())
+				resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: nil, Final: true}
 				break
 			}
 
