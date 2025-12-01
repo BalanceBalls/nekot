@@ -45,6 +45,7 @@ type Config struct {
 }
 
 type StartupFlags struct {
+	Model       string
 	Theme       string
 	Provider    string
 	ProviderUrl string
@@ -217,5 +218,9 @@ func (c *Config) applyFlags(flags StartupFlags) {
 
 	if flags.ProviderUrl != "" {
 		c.ProviderBaseUrl = flags.ProviderUrl
+	}
+
+	if flags.Model != "" {
+		c.DefaultModel = flags.Model
 	}
 }

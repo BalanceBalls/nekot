@@ -103,6 +103,11 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 		}
 	}
 
+	if len(cfg.DefaultModel) > 0 {
+		util.Slog.Warn("model is overriden from config", "override", cfg.DefaultModel)
+		settings.Model = cfg.DefaultModel
+	}
+
 	isModelFromSettingsAvailable := slices.Contains(availableModels, settings.Model)
 
 	if err != nil {
@@ -113,20 +118,25 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 			}
 		}
 
-		settings = util.Settings{
-			Model:     availableModels[0],
-			MaxTokens: 3000,
-		}
-
-		// if default model is set in config.json - use it instead
+		model := availableModels[0]
 		if len(cfg.DefaultModel) > 0 {
-			settings.Model = cfg.DefaultModel
+			model = cfg.DefaultModel
+		}
+		settings = util.Settings{
+			Model:     model,
+			MaxTokens: 3000,
 		}
 	}
 
 	if !isModelFromSettingsAvailable && len(availableModels) > 0 {
 		modelIdx := rand.IntN(int(math.Max(1, float64(len(availableModels)-1))))
-		settings.Model = availableModels[modelIdx]
+		randomModel := availableModels[modelIdx]
+
+		util.Slog.Warn("specified model not found, will select a random available",
+			"specified model", cfg.DefaultModel,
+			"selected model", randomModel)
+
+		settings.Model = randomModel
 		settings, err = ss.UpdateSettings(settings)
 		if err != nil {
 			return UpdateSettingsEvent{

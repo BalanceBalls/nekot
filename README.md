@@ -116,7 +116,7 @@ We provide a `config.json` file within your directory for easy access to essenti
 ### Example
 ```json
 {
-  "providerBaseUrl": "https://api.openai.com", // Or http://localhost:1143, or any other OpenAi compatible API
+  "providerBaseUrl": "https://api.openai.com", // Or http://localhost:11434, or any other OpenAi compatible API
   "systemMessage": "",
   "defaultModel": "",
   "colorScheme": "groove", // pink, blue, groove

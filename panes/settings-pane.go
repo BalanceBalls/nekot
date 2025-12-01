@@ -73,7 +73,7 @@ var defaultSettingsKeyMap = settingsKeyMap{
 		key.WithHelp("]", "presets menu"),
 	),
 	goBack: key.NewBinding(
-		key.WithKeys(tea.KeyEsc.String(), "["),
+		key.WithKeys(tea.KeyEsc.String(), "[", tea.KeyLeft.String()),
 		key.WithHelp("esc, [", "go back"),
 	),
 	choose: key.NewBinding(key.WithKeys(tea.KeyEnter.String())),

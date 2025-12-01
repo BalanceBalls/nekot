@@ -21,6 +21,7 @@ var purgeCache bool
 var provider string
 var baseUrl string
 var theme string
+var model string
 
 func init() {
 	flag.BoolVar(&purgeCache, "purge-cache", false, "Invalidate models cache")
@@ -32,12 +33,14 @@ func init() {
 	)
 	flag.StringVar(&baseUrl, "u", "", "Overrides LLM provider base url configuration")
 	flag.StringVar(&theme, "t", "", "Overrides theme configuration")
+	flag.StringVar(&model, "m", "", "Model name")
 }
 
 func main() {
 	flag.Parse()
 
 	flags := config.StartupFlags{
+		Model:       model,
 		Theme:       theme,
 		Provider:    provider,
 		ProviderUrl: baseUrl,

@@ -30,6 +30,7 @@ type keyMap struct {
 	zenMode       key.Binding
 	editorMode    key.Binding
 	nextPane      key.Binding
+	previousPane  key.Binding
 	jumpToPane    key.Binding
 	newSession    key.Binding
 	quickChat     key.Binding
@@ -66,6 +67,10 @@ var defaultKeyMap = keyMap{
 	nextPane: key.NewBinding(
 		key.WithKeys(tea.KeyTab.String()),
 		key.WithHelp("TAB", "move to next pane"),
+	),
+	previousPane: key.NewBinding(
+		key.WithKeys(tea.KeyShiftTab.String()),
+		key.WithHelp("SHIFT+TAB", "move to previous pane"),
 	),
 	newSession: key.NewBinding(
 		key.WithKeys("ctrl+n"),
@@ -343,7 +348,15 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 
-			m.focused = util.GetNewFocusMode(m.viewMode, m.focused, m.terminalWidth)
+			m.focused = util.GetNewFocusMode(m.viewMode, m.focused, m.terminalWidth, false)
+			m.resetFocus()
+
+		case key.Matches(msg, m.keys.previousPane):
+			if !m.isFocusChangeAllowed() {
+				break
+			}
+
+			m.focused = util.GetNewFocusMode(m.viewMode, m.focused, m.terminalWidth, true)
 			m.resetFocus()
 		}
 

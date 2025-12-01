@@ -65,14 +65,19 @@ func IsFocusAllowed(mode ViewMode, pane Pane, tw int) bool {
 	return slices.Contains(focusPanes, pane)
 }
 
-func GetNewFocusMode(mode ViewMode, currentFocus Pane, tw int) Pane {
+func GetNewFocusMode(mode ViewMode, currentFocus Pane, tw int, isBackward bool) Pane {
 	focusPanes := getFocuesPanes(mode, currentFocus, tw)
+
+	direction := 1
+	if isBackward {
+		direction = -1
+	}
 
 	for i, v := range focusPanes {
 		if v == currentFocus {
-			// this allows for correct wrapping over the array.
-			// 3 + 1 = 4 / 4 = 0. (we're already at the last spot, so wrap around)
-			return focusPanes[(i+1)%len(focusPanes)]
+			n := len(focusPanes)
+			newIndex := (i + direction%n + n) % n
+			return focusPanes[newIndex]
 		}
 	}
 
