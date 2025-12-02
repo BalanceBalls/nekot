@@ -23,7 +23,7 @@ ____________________________
  <!------->
 `Ctrl+s` Stop inference
  <!------->
-`1,2,3,4` `TAB` Switch panes
+`TAB` `SHIFT+TAB` Switch panes
  <!------->
 `Ctrl+c` Exit
 

@@ -22,9 +22,11 @@ var provider string
 var baseUrl string
 var theme string
 var model string
+var newSession bool
 
 func init() {
 	flag.BoolVar(&purgeCache, "purge-cache", false, "Invalidate models cache")
+	flag.BoolVar(&newSession, "n", false, "Create a new session on startup")
 	flag.StringVar(
 		&provider,
 		"p",
@@ -40,10 +42,11 @@ func main() {
 	flag.Parse()
 
 	flags := config.StartupFlags{
-		Model:       model,
-		Theme:       theme,
-		Provider:    provider,
-		ProviderUrl: baseUrl,
+		Model:           model,
+		Theme:           theme,
+		Provider:        provider,
+		ProviderUrl:     baseUrl,
+		StartNewSession: newSession,
 	}
 
 	env := os.Getenv("NEKOT_ENV")
@@ -91,9 +94,10 @@ func main() {
 
 	ctx := context.Background()
 	ctxWithConfig := config.WithConfig(ctx, &configToUse)
+	appCtx := config.WithFlags(ctxWithConfig, &flags)
 
 	p := tea.NewProgram(
-		views.NewMainView(db, ctxWithConfig),
+		views.NewMainView(db, appCtx),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)

@@ -85,11 +85,11 @@
 	"code": {
 		"prefix": " ",
 		"suffix": " ",
-		"color": "130",
-		"background_color": "223"
+		"color": "236",
+		"background_color": "187"
 	},
 	"code_block": {
-		"color": "241",
+		"color": "234",
 		"margin": 2,
 		"chroma": {
 			"text": {
@@ -126,7 +126,7 @@
 				"color": "#d65d0e"
 			},
 			"name_tag": {
-				"color": "#427b58"
+				"color": "#1a5420"
 			},
 			"name_attribute": {
 				"color": "#b57614"
@@ -142,7 +142,7 @@
 			},
 			"name_exception": {},
 			"name_function": {
-				"color": "#79740e"
+				"color": "#4d4909"
 			},
 			"name_other": {},
 			"literal": {},
@@ -151,7 +151,7 @@
 			},
 			"literal_date": {},
 			"literal_string": {
-				"color": "#79740e"
+				"color": "#114770"
 			},
 			"literal_string_escape": {
 				"color": "#af3a03"
@@ -184,10 +184,10 @@
 	"definition_list": {},
 	"definition_term": {},
 	"definition_description": {
-		"block_prefix": "\n🠶 "
+		"block_prefix": "\n "
 	},
 	"html_block": {
-		"color": "#7c6f64"
+		"color": "8"
 	},
 	"html_span": {}
 }

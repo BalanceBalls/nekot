@@ -48,13 +48,19 @@ var (
 )
 
 var (
-	grooveboxOrange    = "#DD843B"
-	grooveboxGreen     = "#98971a"
-	grooveboxBlue      = "#458588"
-	grooveboxPurple    = "#B16286"
-	grooveboxRed       = "#FB4934"
-	grooveboxLightGrey = "#EBDBB2"
-	grooveboxYellow    = "#C0A568"
+	grooveboxOrange      = "#DD843B"
+	grooveboxOrangeLight = "#593b11"
+	grooveboxGreen       = "#98971A"
+	grooveboxGreenLight  = "#7f9150"
+	grooveboxBlue        = "#458588"
+	grooveboxBlueLight   = "#73959e"
+	grooveboxPurple      = "#B16286"
+	grooveboxRed         = "#FB4934"
+	grooveboxRedLight    = "#803a32"
+	grooveboxGrey        = "#EBDBB2"
+	grooveboxGreyLight   = "#333028"
+	grooveboxYellow      = "#C0A568"
+	grooveboxBlack       = "#222911"
 )
 
 type SchemeColors struct {
@@ -99,11 +105,11 @@ func (s ColorScheme) GetColors() SchemeColors {
 			themeBytes = grooveBoxLightThemeBytes
 		}
 		return SchemeColors{
-			MainColor:            lipgloss.AdaptiveColor{Dark: grooveboxOrange, Light: grooveboxOrange},
-			AccentColor:          lipgloss.AdaptiveColor{Dark: grooveboxGreen, Light: grooveboxGreen},
-			HighlightColor:       lipgloss.AdaptiveColor{Dark: grooveboxBlue, Light: grooveboxBlue},
-			DefaultTextColor:     lipgloss.AdaptiveColor{Dark: grooveboxLightGrey, Light: black},
-			ErrorColor:           lipgloss.AdaptiveColor{Dark: grooveboxRed, Light: grooveboxRed},
+			MainColor:            lipgloss.AdaptiveColor{Dark: grooveboxOrange, Light: grooveboxOrangeLight},
+			AccentColor:          lipgloss.AdaptiveColor{Dark: grooveboxGreen, Light: grooveboxGreenLight},
+			HighlightColor:       lipgloss.AdaptiveColor{Dark: grooveboxBlue, Light: grooveboxBlueLight},
+			DefaultTextColor:     lipgloss.AdaptiveColor{Dark: grooveboxGrey, Light: grooveboxGreyLight},
+			ErrorColor:           lipgloss.AdaptiveColor{Dark: grooveboxRed, Light: grooveboxRedLight},
 			NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: grooveboxYellow, Light: grooveboxYellow},
 			ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: grooveboxGreen, Light: grooveboxGreen},
 			RendererThemeOption:  glamour.WithStylesFromJSONBytes(themeBytes),

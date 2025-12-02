@@ -93,6 +93,7 @@ type MainView struct {
 	infoPane     panes.InfoPane
 	loadedDeps   []util.AsyncDependency
 
+	flags               config.StartupFlags
 	config              config.Config
 	sessionOrchestrator sessions.Orchestrator
 	context             context.Context
@@ -128,6 +129,12 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 	chatPane := panes.NewChatPane(ctx, w, h)
 	orchestrator := sessions.NewOrchestrator(db, ctx)
 
+	flags, ok := config.FlagsFromContext(ctx)
+	if !ok {
+		util.Slog.Error("failed to extract startup flags from context")
+		flags = &config.StartupFlags{}
+	}
+
 	config, ok := config.FromContext(ctx)
 	if !ok {
 		util.Slog.Error("failed to extract config from context")
@@ -147,6 +154,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		infoPane:            statusBarPane,
 		chatPane:            chatPane,
 		config:              *config,
+		flags:               *flags,
 		context:             ctx,
 	}
 }
@@ -212,13 +220,15 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case util.AsyncDependencyReady:
 		m.loadedDeps = append(m.loadedDeps, msg.Dependency)
-		for _, dependency := range asyncDeps {
-			if !slices.Contains(m.loadedDeps, dependency) {
-				continue
-			}
+
+		if slices.Equal(m.loadedDeps, asyncDeps) {
 			m.viewReady = true
+			m.promptPane = m.promptPane.Enable()
 		}
-		m.promptPane = m.promptPane.Enable()
+
+		if m.viewReady && m.flags.StartNewSession {
+			cmds = append(cmds, util.AddNewSession(false))
+		}
 
 	case util.PromptReady:
 		m.error = util.ErrorEvent{}

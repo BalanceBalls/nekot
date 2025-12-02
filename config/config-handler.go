@@ -19,12 +19,22 @@ type contextKey string
 
 // Define a constant for your config context key
 const configKey contextKey = "config"
+const flagsKey contextKey = "flags"
 
 var TRUE bool = true
 
 // WithConfig returns a new context with the provided config
 func WithConfig(ctx context.Context, config *Config) context.Context {
 	return context.WithValue(ctx, configKey, config)
+}
+
+func WithFlags(ctx context.Context, flags *StartupFlags) context.Context {
+	return context.WithValue(ctx, flagsKey, flags)
+}
+
+func FlagsFromContext(ctx context.Context) (*StartupFlags, bool) {
+	flags, ok := ctx.Value(flagsKey).(*StartupFlags)
+	return flags, ok
 }
 
 // FromContext extracts the config from the context, if available
@@ -45,10 +55,11 @@ type Config struct {
 }
 
 type StartupFlags struct {
-	Model       string
-	Theme       string
-	Provider    string
-	ProviderUrl string
+	Model           string
+	Theme           string
+	Provider        string
+	ProviderUrl     string
+	StartNewSession bool
 }
 
 //go:embed config.json
