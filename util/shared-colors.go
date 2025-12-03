@@ -49,7 +49,7 @@ var (
 
 var (
 	grooveboxOrange      = "#DD843B"
-	grooveboxOrangeLight = "#593b11"
+	grooveboxOrangeLight = "#a16f2a" //#593b11
 	grooveboxGreen       = "#98971A"
 	grooveboxGreenLight  = "#7f9150"
 	grooveboxBlue        = "#458588"
@@ -58,8 +58,9 @@ var (
 	grooveboxRed         = "#FB4934"
 	grooveboxRedLight    = "#803a32"
 	grooveboxGrey        = "#EBDBB2"
-	grooveboxGreyLight   = "#333028"
+	grooveboxGreyLight   = "#3d2e07" //#333028
 	grooveboxYellow      = "#C0A568"
+	grooveboxYellowLight = "#917536"
 	grooveboxBlack       = "#222911"
 )
 
@@ -110,8 +111,8 @@ func (s ColorScheme) GetColors() SchemeColors {
 			HighlightColor:       lipgloss.AdaptiveColor{Dark: grooveboxBlue, Light: grooveboxBlueLight},
 			DefaultTextColor:     lipgloss.AdaptiveColor{Dark: grooveboxGrey, Light: grooveboxGreyLight},
 			ErrorColor:           lipgloss.AdaptiveColor{Dark: grooveboxRed, Light: grooveboxRedLight},
-			NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: grooveboxYellow, Light: grooveboxYellow},
-			ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: grooveboxGreen, Light: grooveboxGreen},
+			NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: grooveboxYellow, Light: grooveboxYellowLight},
+			ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: grooveboxGreen, Light: grooveboxGreenLight},
 			RendererThemeOption:  glamour.WithStylesFromJSONBytes(themeBytes),
 		}
 

@@ -85,8 +85,8 @@
 	"code": {
 		"prefix": " ",
 		"suffix": " ",
-		"color": "236",
-		"background_color": "187"
+		"color": "230",
+		"background_color": "143"
 	},
 	"code_block": {
 		"color": "234",
