@@ -84,7 +84,9 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 		BorderLeftForeground(colors.HighlightColor).
 		Align(lipgloss.Left).
 		Foreground(lipgloss.Color(colors.DefaultTextColor.Dark))
-	quickChatLabel := defaultLabelStyle.Background(colors.HighlightColor)
+	quickChatLabel := defaultLabelStyle.
+		Background(colors.HighlightColor).
+		Foreground(lipgloss.Color(colors.DefaultTextColor.Dark))
 
 	return InfoPane{
 		processingIdleLabel:   processingIdleLabel,
