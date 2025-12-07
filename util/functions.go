@@ -1,5 +1,7 @@
 package util
 
+import "slices"
+
 func RemoveDuplicates[T comparable](slice []T) []T {
 	if len(slice) == 0 {
 		return []T{}
@@ -16,4 +18,14 @@ func RemoveDuplicates[T comparable](slice []T) []T {
 	}
 
 	return result
+}
+
+func IsProcessingActive(state ProcessingState) bool {
+	processingStates := []ProcessingState{
+		ProcessingChunks,
+		AwaitingFinalization,
+		AwaitingToolCallResult,
+		Finalized,
+	}
+	return slices.Contains(processingStates, state)
 }

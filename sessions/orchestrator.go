@@ -1,10 +1,14 @@
 package sessions
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"slices"
+	"net/http"
+	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,9 +17,9 @@ import (
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/user"
 	"github.com/BalanceBalls/nekot/util"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
-	"golang.org/x/net/context"
 )
 
 type Orchestrator struct {
@@ -34,7 +38,7 @@ type Orchestrator struct {
 	ArrayOfMessages           []util.LocalStoreMessage
 	CurrentAnswer             string
 	ResponseBuffer            string
-	ResponseProcessingState   ProcessingState
+	ResponseProcessingState   util.ProcessingState
 	AllSessions               []Session
 	ProcessingMode            string
 
@@ -69,7 +73,7 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 		userService:             us,
 		settingsService:         settingsService,
 		InferenceClient:         llmClient,
-		ResponseProcessingState: Idle,
+		ResponseProcessingState: util.Idle,
 		mu:                      &sync.RWMutex{},
 	}
 }
@@ -192,17 +196,20 @@ func (m Orchestrator) GetCompletion(
 	return m.InferenceClient.RequestCompletion(ctx, m.ArrayOfMessages, m.Settings, resp)
 }
 
+func (m Orchestrator) ResumeCompletion(
+	ctx context.Context,
+	resp chan util.ProcessApiCompletionResponse,
+	messages []util.LocalStoreMessage,
+) tea.Cmd {
+	return m.InferenceClient.RequestCompletion(ctx, messages, m.Settings, resp)
+}
+
 func (m Orchestrator) IsIdle() bool {
-	return m.ResponseProcessingState == Idle
+	return m.ResponseProcessingState == util.Idle
 }
 
 func (m Orchestrator) IsProcessing() bool {
-	processingStates := []ProcessingState{
-		ProcessingChunks,
-		AwaitingFinalization,
-		Finalized,
-	}
-	return slices.Contains(processingStates, m.ResponseProcessingState)
+	return util.IsProcessingActive(m.ResponseProcessingState)
 }
 
 func (m Orchestrator) GetLatestBotMessage() (string, error) {
@@ -246,9 +253,10 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 ) tea.Cmd {
 
 	m.mu.Lock()
-	// util.Slog.Debug("processing state before new chunk",
-	// 	"state", m.ResponseProcessingState,
-	// 	"chunks ready", len(m.ArrayOfProcessResult))
+	util.Slog.Debug("processing state before new chunk",
+		"state", m.ResponseProcessingState,
+		"chunks ready", len(m.ArrayOfProcessResult),
+		"data", msg)
 
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
 	result, err := p.Process(msg)
@@ -275,19 +283,137 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	if result.IsCancelled {
 		return tea.Batch(
 			util.SendNotificationMsg(util.CancelledNotification),
-			m.finishResponseProcessing(result.JSONResponse))
+			m.finishResponseProcessing(result.JSONResponse, false))
+	}
+
+	if len(result.ToolCalls) > 0 {
+		var cmds []tea.Cmd
+		cmds = append(cmds, m.finishResponseProcessing(result.JSONResponse, true))
+
+		for _, tc := range result.ToolCalls {
+			switch tc.Name {
+			case "web_search":
+				cmds = append(cmds, doWebSearch(tc.Args))
+			}
+		}
+
+		return tea.Batch(cmds...)
 	}
 
 	m.CurrentAnswer = result.CurrentResponse
 
-	if result.State == Finalized {
-		return m.finishResponseProcessing(result.JSONResponse)
+	if result.State == util.Finalized {
+		return m.finishResponseProcessing(result.JSONResponse, false)
 	}
 
 	return nil
 }
 
-func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage) tea.Cmd {
+func doWebSearch(args map[string]string) tea.Cmd {
+	query := args["query"]
+	toolName := "web_search"
+
+	return func() tea.Msg {
+		util.Slog.Debug("executing a web search for query", "query", query)
+		time.Sleep(time.Second * 2)
+		result, err := performDuckDuckGoSearch(query)
+		isSuccess := true
+		if err != nil {
+			util.Slog.Error("web search failed", "error", err.Error())
+			isSuccess = false
+		}
+
+		toolCallResult := ""
+		jsonData, err := json.Marshal(result)
+		if err != nil {
+			util.Slog.Error("failed to serialize web_search result data", "error", err.Error())
+			isSuccess = false
+		}
+
+		if isSuccess {
+			toolCallResult = string(jsonData)
+		}
+		return ToolCallComplete{
+			IsSuccess: isSuccess,
+			Name:      toolName,
+			Result:    toolCallResult,
+		}
+	}
+}
+
+type WebSearchResult struct {
+	Title   string `json:"title"`
+	Snippet string `json:"snippet"`
+	Link    string `json:"link"`
+}
+
+func performDuckDuckGoSearch(query string) ([]WebSearchResult, error) {
+	baseURL := "https://html.duckduckgo.com/html/?"
+	params := url.Values{}
+	params.Add("q", query)
+	requestURL := baseURL + params.Encode()
+
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", requestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)AppleWebKit/537.36(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []WebSearchResult
+
+	doc.Find(".result.results_links.results_links_deep.web-result").
+		EachWithBreak(func(i int, s *goquery.Selection) bool {
+			if i >= 5 {
+				return false
+			}
+
+			title := strings.TrimSpace(s.Find("h2.result__title a.result__a").Text())
+			linkHref, _ := s.Find("h2.result__title a.result__a").Attr("href")
+			link := ""
+			if strings.Contains(linkHref, "/l/?uddg=") {
+				unescapedURL, err := url.Parse(linkHref)
+				if err == nil {
+					link = unescapedURL.Query().Get("uddg")
+				} else {
+					link = linkHref
+				}
+
+			} else {
+				link = linkHref
+			}
+
+			snippet := strings.TrimSpace(s.Find("a.result__snippet").Text())
+
+			if title != "" && link != "" {
+				results = append(results, WebSearchResult{
+					Title:   title,
+					Snippet: snippet,
+					Link:    link,
+				})
+			}
+			return true
+		})
+
+	return results, nil
+}
+
+func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage, isToolCall bool) tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -300,16 +426,21 @@ func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage)
 	)
 
 	err := m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
-	m.CurrentAnswer = ""
-	m.ResponseBuffer = ""
-	m.ResponseProcessingState = Idle
-	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
-
 	if err != nil {
 		return m.resetStateAndCreateError(err.Error())
 	}
 
-	return util.SendProcessingStateChangedMsg(false)
+	if isToolCall {
+		m.ResponseProcessingState = util.AwaitingToolCallResult
+		return util.SendProcessingStateChangedMsg(util.AwaitingToolCallResult)
+	}
+
+	m.ResponseProcessingState = util.Idle
+	m.CurrentAnswer = ""
+	m.ResponseBuffer = ""
+	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
+
+	return util.SendProcessingStateChangedMsg(util.Idle)
 }
 
 func (m *Orchestrator) handleTokenStatsUpdate(processingResult ProcessingResult) {
@@ -335,6 +466,6 @@ func (m *Orchestrator) appendAndOrderProcessResults(processingResult ProcessingR
 func (m *Orchestrator) resetStateAndCreateError(errMsg string) tea.Cmd {
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 	m.CurrentAnswer = ""
-	m.ResponseProcessingState = Idle
-	return tea.Batch(util.MakeErrorMsg(errMsg), util.SendProcessingStateChangedMsg(false))
+	m.ResponseProcessingState = util.Idle
+	return tea.Batch(util.MakeErrorMsg(errMsg), util.SendProcessingStateChangedMsg(util.Idle))
 }

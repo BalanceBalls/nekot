@@ -264,6 +264,17 @@ func (p ChatPane) DisplayCompletion(
 	)
 }
 
+func (p ChatPane) ResumeCompletion(
+	ctx context.Context,
+	orchestrator sessions.Orchestrator,
+	messages []util.LocalStoreMessage,
+) tea.Cmd {
+	return tea.Batch(
+		orchestrator.ResumeCompletion(ctx, p.msgChan, messages),
+		waitForActivity(p.msgChan),
+	)
+}
+
 func (p ChatPane) View() string {
 	if p.IsSelectionMode() {
 		return p.chatContainer.Render(p.selectionView.View())

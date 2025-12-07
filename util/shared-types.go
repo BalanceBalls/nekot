@@ -17,6 +17,7 @@ type LocalStoreMessage struct {
 	Content     string       `json:"content"`
 	Resoning    string       `json:"reasoning"`
 	Attachments []Attachment `json:"attachments"`
+	ToolCalls   []ToolCall   `json:"tool_calls"`
 }
 
 type Attachment struct {
@@ -44,7 +45,14 @@ type OpenAiImage struct {
 type Choice struct {
 	Index        int            `json:"index"`
 	Delta        map[string]any `json:"delta"`
+	ToolCalls    []ToolCall     `json:"tool_calls"`
 	FinishReason string         `json:"finish_reason"`
+}
+
+type ToolCall struct {
+	Args   map[string]string `json:"arguments"`
+	Name   string            `json:"name"`
+	Result *string           `json:"result"`
 }
 
 type CompletionChunk struct {
@@ -92,3 +100,14 @@ type ProcessModelsResponse struct {
 	Err    error
 	Final  bool
 }
+
+type ProcessingState int
+
+const (
+	Idle ProcessingState = iota
+	ProcessingChunks
+	AwaitingToolCallResult
+	AwaitingFinalization
+	Finalized
+	Error
+)

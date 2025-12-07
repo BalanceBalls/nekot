@@ -185,7 +185,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.promptPane, cmd = m.promptPane.Update(msg)
 	cmds = append(cmds, cmd)
 
-	if m.sessionOrchestrator.ResponseProcessingState == sessions.Idle {
+	if m.sessionOrchestrator.ResponseProcessingState == util.Idle {
 		m.sessionsPane, cmd = m.sessionsPane.Update(msg)
 		cmds = append(cmds, cmd)
 		m.settingsPane, cmd = m.settingsPane.Update(msg)
@@ -195,10 +195,10 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case util.ErrorEvent:
-		m.sessionOrchestrator.ResponseProcessingState = sessions.Idle
+		m.sessionOrchestrator.ResponseProcessingState = util.Idle
 		m.error = msg
 		m.viewReady = true
-		cmds = append(cmds, util.SendProcessingStateChangedMsg(false))
+		cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
 
 	case checkDimensionsMsg:
 		if runtime.GOOS == "windows" {
@@ -229,6 +229,27 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.viewReady && m.flags.StartNewSession {
 			cmds = append(cmds, util.AddNewSession(false))
 		}
+
+	case sessions.ToolCallComplete:
+		util.Slog.Debug("tool completion call received", "data", msg)
+		if m.sessionOrchestrator.ResponseProcessingState != util.AwaitingToolCallResult {
+			return m, util.MakeErrorMsg("did not expect a tool call result")
+		}
+
+		lastTurn := m.sessionOrchestrator.ArrayOfMessages[len(m.sessionOrchestrator.ArrayOfMessages)-1]
+
+		if len(lastTurn.ToolCalls) > 0 {
+			lastTurn.ToolCalls[0].Result = &msg.Result
+			m.sessionOrchestrator.ArrayOfMessages[len(m.sessionOrchestrator.ArrayOfMessages)-1] = lastTurn
+
+		}
+
+		completionContext, cancelInference := context.WithCancel(m.context)
+		m.completionContext = completionContext
+		m.cancelInference = cancelInference
+
+		cmds = append(cmds, m.chatPane.DisplayCompletion(m.completionContext, m.sessionOrchestrator))
+		return m, tea.Batch(cmds...)
 
 	case util.PromptReady:
 		m.error = util.ErrorEvent{}
@@ -269,7 +290,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.completionContext = completionContext
 		m.cancelInference = cancelInference
 		return m, tea.Batch(
-			util.SendProcessingStateChangedMsg(true),
+			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
 			m.chatPane.DisplayCompletion(m.completionContext, m.sessionOrchestrator),
 			util.SendViewModeChangedMsg(m.viewMode))
 
@@ -297,7 +318,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cancelInference != nil {
 				m.cancelInference()
 				m.cancelInference = nil
-				cmds = append(cmds, util.SendProcessingStateChangedMsg(false))
+				cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
 			}
 
 		case key.Matches(msg, m.keys.zenMode):

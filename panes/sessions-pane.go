@@ -167,7 +167,7 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		}
 
 	case util.ProcessingStateChanged:
-		if !msg.IsProcessing {
+		if !util.IsProcessingActive(msg.State) {
 			session, err := p.sessionService.GetSession(p.currentSessionId)
 			if err != nil {
 				util.MakeErrorMsg(err.Error())

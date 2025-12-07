@@ -18,12 +18,13 @@ type ProcessingResult struct {
 	CompletionTokens          int
 	CurrentResponse           string
 	CurrentResponseDataChunks []util.ProcessApiCompletionResponse
+	ToolCalls                 []util.ToolCall
 	JSONResponse              util.LocalStoreMessage
-	State                     ProcessingState
+	State                     util.ProcessingState
 }
 
 type MessageProcessor struct {
-	CurrentState          ProcessingState
+	CurrentState          util.ProcessingState
 	Settings              util.Settings
 	CurrentResponseBuffer string
 	ResponseDataChunks    []util.ProcessApiCompletionResponse
@@ -37,7 +38,7 @@ var (
 func NewMessageProcessor(
 	chunks []util.ProcessApiCompletionResponse,
 	currentResponse string,
-	processingState ProcessingState,
+	processingState util.ProcessingState,
 	settings util.Settings,
 ) MessageProcessor {
 	return MessageProcessor{
@@ -48,20 +49,11 @@ func NewMessageProcessor(
 	}
 }
 
-type ProcessingState int
-
-const (
-	Idle ProcessingState = iota
-	ProcessingChunks
-	AwaitingFinalization
-	Finalized
-	Error
-)
-
-var stageChangeMap = map[ProcessingState][]ProcessingState{
-	Idle:                 {ProcessingChunks, Error},
-	ProcessingChunks:     {AwaitingFinalization, Finalized, Error},
-	AwaitingFinalization: {Finalized, Error},
+var stageChangeMap = map[util.ProcessingState][]util.ProcessingState{
+	util.Idle:                   {util.ProcessingChunks, util.AwaitingToolCallResult, util.Error},
+	util.ProcessingChunks:       {util.AwaitingFinalization, util.AwaitingToolCallResult, util.Finalized, util.Error},
+	util.AwaitingToolCallResult: {util.ProcessingChunks, util.AwaitingFinalization, util.Error},
+	util.AwaitingFinalization:   {util.Finalized, util.Error},
 }
 
 func (p MessageProcessor) Process(
@@ -90,6 +82,14 @@ func (p MessageProcessor) Process(
 		return result, nil
 	}
 
+	if toolCalls, ok := p.hasToolCalls(chunk); ok {
+		result.ToolCalls = toolCalls
+		result.CurrentResponseDataChunks = append(p.ResponseDataChunks, chunk)
+		result = p.prepareToolCallInterruption(result, chunk)
+		util.Slog.Debug("tool calls detected", "tools", toolCalls)
+		return result, nil
+	}
+
 	result = result.handleTokenStats(chunk)
 
 	if p.isFinalChunk(chunk) {
@@ -104,10 +104,10 @@ func (p MessageProcessor) Process(
 		return result, nil
 	}
 
-	result.State = p.setProcessingState(ProcessingChunks)
+	result.State = p.setProcessingState(util.ProcessingChunks)
 
 	if p.isLastResponseChunk(chunk) {
-		result.State = p.setProcessingState(AwaitingFinalization)
+		result.State = p.setProcessingState(util.AwaitingFinalization)
 	}
 
 	result, bufferErr := result.composeProcessingResult(p, chunk)
@@ -119,8 +119,16 @@ func (p MessageProcessor) Process(
 }
 
 func (p MessageProcessor) finalizeProcessing(result ProcessingResult) ProcessingResult {
-	result.JSONResponse = p.prepareResponseJSONForDB()
-	result.State = p.setProcessingState(Finalized)
+	result.JSONResponse = p.prepareResponseJSONForDB(nil)
+	result.State = p.setProcessingState(util.Finalized)
+	return result
+}
+
+func (p MessageProcessor) prepareToolCallInterruption(
+	result ProcessingResult,
+	chunk util.ProcessApiCompletionResponse) ProcessingResult {
+	result.JSONResponse = p.prepareResponseJSONForDB(&chunk)
+	result.State = p.setProcessingState(util.AwaitingToolCallResult)
 	return result
 }
 
@@ -131,7 +139,7 @@ func (p MessageProcessor) orderChunks() MessageProcessor {
 	return p
 }
 
-func (p MessageProcessor) setProcessingState(newState ProcessingState) ProcessingState {
+func (p MessageProcessor) setProcessingState(newState util.ProcessingState) util.ProcessingState {
 	if p.CurrentState == newState {
 		return newState
 	}
@@ -153,6 +161,19 @@ func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) b
 		return true
 	}
 	return false
+}
+
+func (p MessageProcessor) hasToolCalls(chunk util.ProcessApiCompletionResponse) ([]util.ToolCall, bool) {
+	choice := chunk.Result.Choices[0]
+	if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
+		return []util.ToolCall{}, false
+	}
+
+	if len(choice.ToolCalls) > 0 {
+		return choice.ToolCalls, true
+	}
+
+	return []util.ToolCall{}, false
 }
 
 func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionResponse) bool {
@@ -190,7 +211,7 @@ func (p MessageProcessor) handleErrors(
 		return result, nil
 	}
 
-	result.State = p.setProcessingState(Error)
+	result.State = p.setProcessingState(util.Error)
 	return result, chunk.Err
 }
 
@@ -257,11 +278,15 @@ func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionRespo
 	return false
 }
 
-func (p MessageProcessor) prepareResponseJSONForDB() util.LocalStoreMessage {
+func (p MessageProcessor) prepareResponseJSONForDB(currentChunk *util.ProcessApiCompletionResponse) util.LocalStoreMessage {
 	newMessage := util.LocalStoreMessage{
 		Role:    "assistant",
 		Content: "",
 		Model:   p.Settings.Model}
+
+	if currentChunk != nil {
+		p.ResponseDataChunks = append(p.ResponseDataChunks, *currentChunk)
+	}
 
 	p = p.orderChunks()
 	processed := []util.ProcessApiCompletionResponse{}
@@ -283,6 +308,10 @@ func (p MessageProcessor) prepareResponseJSONForDB() util.LocalStoreMessage {
 
 		if content, ok := getContent(choice.Delta); ok && content != "" {
 			newMessage.Content += content
+		}
+
+		if toolCalls, ok := p.hasToolCalls(responseChunk); ok && len(toolCalls) > 0 {
+			newMessage.ToolCalls = toolCalls
 		}
 	}
 

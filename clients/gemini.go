@@ -21,9 +21,10 @@ import (
 const modelNamePrefix = "models/"
 
 type processedChunk struct {
-	chunk     util.CompletionChunk
-	isFinal   bool
-	citations []string
+	chunk      util.CompletionChunk
+	isFinal    bool
+	isToolCall bool
+	citations  []string
 }
 
 type GeminiClient struct {
@@ -34,6 +35,25 @@ func NewGeminiClient(systemMessage string) *GeminiClient {
 	return &GeminiClient{
 		systemMessage: systemMessage,
 	}
+}
+
+var webSearchTool = &genai.Tool{
+	FunctionDeclarations: []*genai.FunctionDeclaration{
+		{
+			Name:        "web_search",
+			Description: "Perform a web search to retrive up to date info or piece of knowledge you have doubts about.",
+			Parameters: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"query": {
+						Type:        genai.TypeString,
+						Description: "The search query string.",
+					},
+				},
+				Required: []string{"query"},
+			},
+		},
+	},
 }
 
 func (c GeminiClient) RequestCompletion(
@@ -60,18 +80,27 @@ func (c GeminiClient) RequestCompletion(
 		util.Slog.Debug("constructing message", "model", modelSettings.Model)
 
 		model := client.GenerativeModel(modelNamePrefix + modelSettings.Model)
+		model.Tools = []*genai.Tool{webSearchTool}
+
+		util.Slog.Debug("added tools", "tools", model.Tools)
+
 		setParams(model, *config, modelSettings)
 
-		currentPrompt := chatMsgs[len(chatMsgs)-1].Content
+		lastTurn := chatMsgs[len(chatMsgs)-1]
 		cs := model.StartChat()
 		cs.History, err = buildChatHistory(chatMsgs, *config.IncludeReasoningTokensInContext)
 		if err != nil {
 			return util.MakeErrorMsg(err.Error())
 		}
 
-		iter := cs.SendMessageStream(ctx, genai.Text(currentPrompt))
+		iter := cs.SendMessageStream(ctx, genai.Text(lastTurn.Content))
 
 		processResultID := util.ChunkIndexStart
+
+		if len(lastTurn.ToolCalls) > 0 {
+			processResultID += len(lastTurn.ToolCalls)
+		}
+
 		var citations []string
 		for {
 			resp, err := iter.Next()
@@ -114,12 +143,17 @@ func (c GeminiClient) RequestCompletion(
 				Err:    nil,
 			}
 
+			if result.isToolCall {
+				break
+			}
+
 			processResultID++
 			if result.isFinal {
 				if len(citations) > 0 {
 					sendCitationsChunk(resultChan, processResultID, citations)
 					processResultID++
 				}
+
 				sendCompensationChunk(resultChan, processResultID)
 				break
 			}
@@ -269,8 +303,30 @@ func processResponseChunk(response *genai.GenerateContentResponse, id int) (proc
 				}
 			}
 
-			choice.Delta = map[string]any{
-				"content": formatResponsePart(candidate.Content.Parts[0]),
+			toolCalls := candidate.FunctionCalls()
+			if len(toolCalls) > 0 {
+				responseToolCalls := []util.ToolCall{}
+
+				for _, tc := range toolCalls {
+					if tc.Name == webSearchTool.FunctionDeclarations[0].Name {
+						query := tc.Args["query"].(string)
+						responseToolCalls = append(responseToolCalls, util.ToolCall{
+							Args: map[string]string{
+								"query": query,
+							},
+							Name: tc.Name,
+						})
+					}
+				}
+
+				choice.ToolCalls = responseToolCalls
+				result.isToolCall = true
+			}
+
+			if len(toolCalls) == 0 {
+				choice.Delta = map[string]any{
+					"content": formatResponsePart(candidate.Content.Parts[0]),
+				}
 			}
 		} else {
 			choice.Delta = map[string]any{
@@ -318,7 +374,7 @@ func handleFinishReason(reason genai.FinishReason) (string, error) {
 		)
 	case genai.FinishReasonSafety:
 	default:
-		util.Slog.Error(fmt.Sprintf("unexpected genai.FinishReason", "finish reason", reason))
+		util.Slog.Error("unexpected genai.FinishReason", "finish reason", reason)
 		return "", errors.New("GeminiAPI: unsupported finish reason")
 	}
 
@@ -335,6 +391,7 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 		}
 
 		messageContent := ""
+
 		if singleMessage.Resoning != "" && includeReasoning {
 			messageContent += singleMessage.Resoning
 		}
@@ -365,7 +422,26 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 					message.Parts = append(message.Parts, part)
 				}
 			}
+
 			chat = append(chat, &message)
+		}
+
+		if len(singleMessage.ToolCalls) != 0 {
+			for _, tc := range singleMessage.ToolCalls {
+				part := genai.FunctionResponse{
+					Name: tc.Name,
+					Response: map[string]any{
+						"query":  tc.Args["querty"],
+						"result": *tc.Result,
+					}}
+
+				util.Slog.Debug("appending tool call result", "data", part)
+				message := genai.Content{
+					Parts: []genai.Part{part},
+					Role:  role,
+				}
+				chat = append(chat, &message)
+			}
 		}
 
 		util.Slog.Debug("constructed turn", "data", messageContent)

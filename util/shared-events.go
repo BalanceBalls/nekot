@@ -110,12 +110,12 @@ type ModelsLoaded struct {
 }
 
 type ProcessingStateChanged struct {
-	IsProcessing bool
+	State ProcessingState
 }
 
-func SendProcessingStateChangedMsg(isProcessing bool) tea.Cmd {
+func SendProcessingStateChangedMsg(processingState ProcessingState) tea.Cmd {
 	return func() tea.Msg {
-		return ProcessingStateChanged{IsProcessing: isProcessing}
+		return ProcessingStateChanged{State: processingState}
 	}
 }
 
