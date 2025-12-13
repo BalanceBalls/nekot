@@ -5,19 +5,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/BalanceBalls/nekot/clients"
 	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/extensions/websearch"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/user"
 	"github.com/BalanceBalls/nekot/util"
-	"github.com/PuerkitoBio/goquery"
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -293,7 +290,7 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 		for _, tc := range result.ToolCalls {
 			switch tc.Name {
 			case "web_search":
-				cmds = append(cmds, doWebSearch(tc.Args))
+				cmds = append(cmds, doWebSearch(m.mainCtx, tc.Args))
 			}
 		}
 
@@ -309,14 +306,13 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	return nil
 }
 
-func doWebSearch(args map[string]string) tea.Cmd {
+func doWebSearch(ctx context.Context, args map[string]string) tea.Cmd {
 	query := args["query"]
 	toolName := "web_search"
 
 	return func() tea.Msg {
 		util.Slog.Debug("executing a web search for query", "query", query)
-		time.Sleep(time.Second * 2)
-		result, err := performDuckDuckGoSearch(query)
+		result, err := websearch.PrepareContextFromWebSearch(ctx, query)
 		isSuccess := true
 		if err != nil {
 			util.Slog.Error("web search failed", "error", err.Error())
@@ -332,6 +328,7 @@ func doWebSearch(args map[string]string) tea.Cmd {
 
 		if isSuccess {
 			toolCallResult = string(jsonData)
+			util.Slog.Debug("retrieved context from a web search", "data", toolCallResult)
 		}
 		return ToolCallComplete{
 			IsSuccess: isSuccess,
@@ -339,78 +336,6 @@ func doWebSearch(args map[string]string) tea.Cmd {
 			Result:    toolCallResult,
 		}
 	}
-}
-
-type WebSearchResult struct {
-	Title   string `json:"title"`
-	Snippet string `json:"snippet"`
-	Link    string `json:"link"`
-}
-
-func performDuckDuckGoSearch(query string) ([]WebSearchResult, error) {
-	baseURL := "https://html.duckduckgo.com/html/?"
-	params := url.Values{}
-	params.Add("q", query)
-	requestURL := baseURL + params.Encode()
-
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", requestURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)AppleWebKit/537.36(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
-	}
-
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var results []WebSearchResult
-
-	doc.Find(".result.results_links.results_links_deep.web-result").
-		EachWithBreak(func(i int, s *goquery.Selection) bool {
-			if i >= 5 {
-				return false
-			}
-
-			title := strings.TrimSpace(s.Find("h2.result__title a.result__a").Text())
-			linkHref, _ := s.Find("h2.result__title a.result__a").Attr("href")
-			link := ""
-			if strings.Contains(linkHref, "/l/?uddg=") {
-				unescapedURL, err := url.Parse(linkHref)
-				if err == nil {
-					link = unescapedURL.Query().Get("uddg")
-				} else {
-					link = linkHref
-				}
-
-			} else {
-				link = linkHref
-			}
-
-			snippet := strings.TrimSpace(s.Find("a.result__snippet").Text())
-
-			if title != "" && link != "" {
-				results = append(results, WebSearchResult{
-					Title:   title,
-					Snippet: snippet,
-					Link:    link,
-				})
-			}
-			return true
-		})
-
-	return results, nil
 }
 
 func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage, isToolCall bool) tea.Cmd {

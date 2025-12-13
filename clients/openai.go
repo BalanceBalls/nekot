@@ -315,7 +315,7 @@ func (c OpenAiClient) processCompletionResponse(
 		if after, ok := strings.CutPrefix(line, "data:"); ok {
 			jsonStr := after
 			resultChan <- processChunk(jsonStr, *processResultID)
-			*processResultID++ // Increment the ID for each processed chunk
+			*processResultID++
 		}
 	}
 }

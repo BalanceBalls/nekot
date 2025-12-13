@@ -1,6 +1,9 @@
 package util
 
-import "slices"
+import (
+	"slices"
+	"sort"
+)
 
 func RemoveDuplicates[T comparable](slice []T) []T {
 	if len(slice) == 0 {
@@ -18,6 +21,12 @@ func RemoveDuplicates[T comparable](slice []T) []T {
 	}
 
 	return result
+}
+
+func SortByNumberDesc[T any, V int | int64 | float64](slice []T, keyFunc func(T) V) {
+	sort.Slice(slice, func(i, j int) bool {
+		return keyFunc(slice[i]) > keyFunc(slice[j])
+	})
 }
 
 func IsProcessingActive(state ProcessingState) bool {

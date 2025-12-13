@@ -40,17 +40,18 @@ const (
 )
 
 type settingsKeyMap struct {
-	editTemp      key.Binding
-	editFrequency key.Binding
-	editTopP      key.Binding
-	editSysPrompt key.Binding
-	editMaxTokens key.Binding
-	changeModel   key.Binding
-	reset         key.Binding
-	savePreset    key.Binding
-	presetsMenu   key.Binding
-	goBack        key.Binding
-	choose        key.Binding
+	editTemp        key.Binding
+	editFrequency   key.Binding
+	editTopP        key.Binding
+	editSysPrompt   key.Binding
+	editMaxTokens   key.Binding
+	changeModel     key.Binding
+	reset           key.Binding
+	savePreset      key.Binding
+	presetsMenu     key.Binding
+	goBack          key.Binding
+	choose          key.Binding
+	enableWebSearch key.Binding
 }
 
 var defaultSettingsKeyMap = settingsKeyMap{
@@ -77,6 +78,10 @@ var defaultSettingsKeyMap = settingsKeyMap{
 		key.WithHelp("esc, [", "go back"),
 	),
 	choose: key.NewBinding(key.WithKeys(tea.KeyEnter.String())),
+	enableWebSearch: key.NewBinding(
+		key.WithKeys("ctrl+w"),
+		key.WithHelp("ctrl+w", "toggle web search"),
+	),
 }
 
 type SettingsPane struct {
@@ -273,6 +278,12 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 	case tea.KeyMsg:
 		if p.initMode {
 			break
+		}
+
+		if key.Matches(msg, p.keyMap.enableWebSearch) {
+			p.settings.WebSearchEnabled = !p.settings.WebSearchEnabled
+			updatedSettings, err := p.settingsService.UpdateSettings(p.settings)
+			return p, settings.MakeSettingsUpdateMsg(updatedSettings, err)
 		}
 
 		if p.isFocused {

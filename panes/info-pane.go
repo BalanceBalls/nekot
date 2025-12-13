@@ -8,6 +8,7 @@ import (
 
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/sessions"
+	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,10 +37,11 @@ var defaultLabelStyle = lipgloss.NewStyle().
 	PaddingLeft(1)
 
 type InfoPane struct {
-	sessionService *sessions.SessionService
-	currentSession sessions.Session
-	colors         util.SchemeColors
-	spinner        spinner.Model
+	sessionService  *sessions.SessionService
+	currentSession  sessions.Session
+	currentSettings util.Settings
+	colors          util.SchemeColors
+	spinner         spinner.Model
 
 	processingIdleLabel   lipgloss.Style
 	processingActiveLabel lipgloss.Style
@@ -165,6 +167,10 @@ func (p InfoPane) Update(msg tea.Msg) (InfoPane, tea.Cmd) {
 		} else {
 			cmds = append(cmds, p.spinner.Tick)
 		}
+
+	case settings.UpdateSettingsEvent:
+		p.currentSettings = msg.Settings
+
 	}
 
 	return p, tea.Batch(cmds...)
@@ -191,13 +197,18 @@ func (p InfoPane) View() string {
 		quickChatLabel = p.quickChatLabel.Render("Q")
 	}
 
+	webSearchLabel := ""
+	if p.currentSettings.WebSearchEnabled {
+		webSearchLabel = p.webSearchLabel.Render("W")
+	}
+
 	firstRow := processingLabel
 	secondRow := lipgloss.JoinHorizontal(
 		lipgloss.Left,
 		promptTokensLablel,
 		completionTokensLabel,
 		quickChatLabel,
-		p.webSearchLabel.Render("W"),
+		webSearchLabel,
 	)
 
 	if p.showNotification {

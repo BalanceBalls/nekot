@@ -46,7 +46,8 @@ func (ss *SettingsService) GetPreset(id int) (util.Settings, error) {
 			system_msg,
 			top_p,
 			temperature,
-			preset_name
+			preset_name,
+			web_search_enabled
 		from settings where settings_id=$1`,
 		id,
 	)
@@ -59,6 +60,7 @@ func (ss *SettingsService) GetPreset(id int) (util.Settings, error) {
 		&settings.TopP,
 		&settings.Temperature,
 		&settings.PresetName,
+		&settings.WebSearchEnabled,
 	)
 
 	if err != nil {
@@ -79,7 +81,8 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 			system_msg,
 			top_p,
 			temperature,
-			preset_name
+			preset_name,
+			web_search_enabled
 		from settings where settings_id=$1`,
 		id,
 	)
@@ -92,6 +95,7 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 		&settings.TopP,
 		&settings.Temperature,
 		&settings.PresetName,
+		&settings.WebSearchEnabled,
 	)
 
 	availableModels, modelsError := ss.GetProviderModels(ctx, cfg.Provider, cfg.ProviderBaseUrl)
@@ -257,7 +261,8 @@ func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 			system_msg,
 			top_p,
 			temperature,
-			preset_name
+			preset_name,
+			web_search_enabled
 		from settings`,
 	)
 
@@ -276,6 +281,7 @@ func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 			&preset.TopP,
 			&preset.Temperature,
 			&preset.PresetName,
+			&preset.WebSearchEnabled,
 		)
 		presets = append(presets, preset)
 	}
@@ -286,14 +292,15 @@ func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 
 func (ss *SettingsService) ResetToDefault(current util.Settings) (util.Settings, error) {
 	defaultSettings := util.Settings{
-		ID:           current.ID,
-		Model:        current.Model,
-		MaxTokens:    defaultMaxTokens,
-		Frequency:    nil,
-		SystemPrompt: current.SystemPrompt,
-		TopP:         nil,
-		Temperature:  nil,
-		PresetName:   current.PresetName,
+		ID:               current.ID,
+		Model:            current.Model,
+		MaxTokens:        defaultMaxTokens,
+		Frequency:        nil,
+		SystemPrompt:     current.SystemPrompt,
+		TopP:             nil,
+		Temperature:      nil,
+		PresetName:       current.PresetName,
+		WebSearchEnabled: false,
 	}
 
 	_, err := ss.UpdateSettings(defaultSettings)
@@ -308,9 +315,9 @@ func (ss *SettingsService) ResetToDefault(current util.Settings) (util.Settings,
 func (ss *SettingsService) SavePreset(newSettings util.Settings) (int, error) {
 	upsert := `
 		INSERT INTO settings
-			(settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name)
+			(settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name, web_search_enabled)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7)
+			($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING settings_id
 	`
 
@@ -323,6 +330,7 @@ func (ss *SettingsService) SavePreset(newSettings util.Settings) (int, error) {
 		newSettings.TopP,
 		newSettings.SystemPrompt,
 		newSettings.PresetName,
+		newSettings.WebSearchEnabled,
 	)
 
 	errId := -999999
@@ -354,9 +362,9 @@ func (ss *SettingsService) RemovePreset(id int) error {
 func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Settings, error) {
 	upsert := `
 		INSERT INTO settings
-			(settings_id, settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name)
+			(settings_id, settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name, web_search_enabled)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7, $8)
+			($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT(settings_id) DO UPDATE SET
 			settings_model=$2,
 			settings_max_tokens=$3,
@@ -364,7 +372,8 @@ func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Setti
 			temperature=$5,
 			top_p=$6,
 			system_msg=$7,
-			preset_name=$8;
+			preset_name=$8,
+			web_search_enabled=$9;
 	`
 
 	_, err := ss.DB.Exec(
@@ -377,6 +386,7 @@ func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Setti
 		newSettings.TopP,
 		newSettings.SystemPrompt,
 		newSettings.PresetName,
+		newSettings.WebSearchEnabled,
 	)
 	if err != nil {
 		return newSettings, err

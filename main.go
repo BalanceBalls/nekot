@@ -101,8 +101,13 @@ func main() {
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
+
 	_, err = p.Run()
 	if err != nil {
+		if err == tea.ErrProgramPanic {
+			fmt.Fprintf(os.Stderr, "Program panicked: %v\n", err)
+			os.Exit(1)
+		}
 		log.Fatal(err)
 	}
 }

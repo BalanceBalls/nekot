@@ -1,14 +1,15 @@
 package util
 
 type Settings struct {
-	ID           int
-	Model        string
-	MaxTokens    int
-	Frequency    *float32
-	SystemPrompt *string
-	TopP         *float32
-	Temperature  *float32
-	PresetName   string
+	ID               int
+	Model            string
+	MaxTokens        int
+	Frequency        *float32
+	SystemPrompt     *string
+	TopP             *float32
+	Temperature      *float32
+	PresetName       string
+	WebSearchEnabled bool
 }
 
 type LocalStoreMessage struct {

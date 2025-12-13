@@ -236,12 +236,16 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, util.MakeErrorMsg("did not expect a tool call result")
 		}
 
-		lastTurn := m.sessionOrchestrator.ArrayOfMessages[len(m.sessionOrchestrator.ArrayOfMessages)-1]
+		lastIdx := len(m.sessionOrchestrator.ArrayOfMessages) - 1
+		lastTurn := m.sessionOrchestrator.ArrayOfMessages[lastIdx]
 
 		if len(lastTurn.ToolCalls) > 0 {
-			lastTurn.ToolCalls[0].Result = &msg.Result
-			m.sessionOrchestrator.ArrayOfMessages[len(m.sessionOrchestrator.ArrayOfMessages)-1] = lastTurn
-
+			for i, tc := range lastTurn.ToolCalls {
+				if tc.Name == msg.Name {
+					lastTurn.ToolCalls[i].Result = &msg.Result
+					m.sessionOrchestrator.ArrayOfMessages[lastIdx] = lastTurn
+				}
+			}
 		}
 
 		completionContext, cancelInference := context.WithCancel(m.context)

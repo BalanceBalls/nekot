@@ -47,7 +47,7 @@ var webSearchTool = &genai.Tool{
 				Properties: map[string]*genai.Schema{
 					"query": {
 						Type:        genai.TypeString,
-						Description: "The search query string.",
+						Description: "The search query string. Should be very specific and moderately detailed for accurate retrieval.",
 					},
 				},
 				Required: []string{"query"},
@@ -97,6 +97,7 @@ func (c GeminiClient) RequestCompletion(
 
 		processResultID := util.ChunkIndexStart
 
+		// TODO: FIX THIS
 		if len(lastTurn.ToolCalls) > 0 {
 			processResultID += len(lastTurn.ToolCalls)
 		}
