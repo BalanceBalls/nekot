@@ -173,7 +173,7 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		m.settingsReady = true
 
 	case util.ProcessApiCompletionResponse:
-		// util.Slog.Debug("response chunk recieved", "data", msg)
+		util.Slog.Debug("response chunk recieved", "data", msg)
 		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
 		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
 	}
@@ -250,10 +250,10 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 ) tea.Cmd {
 
 	m.mu.Lock()
-	util.Slog.Debug("processing state before new chunk",
-		"state", m.ResponseProcessingState,
-		"chunks ready", len(m.ArrayOfProcessResult),
-		"data", msg)
+	// util.Slog.Debug("processing state before new chunk",
+	// 	"state", m.ResponseProcessingState,
+	// 	"chunks ready", len(m.ArrayOfProcessResult),
+	// 	"data", msg)
 
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
 	result, err := p.Process(msg)

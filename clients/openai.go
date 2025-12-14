@@ -287,6 +287,8 @@ func (c OpenAiClient) processCompletionResponse(
 		return
 	}
 
+	chunksBuffer := []util.ProcessApiCompletionResponse{}
+	// TODO: play with buffer size
 	scanner := bufio.NewReader(resp.Body)
 	for {
 		line, err := scanner.ReadString('\n')
@@ -308,16 +310,105 @@ func (c OpenAiClient) processCompletionResponse(
 
 		if line == "data: [DONE]\n" {
 			util.Slog.Info("OpenAI: Received [DONE]")
-			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: nil, Final: true}
+
+			if len(chunksBuffer) > 0 {
+				resultChan <- mergeResponse(chunksBuffer)
+			}
+
+			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Result: util.CompletionChunk{
+				Choices: []util.Choice{
+					{},
+				},
+			}, Err: nil, Final: true}
 			return
 		}
 
 		if after, ok := strings.CutPrefix(line, "data:"); ok {
-			jsonStr := after
-			resultChan <- processChunk(jsonStr, *processResultID)
+
+			chunksBuffer = append(chunksBuffer, processChunk(after, *processResultID))
 			*processResultID++
+
+			if len(chunksBuffer) > 5 {
+				resultChan <- mergeResponse(chunksBuffer)
+				chunksBuffer = []util.ProcessApiCompletionResponse{}
+			}
 		}
 	}
+}
+
+func mergeResponse(chunks []util.ProcessApiCompletionResponse) util.ProcessApiCompletionResponse {
+	merged := util.ProcessApiCompletionResponse{
+		ID:     chunks[0].ID,
+		Result: util.CompletionChunk{},
+		Err:    nil,
+		Final:  false,
+	}
+
+	contentBuffer := ""
+	reasoningBuffer := ""
+	reasoningContentBuffer := ""
+
+	choiceIdx := 0
+
+	mergedChoice := util.Choice{
+		Index:        choiceIdx,
+		Delta:        map[string]any{},
+		FinishReason: "",
+	}
+
+	if len(chunks) == 0 {
+		merged.Result.Choices = []util.Choice{mergedChoice}
+		return merged
+	}
+
+	for _, chunk := range chunks {
+		if chunk.Final {
+			merged.Final = true
+		}
+
+		if chunk.Err != nil {
+			merged.Err = chunk.Err
+		}
+
+		if len(chunk.Result.Choices) > 0 {
+
+			choiceIdx = chunk.Result.Choices[0].Index
+
+			if chunk.Result.Choices[0].FinishReason != "" {
+				mergedChoice.FinishReason = chunk.Result.Choices[0].FinishReason
+			}
+
+			util.Slog.Debug("merger data", "choices", chunk.Result.Choices)
+			if content, ok := chunk.Result.Choices[0].Delta["content"]; ok && content != nil {
+				contentBuffer += content.(string)
+			}
+
+			if reasoning, ok := chunk.Result.Choices[0].Delta["reasoning"]; ok && reasoning != nil {
+				reasoningBuffer += reasoning.(string)
+			}
+
+			if reasoningContent, ok := chunk.Result.Choices[0].Delta["reasoning_content"]; ok && reasoningContent != nil {
+				reasoningContentBuffer += reasoningContent.(string)
+			}
+		}
+	}
+
+	if len(contentBuffer) > 0 {
+		mergedChoice.Delta["content"] = contentBuffer
+	}
+
+	if len(reasoningBuffer) > 0 {
+		mergedChoice.Delta["reasoning"] = reasoningBuffer
+	}
+
+	if len(reasoningContentBuffer) > 0 {
+		mergedChoice.Delta["reasoning_content"] = reasoningContentBuffer
+	}
+
+	util.Slog.Debug("merge successful", "choice", mergedChoice)
+
+	merged.Result.Choices = []util.Choice{mergedChoice}
+	return merged
 }
 
 func processChunk(chunkData string, id int) util.ProcessApiCompletionResponse {
