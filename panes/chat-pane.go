@@ -56,6 +56,7 @@ type ChatPane struct {
 	msgChan                chan util.ProcessApiCompletionResponse
 	viewMode               util.ViewMode
 	sessionContent         []util.LocalStoreMessage
+	renderedHistory        string
 
 	terminalWidth  int
 	terminalHeight int
@@ -109,6 +110,7 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 		chatView:               chatView,
 		chatViewReady:          false,
 		chatContent:            defaultChatContent,
+		renderedHistory:        defaultChatContent,
 		isChatContainerFocused: false,
 		msgChan:                msgChan,
 		terminalWidth:          util.DefaultTerminalWidth,
@@ -166,7 +168,12 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	case sessions.ResponseChunkProcessed:
 		paneWidth := p.chatContainer.GetWidth()
 
-		oldContent := util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
+		if len(p.sessionContent) != len(msg.PreviousMsgArray) {
+			p.renderedHistory = util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
+			p.sessionContent = msg.PreviousMsgArray
+		}
+
+		oldContent := p.renderedHistory
 		styledBufferMessage := util.RenderBotMessage(util.LocalStoreMessage{
 			Content: msg.ChunkMessage,
 			Role:    "assistant",
@@ -354,6 +361,7 @@ func (p ChatPane) displayManual() ChatPane {
 	p.chatView.SetContent(manual)
 	p.chatView.GotoTop()
 	p.sessionContent = []util.LocalStoreMessage{}
+	p.renderedHistory = manual
 	return p
 }
 
@@ -368,6 +376,7 @@ func (p ChatPane) displaySession(
 		p.chatView.GotoBottom()
 	}
 	p.sessionContent = messages
+	p.renderedHistory = oldContent
 	return p
 }
 
