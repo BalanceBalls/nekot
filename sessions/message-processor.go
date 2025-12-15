@@ -1,13 +1,13 @@
 package sessions
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/util"
-	"golang.org/x/net/context"
 )
 
 type ProcessingResult struct {
@@ -164,6 +164,7 @@ func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) b
 }
 
 func (p MessageProcessor) hasToolCalls(chunk util.ProcessApiCompletionResponse) ([]util.ToolCall, bool) {
+	return []util.ToolCall{}, false
 	choice := chunk.Result.Choices[0]
 	if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
 		return []util.ToolCall{}, false
@@ -228,24 +229,21 @@ func (r ProcessingResult) composeProcessingResult(
 	newChunk util.ProcessApiCompletionResponse,
 ) (ProcessingResult, error) {
 
-	updatedResponseBuffer := ""
-
+	updatedResponseBuffer := p.CurrentResponseBuffer
 	p.ResponseDataChunks = append(p.ResponseDataChunks, newChunk)
-	p = p.orderChunks()
 
-	for _, chunk := range p.ResponseDataChunks {
-		if p.shouldSkipProcessing(chunk) {
-			continue
-		}
+	if p.shouldSkipProcessing(newChunk) {
+		r.CurrentResponse = updatedResponseBuffer
+		r.CurrentResponseDataChunks = p.ResponseDataChunks
+		return r, nil
+	}
 
-		if reasoning, ok := p.getChunkReasoningData(chunk, p.ResponseDataChunks); ok {
-			updatedResponseBuffer = updatedResponseBuffer + reasoning
-			continue
-		}
+	if reasoning, ok := p.getChunkReasoningData(newChunk, p.ResponseDataChunks); ok {
+		updatedResponseBuffer = updatedResponseBuffer + reasoning
+	}
 
-		if choiceString, ok := getContent(chunk.Result.Choices[0].Delta); ok {
-			updatedResponseBuffer = updatedResponseBuffer + choiceString
-		}
+	if choiceString, ok := getContent(newChunk.Result.Choices[0].Delta); ok {
+		updatedResponseBuffer = updatedResponseBuffer + choiceString
 	}
 
 	r.CurrentResponse = updatedResponseBuffer
@@ -259,6 +257,10 @@ func (p MessageProcessor) isFinalChunk(msg util.ProcessApiCompletionResponse) bo
 
 func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionResponse) bool {
 	choice := msg.Result.Choices[0]
+	if _, ok := getReasoningContent(choice.Delta); ok {
+		return false
+	}
+
 	if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
 		return false
 	}

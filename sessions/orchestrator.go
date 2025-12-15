@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -250,10 +249,10 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 ) tea.Cmd {
 
 	m.mu.Lock()
-	util.Slog.Debug("processing state before new chunk",
-		"state", m.ResponseProcessingState,
-		"chunks ready", len(m.ArrayOfProcessResult),
-		"data", msg)
+	// util.Slog.Debug("processing state before new chunk",
+	// 	"state", m.ResponseProcessingState,
+	// 	"chunks ready", len(m.ArrayOfProcessResult),
+	// 	"data", msg)
 
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
 	result, err := p.Process(msg)
@@ -382,10 +381,6 @@ func (m *Orchestrator) appendAndOrderProcessResults(processingResult ProcessingR
 	m.ResponseBuffer = processingResult.CurrentResponse
 	m.ArrayOfProcessResult = processingResult.CurrentResponseDataChunks
 	m.ResponseProcessingState = processingResult.State
-
-	sort.SliceStable(m.ArrayOfProcessResult, func(i, j int) bool {
-		return m.ArrayOfProcessResult[i].ID < m.ArrayOfProcessResult[j].ID
-	})
 }
 
 func (m *Orchestrator) resetStateAndCreateError(errMsg string) tea.Cmd {

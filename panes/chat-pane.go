@@ -3,6 +3,8 @@ package panes
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
@@ -47,6 +49,15 @@ var defaultChatPaneKeyMap = chatPaneKeyMap{
 	),
 }
 
+const pulsarIntervalMs = 300
+
+type renderContentMsg int
+
+func renderingPulsar() tea.Msg {
+	time.Sleep(time.Millisecond * pulsarIntervalMs)
+	return renderContentMsg(1)
+}
+
 type ChatPane struct {
 	isChatPaneReady        bool
 	chatViewReady          bool
@@ -56,7 +67,12 @@ type ChatPane struct {
 	msgChan                chan util.ProcessApiCompletionResponse
 	viewMode               util.ViewMode
 	sessionContent         []util.LocalStoreMessage
+	chunksBuffer           []string
+	responseBuffer         string
 	renderedHistory        string
+	isRendering            bool
+	idleCyclesCount        int
+	mu                     *sync.RWMutex
 
 	terminalWidth  int
 	terminalHeight int
@@ -80,6 +96,7 @@ var infoBarStyle = lipgloss.NewStyle().
 
 func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	chatView := viewport.New(w, h)
+	chatView.HighPerformanceRendering = true
 	msgChan := make(chan util.ProcessApiCompletionResponse)
 
 	config, ok := config.FromContext(ctx)
@@ -116,6 +133,8 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 		terminalWidth:          util.DefaultTerminalWidth,
 		terminalHeight:         util.DefaultTerminalHeight,
 		displayMode:            normalMode,
+		chunksBuffer:           []string{},
+		mu:                     &sync.RWMutex{},
 	}
 }
 
@@ -165,29 +184,71 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	case sessions.UpdateCurrentSession:
 		return p.initializePane(msg.Session)
 
-	case sessions.ResponseChunkProcessed:
-		paneWidth := p.chatContainer.GetWidth()
-
-		if len(p.sessionContent) != len(msg.PreviousMsgArray) {
-			p.renderedHistory = util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
-			p.sessionContent = msg.PreviousMsgArray
+	case renderContentMsg:
+		if !p.isRendering {
+			break
 		}
 
-		oldContent := p.renderedHistory
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		if len(p.chunksBuffer) == 0 {
+			p.idleCyclesCount++
+
+			if p.idleCyclesCount > 3 {
+				p.isRendering = false
+				p.idleCyclesCount = 0
+				p.responseBuffer = ""
+				p.chunksBuffer = []string{}
+				return p, nil
+			}
+
+			return p, renderingPulsar
+		}
+
+		paneWidth := p.chatContainer.GetWidth()
+
+		newContent := p.chunksBuffer[len(p.chunksBuffer)-1] //strings.Join(p.chunksBuffer, "")
 		styledBufferMessage := util.RenderBotMessage(util.LocalStoreMessage{
-			Content: msg.ChunkMessage,
+			Content: newContent,
 			Role:    "assistant",
 		}, paneWidth, p.colors, false)
+
+		p.responseBuffer += styledBufferMessage
+		p.chunksBuffer = []string{}
 
 		if styledBufferMessage != "" {
 			styledBufferMessage = "\n" + styledBufferMessage
 		}
 
-		rendered := oldContent + styledBufferMessage
-		p.chatView.SetContent(rendered)
+		// renderResult := p.renderedHistory + p.responseBuffer
+
+		p.chatView.SetContent(styledBufferMessage)
 		p.chatView.GotoBottom()
 
+		return p, renderingPulsar
+
+	case sessions.ResponseChunkProcessed:
+
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		if len(p.sessionContent) != len(msg.PreviousMsgArray) {
+			paneWidth := p.chatContainer.GetWidth()
+			p.renderedHistory = util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
+			p.sessionContent = msg.PreviousMsgArray
+			util.Slog.Debug("len(p.sessionContent) != len(msg.PreviousMsgArray)", "new length", len(msg.PreviousMsgArray))
+		}
+
+		p.chunksBuffer = append(p.chunksBuffer, msg.ChunkMessage)
+
+		if !p.isRendering {
+			p.isRendering = true
+			cmds = append(cmds, renderingPulsar)
+		}
 		cmds = append(cmds, waitForActivity(p.msgChan))
+
+		return p, tea.Batch(cmds...)
 
 	case tea.WindowSizeMsg:
 		p = p.handleWindowResize(msg.Width, msg.Height)
@@ -377,6 +438,8 @@ func (p ChatPane) displaySession(
 	}
 	p.sessionContent = messages
 	p.renderedHistory = oldContent
+	p.chunksBuffer = []string{}
+	p.responseBuffer = ""
 	return p
 }
 
