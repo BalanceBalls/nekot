@@ -49,7 +49,7 @@ var defaultChatPaneKeyMap = chatPaneKeyMap{
 	),
 }
 
-const pulsarIntervalMs = 300
+const pulsarIntervalMs = 100
 
 type renderContentMsg int
 
@@ -68,7 +68,6 @@ type ChatPane struct {
 	viewMode               util.ViewMode
 	sessionContent         []util.LocalStoreMessage
 	chunksBuffer           []string
-	responseBuffer         string
 	renderedHistory        string
 	isRendering            bool
 	idleCyclesCount        int
@@ -198,7 +197,6 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			if p.idleCyclesCount > 3 {
 				p.isRendering = false
 				p.idleCyclesCount = 0
-				p.responseBuffer = ""
 				p.chunksBuffer = []string{}
 				return p, nil
 			}
@@ -214,14 +212,11 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			Role:    "assistant",
 		}, paneWidth, p.colors, false)
 
-		p.responseBuffer += styledBufferMessage
 		p.chunksBuffer = []string{}
 
 		if styledBufferMessage != "" {
 			styledBufferMessage = "\n" + styledBufferMessage
 		}
-
-		// renderResult := p.renderedHistory + p.responseBuffer
 
 		p.chatView.SetContent(styledBufferMessage)
 		p.chatView.GotoBottom()
@@ -439,7 +434,6 @@ func (p ChatPane) displaySession(
 	p.sessionContent = messages
 	p.renderedHistory = oldContent
 	p.chunksBuffer = []string{}
-	p.responseBuffer = ""
 	return p
 }
 
