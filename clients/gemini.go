@@ -80,7 +80,10 @@ func (c GeminiClient) RequestCompletion(
 		util.Slog.Debug("constructing message", "model", modelSettings.Model)
 
 		model := client.GenerativeModel(modelNamePrefix + modelSettings.Model)
-		model.Tools = []*genai.Tool{webSearchTool}
+
+		if modelSettings.WebSearchEnabled {
+			model.Tools = []*genai.Tool{webSearchTool}
+		}
 
 		util.Slog.Debug("added tools", "tools", model.Tools)
 

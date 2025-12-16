@@ -164,7 +164,11 @@ func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) b
 }
 
 func (p MessageProcessor) hasToolCalls(chunk util.ProcessApiCompletionResponse) ([]util.ToolCall, bool) {
-	return []util.ToolCall{}, false
+
+	if len(chunk.Result.Choices) == 0 {
+		return []util.ToolCall{}, false
+	}
+
 	choice := chunk.Result.Choices[0]
 	if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
 		return []util.ToolCall{}, false

@@ -8,12 +8,11 @@ import (
 	"os"
 	"path/filepath"
 
-	tea "github.com/charmbracelet/bubbletea"
-
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/migrations"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/BalanceBalls/nekot/views"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
 )
 
