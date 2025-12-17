@@ -187,6 +187,26 @@ func RenderBotMessage(
 		Render(output)
 }
 
+func RenderBotChunk(
+	chunk string,
+	width int,
+	colors SchemeColors) string {
+
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width-WordWrapDelta),
+		colors.RendererThemeOption,
+	)
+	userMsg, _ := renderer.Render(chunk)
+	output := strings.TrimSpace(userMsg)
+	return lipgloss.NewStyle().
+		BorderLeft(true).
+		BorderStyle(lipgloss.InnerHalfBlockBorder()).
+		BorderLeftForeground(colors.ActiveTabBorderColor).
+		Width(width - 1).
+		Render(output)
+}
+
 func GetQuickChatDisclaimer(w int, colors SchemeColors) string {
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),

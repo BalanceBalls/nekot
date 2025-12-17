@@ -49,7 +49,7 @@ var defaultChatPaneKeyMap = chatPaneKeyMap{
 	),
 }
 
-const pulsarIntervalMs = 100
+const pulsarIntervalMs = 50
 
 type renderContentMsg int
 
@@ -68,6 +68,8 @@ type ChatPane struct {
 	viewMode               util.ViewMode
 	sessionContent         []util.LocalStoreMessage
 	chunksBuffer           []string
+	responseBuffer         string
+	renderedResponseBuffer string
 	renderedHistory        string
 	isRendering            bool
 	idleCyclesCount        int
@@ -205,14 +207,23 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		}
 
 		paneWidth := p.chatContainer.GetWidth()
+		newContent := p.chunksBuffer[len(p.chunksBuffer)-1]
 
-		newContent := p.chunksBuffer[len(p.chunksBuffer)-1] //strings.Join(p.chunksBuffer, "")
 		styledBufferMessage := util.RenderBotMessage(util.LocalStoreMessage{
-			Content: newContent,
+			Content: p.responseBuffer,
 			Role:    "assistant",
 		}, paneWidth, p.colors, false)
 
 		p.chunksBuffer = []string{}
+
+		diff := GetChangeDiff(p.responseBuffer, newContent)
+		p.responseBuffer += diff
+
+		renderedChunk := util.RenderBotChunk(diff, paneWidth, p.colors)
+		p.renderedResponseBuffer += renderedChunk
+
+		p.chatView.SetContent(p.renderedResponseBuffer)
+		p.chatView.GotoBottom()
 
 		if styledBufferMessage != "" {
 			styledBufferMessage = "\n" + styledBufferMessage
@@ -307,6 +318,16 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	}
 
 	return p, tea.Batch(cmds...)
+}
+
+func GetChangeDiff(oldStr, newStr string) string {
+	i := 0
+
+	for i < len(oldStr) && i < len(newStr) && oldStr[i] == newStr[i] {
+		i++
+	}
+
+	return newStr[i:]
 }
 
 func (p ChatPane) IsSelectionMode() bool {
@@ -434,6 +455,8 @@ func (p ChatPane) displaySession(
 	p.sessionContent = messages
 	p.renderedHistory = oldContent
 	p.chunksBuffer = []string{}
+	p.responseBuffer = ""
+	p.renderedResponseBuffer = ""
 	return p
 }
 
