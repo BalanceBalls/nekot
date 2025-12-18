@@ -241,6 +241,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		lastIdx := len(m.sessionOrchestrator.ArrayOfMessages) - 1
 		lastTurn := m.sessionOrchestrator.ArrayOfMessages[lastIdx]
 
+		// TODO: optimize saving tool call results (currently saves both to tool call request and response messages)
 		if len(lastTurn.ToolCalls) > 0 {
 			for i, tc := range lastTurn.ToolCalls {
 				if tc.Name == msg.Name {

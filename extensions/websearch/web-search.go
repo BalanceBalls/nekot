@@ -146,7 +146,7 @@ func getWebPageData(
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
 	}
 
-	rawChunks, err := splitMarkdownString(markdown, 800, 100)
+	rawChunks, err := splitMarkdownString(markdown, 1500, 100)
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
 	}
@@ -177,6 +177,8 @@ func performDuckDuckGoSearch(ctx context.Context, query string) ([]SearchEngineD
 	params := url.Values{}
 	params.Add("q", query)
 	requestURL := baseURL + params.Encode()
+
+	util.Slog.Debug("looking up the following query", "value", query)
 
 	client := &http.Client{}
 	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)

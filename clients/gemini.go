@@ -98,12 +98,7 @@ func (c GeminiClient) RequestCompletion(
 
 		iter := cs.SendMessageStream(ctx, genai.Text(lastTurn.Content))
 
-		processResultID := util.ChunkIndexStart
-
-		// TODO: FIX THIS
-		if len(lastTurn.ToolCalls) > 0 {
-			processResultID += len(lastTurn.ToolCalls)
-		}
+		processResultID := getStartingProcessResultId(chatMsgs)
 
 		var citations []string
 		for {
@@ -165,6 +160,21 @@ func (c GeminiClient) RequestCompletion(
 
 		return nil
 	}
+}
+
+func getStartingProcessResultId(chatMsgs []util.LocalStoreMessage) int {
+	if len(chatMsgs) <= 1 {
+		return util.ChunkIndexStart
+	}
+
+	// if !slices.ContainsFunc(chatMsgs,
+	// 	func(c util.LocalStoreMessage) bool {
+	// 		return len(c.ToolCalls) > 0
+	// 	}) {
+	// 	return util.ChunkIndexStart
+	// }
+
+	return len(chatMsgs) + 1
 }
 
 func (c GeminiClient) RequestModelsList(ctx context.Context) util.ProcessModelsResponse {
