@@ -68,7 +68,7 @@ func PrepareContextFromWebSearch(ctx context.Context, query string) ([]WebSearch
 }
 
 func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, error) {
-	searchEngineResponse, err := performDuckDuckGoSearch(query)
+	searchEngineResponse, err := performDuckDuckGoSearch(ctx, query)
 
 	if err != nil {
 		return []PageChunk{}, err
@@ -128,7 +128,7 @@ func getWebPageData(
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
 	}
-	client := &http.Client{Timeout: time.Second * 7}
+	client := &http.Client{Timeout: time.Second * 10}
 	resp, err := client.Do(req)
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
@@ -172,14 +172,14 @@ func splitMarkdownString(content string, size, overlap int) ([]string, error) {
 	return chunks, err
 }
 
-func performDuckDuckGoSearch(query string) ([]SearchEngineData, error) {
+func performDuckDuckGoSearch(ctx context.Context, query string) ([]SearchEngineData, error) {
 	baseURL := "https://html.duckduckgo.com/html/?"
 	params := url.Values{}
 	params.Add("q", query)
 	requestURL := baseURL + params.Encode()
 
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", requestURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -49,7 +49,7 @@ var defaultChatPaneKeyMap = chatPaneKeyMap{
 	),
 }
 
-const pulsarIntervalMs = 50
+const pulsarIntervalMs = 100
 
 type renderContentMsg int
 
@@ -178,6 +178,11 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 		return p, nil
 
+	case util.ProcessingStateChanged:
+		if msg.State == util.AwaitingToolCallResult {
+			cmds = append(cmds, renderingPulsar)
+		}
+
 	case sessions.LoadDataFromDB:
 		// util.Slog.Debug("case LoadDataFromDB: ", "message", msg)
 		return p.initializePane(msg.Session)
@@ -209,27 +214,17 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		paneWidth := p.chatContainer.GetWidth()
 		newContent := p.chunksBuffer[len(p.chunksBuffer)-1]
 
-		styledBufferMessage := util.RenderBotMessage(util.LocalStoreMessage{
-			Content: p.responseBuffer,
-			Role:    "assistant",
-		}, paneWidth, p.colors, false)
-
 		p.chunksBuffer = []string{}
 
-		diff := GetChangeDiff(p.responseBuffer, newContent)
+		diff := getStringsDiff(p.responseBuffer, newContent)
 		p.responseBuffer += diff
 
 		renderedChunk := util.RenderBotChunk(diff, paneWidth, p.colors)
-		p.renderedResponseBuffer += renderedChunk
+		// p.renderedResponseBuffer += renderedChunk
 
-		p.chatView.SetContent(p.renderedResponseBuffer)
-		p.chatView.GotoBottom()
+		p.renderedHistory += renderedChunk
 
-		if styledBufferMessage != "" {
-			styledBufferMessage = "\n" + styledBufferMessage
-		}
-
-		p.chatView.SetContent(styledBufferMessage)
+		p.chatView.SetContent(p.renderedHistory)
 		p.chatView.GotoBottom()
 
 		return p, renderingPulsar
@@ -252,7 +247,10 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			p.isRendering = true
 			cmds = append(cmds, renderingPulsar)
 		}
-		cmds = append(cmds, waitForActivity(p.msgChan))
+
+		if !msg.IsComplete {
+			cmds = append(cmds, waitForActivity(p.msgChan))
+		}
 
 		return p, tea.Batch(cmds...)
 
@@ -320,7 +318,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	return p, tea.Batch(cmds...)
 }
 
-func GetChangeDiff(oldStr, newStr string) string {
+func getStringsDiff(oldStr, newStr string) string {
 	i := 0
 
 	for i < len(oldStr) && i < len(newStr) && oldStr[i] == newStr[i] {
@@ -338,9 +336,9 @@ func (p ChatPane) AllowFocusChange() bool {
 	return !p.selectionView.IsSelecting()
 }
 
-func (p ChatPane) DisplayCompletion(
+func (p *ChatPane) DisplayCompletion(
 	ctx context.Context,
-	orchestrator sessions.Orchestrator,
+	orchestrator *sessions.Orchestrator,
 ) tea.Cmd {
 	return tea.Batch(
 		orchestrator.GetCompletion(ctx, p.msgChan),
@@ -348,9 +346,9 @@ func (p ChatPane) DisplayCompletion(
 	)
 }
 
-func (p ChatPane) ResumeCompletion(
+func (p *ChatPane) ResumeCompletion(
 	ctx context.Context,
-	orchestrator sessions.Orchestrator,
+	orchestrator *sessions.Orchestrator,
 	messages []util.LocalStoreMessage,
 ) tea.Cmd {
 	return tea.Batch(
@@ -454,9 +452,11 @@ func (p ChatPane) displaySession(
 	}
 	p.sessionContent = messages
 	p.renderedHistory = oldContent
+
 	p.chunksBuffer = []string{}
+
 	p.responseBuffer = ""
-	p.renderedResponseBuffer = ""
+	// p.renderedResponseBuffer = ""
 	return p
 }
 

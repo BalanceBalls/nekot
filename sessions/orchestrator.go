@@ -38,10 +38,12 @@ type Orchestrator struct {
 	AllSessions               []Session
 	ProcessingMode            string
 
-	settingsReady bool
-	dataLoaded    bool
-	initialized   bool
-	mainCtx       context.Context
+	settingsReady    bool
+	dataLoaded       bool
+	initialized      bool
+	mainCtx          context.Context
+	processingCtx    context.Context
+	processingCancel context.CancelFunc
 }
 
 func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
@@ -75,8 +77,6 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 }
 
 func (m Orchestrator) Init() tea.Cmd {
-	// Need to load the latest session as the current session  (select recently created)
-	// OR we need to create a brand new session for the user with a random name (insert new and return)
 
 	initCtx, cancel := context.
 		WithTimeout(m.mainCtx, time.Duration(util.DefaultRequestTimeOutSec*time.Second))
@@ -130,6 +130,14 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
+	case util.InterruptProcessingMsg:
+		if m.processingCancel != nil {
+			util.Slog.Debug("cancellation func is not null")
+			m.processingCancel()
+			cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+			cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
+		}
+
 	case util.CopyLastMsg:
 		latestBotMessage, err := m.GetLatestBotMessage()
 		if err == nil {
@@ -174,7 +182,8 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 	case util.ProcessApiCompletionResponse:
 		// util.Slog.Debug("response chunk recieved", "data", msg)
 		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
-		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
+		isComplete := m.ResponseProcessingState == util.Idle || m.ResponseProcessingState == util.AwaitingToolCallResult
+		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, isComplete))
 	}
 
 	if m.dataLoaded && m.settingsReady && !m.initialized {
@@ -185,19 +194,32 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m Orchestrator) GetCompletion(
+func (m *Orchestrator) GetCompletion(
 	ctx context.Context,
 	resp chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
-	return m.InferenceClient.RequestCompletion(ctx, m.ArrayOfMessages, m.Settings, resp)
+	m.processingCancel = nil
+	m.processingCtx = nil
+	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), m.ArrayOfMessages, m.Settings, resp)
 }
 
-func (m Orchestrator) ResumeCompletion(
+func (m *Orchestrator) ResumeCompletion(
 	ctx context.Context,
 	resp chan util.ProcessApiCompletionResponse,
 	messages []util.LocalStoreMessage,
 ) tea.Cmd {
-	return m.InferenceClient.RequestCompletion(ctx, messages, m.Settings, resp)
+	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), messages, m.Settings, resp)
+}
+
+func (m *Orchestrator) setProcessingContext(ctx context.Context) context.Context {
+	if m.processingCtx != nil {
+		return m.processingCtx
+	}
+
+	processingCtx, processingCancel := context.WithCancel(ctx)
+	m.processingCancel = processingCancel
+	m.processingCtx = processingCtx
+	return processingCtx
 }
 
 func (m Orchestrator) IsIdle() bool {
@@ -284,14 +306,15 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 
 	if len(result.ToolCalls) > 0 {
 		var cmds []tea.Cmd
-		cmds = append(cmds, m.finishResponseProcessing(result.JSONResponse, true))
 
 		for _, tc := range result.ToolCalls {
 			switch tc.Name {
 			case "web_search":
-				cmds = append(cmds, doWebSearch(m.mainCtx, tc.Args))
+				cmds = append(cmds, doWebSearch(m.setProcessingContext(m.processingCtx), tc.Args))
 			}
 		}
+
+		cmds = append(cmds, m.finishResponseProcessing(result.JSONResponse, true))
 
 		return tea.Batch(cmds...)
 	}
@@ -342,7 +365,6 @@ func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage,
 	defer m.mu.Unlock()
 
 	util.Slog.Info("response received in full, finishing response processing now")
-	util.Slog.Info("final response message", "content", response)
 
 	m.ArrayOfMessages = append(
 		m.ArrayOfMessages,

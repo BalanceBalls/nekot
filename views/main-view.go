@@ -97,8 +97,6 @@ type MainView struct {
 	config              config.Config
 	sessionOrchestrator sessions.Orchestrator
 	context             context.Context
-	completionContext   context.Context
-	cancelInference     context.CancelFunc
 
 	terminalWidth  int
 	terminalHeight int
@@ -232,6 +230,10 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case sessions.ToolCallComplete:
 		util.Slog.Debug("tool completion call received", "data", msg)
+		if m.sessionOrchestrator.ResponseProcessingState == util.Idle {
+			return m, nil
+		}
+
 		if m.sessionOrchestrator.ResponseProcessingState != util.AwaitingToolCallResult {
 			return m, util.MakeErrorMsg("did not expect a tool call result")
 		}
@@ -248,11 +250,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		completionContext, cancelInference := context.WithCancel(m.context)
-		m.completionContext = completionContext
-		m.cancelInference = cancelInference
-
-		cmds = append(cmds, m.chatPane.DisplayCompletion(m.completionContext, m.sessionOrchestrator))
+		cmds = append(cmds, m.chatPane.DisplayCompletion(m.context, &m.sessionOrchestrator))
 		return m, tea.Batch(cmds...)
 
 	case util.PromptReady:
@@ -290,12 +288,9 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		m.viewMode = util.NormalMode
 
-		completionContext, cancelInference := context.WithCancel(m.context)
-		m.completionContext = completionContext
-		m.cancelInference = cancelInference
 		return m, tea.Batch(
 			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
-			m.chatPane.DisplayCompletion(m.completionContext, m.sessionOrchestrator),
+			m.chatPane.DisplayCompletion(m.context, &m.sessionOrchestrator),
 			util.SendViewModeChangedMsg(m.viewMode))
 
 	case tea.KeyMsg:
@@ -319,11 +314,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.InitiateNewSession(false))
 
 		case key.Matches(msg, m.keys.cancel):
-			if m.cancelInference != nil {
-				m.cancelInference()
-				m.cancelInference = nil
-				cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
-			}
+			cmds = append(cmds, util.SendInterruptProcessingMsg)
 
 		case key.Matches(msg, m.keys.zenMode):
 			m.focused = util.PromptPane

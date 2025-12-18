@@ -51,13 +51,15 @@ func SendRefreshSessionsListMsg() tea.Cmd {
 type ResponseChunkProcessed struct {
 	PreviousMsgArray []util.LocalStoreMessage
 	ChunkMessage     string
+	IsComplete       bool
 }
 
-func SendResponseChunkProcessedMsg(msg string, previousMsgs []util.LocalStoreMessage) tea.Cmd {
+func SendResponseChunkProcessedMsg(msg string, previousMsgs []util.LocalStoreMessage, isComplete bool) tea.Cmd {
 	return func() tea.Msg {
 		return ResponseChunkProcessed{
 			PreviousMsgArray: previousMsgs,
 			ChunkMessage:     msg,
+			IsComplete:       isComplete,
 		}
 	}
 }
