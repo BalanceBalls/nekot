@@ -182,8 +182,7 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 	case util.ProcessApiCompletionResponse:
 		// util.Slog.Debug("response chunk recieved", "data", msg)
 		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
-		isComplete := m.ResponseProcessingState == util.Idle || m.ResponseProcessingState == util.AwaitingToolCallResult
-		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, isComplete))
+		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, false))
 	}
 
 	if m.dataLoaded && m.settingsReady && !m.initialized {
@@ -378,7 +377,9 @@ func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage,
 
 	if isToolCall {
 		m.ResponseProcessingState = util.AwaitingToolCallResult
-		return util.SendProcessingStateChangedMsg(util.AwaitingToolCallResult)
+		return tea.Batch(
+			SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, true),
+			util.SendProcessingStateChangedMsg(util.AwaitingToolCallResult))
 	}
 
 	m.ResponseProcessingState = util.Idle
@@ -386,7 +387,9 @@ func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage,
 	m.ResponseBuffer = ""
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 
-	return util.SendProcessingStateChangedMsg(util.Idle)
+	return tea.Batch(
+		SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, true),
+		util.SendProcessingStateChangedMsg(util.Idle))
 }
 
 func (m *Orchestrator) handleTokenStatsUpdate(processingResult ProcessingResult) {

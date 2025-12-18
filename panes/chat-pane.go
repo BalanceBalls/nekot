@@ -219,12 +219,18 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		diff := getStringsDiff(p.responseBuffer, newContent)
 		p.responseBuffer += diff
 
-		renderedChunk := util.RenderBotChunk(diff, paneWidth, p.colors)
+		if diff != "" {
+			styledBufferMessage := util.RenderBotMessage(util.LocalStoreMessage{
+				Content: p.responseBuffer,
+				Role:    "assistant",
+			}, paneWidth, p.colors, false)
+			p.renderedResponseBuffer = styledBufferMessage
+		}
+
+		// renderedChunk := util.RenderBotChunk(diff, paneWidth, p.colors)
 		// p.renderedResponseBuffer += renderedChunk
 
-		p.renderedHistory += renderedChunk
-
-		p.chatView.SetContent(p.renderedHistory)
+		p.chatView.SetContent(p.renderedResponseBuffer)
 		p.chatView.GotoBottom()
 
 		return p, renderingPulsar
@@ -456,7 +462,7 @@ func (p ChatPane) displaySession(
 	p.chunksBuffer = []string{}
 
 	p.responseBuffer = ""
-	// p.renderedResponseBuffer = ""
+	p.renderedResponseBuffer = ""
 	return p
 }
 
