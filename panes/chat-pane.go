@@ -73,6 +73,7 @@ type ChatPane struct {
 	renderedHistory        string
 	isRendering            bool
 	idleCyclesCount        int
+	processingState        util.ProcessingState
 	mu                     *sync.RWMutex
 
 	terminalWidth  int
@@ -179,6 +180,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p, nil
 
 	case util.ProcessingStateChanged:
+		p.processingState = msg.State
 		if msg.State == util.AwaitingToolCallResult {
 			cmds = append(cmds, renderingPulsar)
 		}
@@ -191,6 +193,13 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p.initializePane(msg.Session)
 
 	case renderContentMsg:
+		if p.processingState == util.AwaitingToolCallResult {
+			p.chatView.SetContent(p.renderedHistory)
+			p.chatView.GotoBottom()
+
+			return p, renderingPulsar
+		}
+
 		if !p.isRendering {
 			break
 		}
@@ -355,10 +364,10 @@ func (p *ChatPane) DisplayCompletion(
 func (p *ChatPane) ResumeCompletion(
 	ctx context.Context,
 	orchestrator *sessions.Orchestrator,
-	messages []util.LocalStoreMessage,
+	toolResults []util.ToolCall,
 ) tea.Cmd {
 	return tea.Batch(
-		orchestrator.ResumeCompletion(ctx, p.msgChan, messages),
+		orchestrator.ResumeCompletion(ctx, p.msgChan, toolResults),
 		waitForActivity(p.msgChan),
 	)
 }

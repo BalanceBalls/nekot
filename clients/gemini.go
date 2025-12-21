@@ -398,10 +398,16 @@ func handleFinishReason(reason genai.FinishReason) (string, error) {
 func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*genai.Content, error) {
 	chat := []*genai.Content{}
 
+	util.Slog.Debug("building messages history:", "data", msgs)
+
 	for _, singleMessage := range msgs {
 		role := "user"
 		if singleMessage.Role == "assistant" {
 			role = "model"
+		}
+
+		if singleMessage.Role == "tool" {
+			role = "function"
 		}
 
 		messageContent := ""
@@ -413,52 +419,57 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 			messageContent += singleMessage.Content
 		}
 
+		message := genai.Content{
+			Parts: []genai.Part{},
+			Role:  role,
+		}
+
 		if messageContent != "" {
-			message := genai.Content{
-				Parts: []genai.Part{
-					genai.Text(messageContent),
-				},
-				Role: role,
-			}
+			message.Parts = append(message.Parts, genai.Text(messageContent))
+		}
 
-			if len(singleMessage.Attachments) != 0 {
-				for _, item := range singleMessage.Attachments {
-					decodedBytes, err := base64.StdEncoding.DecodeString(item.Content)
+		if len(singleMessage.Attachments) != 0 {
+			for _, item := range singleMessage.Attachments {
+				decodedBytes, err := base64.StdEncoding.DecodeString(item.Content)
 
-					if err != nil {
-						util.Slog.Error("failed to decode file bytes", "item", item.Path, "error", err.Error())
-						return nil, errors.New("could not prepare attachments for request")
-					}
-
-					extension := filepath.Ext(item.Path)
-					extension = strings.TrimPrefix(extension, ".")
-					part := genai.ImageData(extension, decodedBytes)
-					message.Parts = append(message.Parts, part)
+				if err != nil {
+					util.Slog.Error("failed to decode file bytes", "item", item.Path, "error", err.Error())
+					return nil, errors.New("could not prepare attachments for request")
 				}
-			}
 
-			chat = append(chat, &message)
+				extension := filepath.Ext(item.Path)
+				extension = strings.TrimPrefix(extension, ".")
+				part := genai.ImageData(extension, decodedBytes)
+				message.Parts = append(message.Parts, part)
+			}
 		}
 
 		if len(singleMessage.ToolCalls) != 0 {
 			for _, tc := range singleMessage.ToolCalls {
-				part := genai.FunctionResponse{
-					Name: tc.Name,
-					Response: map[string]any{
-						"query":  tc.Args["querty"],
-						"result": *tc.Result,
-					}}
+				var part genai.Part
 
-				util.Slog.Debug("appending tool call result", "data", part)
-				message := genai.Content{
-					Parts: []genai.Part{part},
-					Role:  role,
+				if role == "function" {
+					util.Slog.Debug("appending tool call result", "data", tc)
+					part = genai.FunctionResponse{
+						Name: tc.Name,
+						Response: map[string]any{
+							"query":  tc.Args["query"],
+							"result": *tc.Result,
+						}}
+				} else {
+					util.Slog.Debug("appending tool call request", "data", tc)
+					part = genai.FunctionCall{
+						Name: tc.Name,
+						Args: map[string]any{"query": tc.Args["query"]},
+					}
 				}
-				chat = append(chat, &message)
+
+				message.Parts = append(message.Parts, part)
 			}
 		}
 
-		util.Slog.Debug("constructed turn", "data", messageContent)
+		chat = append(chat, &message)
+		util.Slog.Debug("constructed turn", "data", message)
 	}
 
 	return chat, nil

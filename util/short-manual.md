@@ -19,6 +19,8 @@ ____________________________
  <!------->
 `Ctrl+x` Save quick chat
  <!------->
+`Ctrl+w` Toggle web search
+ <!------->
 `Ctrl+o` Toggle zen mode
  <!------->
 `Ctrl+s` Stop inference

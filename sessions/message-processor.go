@@ -316,7 +316,7 @@ func (p MessageProcessor) prepareResponseJSONForDB(currentChunk *util.ProcessApi
 			newMessage.Content += content
 		}
 
-		if toolCalls, ok := p.hasToolCalls(responseChunk); ok && len(toolCalls) > 0 {
+		if toolCalls, ok := p.hasToolCalls(responseChunk); ok {
 			newMessage.ToolCalls = toolCalls
 		}
 	}

@@ -65,6 +65,7 @@ func SendResponseChunkProcessedMsg(msg string, previousMsgs []util.LocalStoreMes
 }
 
 type ToolCallComplete struct {
+	Id        string
 	IsSuccess bool
 	Name      string
 	Result    string

@@ -229,7 +229,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case sessions.ToolCallComplete:
-		util.Slog.Debug("tool completion call received", "data", msg)
+		util.Slog.Debug("ToolCallComplete event received")
 		if m.sessionOrchestrator.ResponseProcessingState == util.Idle {
 			return m, nil
 		}
@@ -241,17 +241,23 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		lastIdx := len(m.sessionOrchestrator.ArrayOfMessages) - 1
 		lastTurn := m.sessionOrchestrator.ArrayOfMessages[lastIdx]
 
-		// TODO: optimize saving tool call results (currently saves both to tool call request and response messages)
+		toolResults := []util.ToolCall{}
 		if len(lastTurn.ToolCalls) > 0 {
-			for i, tc := range lastTurn.ToolCalls {
-				if tc.Name == msg.Name {
-					lastTurn.ToolCalls[i].Result = &msg.Result
-					m.sessionOrchestrator.ArrayOfMessages[lastIdx] = lastTurn
+			for _, tc := range lastTurn.ToolCalls {
+				if tc.Name == msg.Name && tc.Id == msg.Id && msg.IsSuccess {
+					toolResults = append(toolResults, util.ToolCall{
+						Id:     msg.Id,
+						Args:   tc.Args,
+						Name:   tc.Name,
+						Result: &msg.Result,
+					})
 				}
 			}
 		}
 
-		cmds = append(cmds, m.chatPane.DisplayCompletion(m.context, &m.sessionOrchestrator))
+		util.Slog.Debug("consturcted tool call results for continuation", "amount", len(toolResults))
+
+		cmds = append(cmds, m.chatPane.ResumeCompletion(m.context, &m.sessionOrchestrator, toolResults))
 		return m, tea.Batch(cmds...)
 
 	case util.PromptReady:

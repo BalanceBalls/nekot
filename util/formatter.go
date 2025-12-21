@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -18,6 +19,11 @@ func GetMessagesAsPrettyString(
 	var messages string
 
 	for _, message := range msgsToRender {
+
+		if message.Content == "" && len(message.ToolCalls) > 0 && message.Role != "tool" {
+			continue
+		}
+
 		messageToUse := message.Content
 
 		switch message.Role {
@@ -25,6 +31,8 @@ func GetMessagesAsPrettyString(
 			messageToUse = RenderUserMessage(message, w, colors, false)
 		case "assistant":
 			messageToUse = RenderBotMessage(message, w, colors, false)
+		case "tool":
+			messageToUse = RenderToolCall(message, w, colors, false)
 		}
 
 		if messages == "" {
@@ -47,6 +55,10 @@ func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeCol
 	var messages string
 	w = w - TextSelectorMaxWidthCorrection
 	for _, message := range msgsToRender {
+		if message.Content == "" && len(message.ToolCalls) > 0 && message.Role != "tool" {
+			continue
+		}
+
 		messageToUse := message.Content
 
 		switch message.Role {
@@ -54,6 +66,8 @@ func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeCol
 			messageToUse = RenderUserMessage(message, w, colors, true)
 		case "assistant":
 			messageToUse = RenderBotMessage(message, w, colors, true)
+		case "tool":
+			messageToUse = RenderToolCall(message, w, colors, true)
 		}
 
 		if messages == "" {
@@ -130,7 +144,8 @@ func RenderBotMessage(
 	colors SchemeColors,
 	isVisualMode bool,
 ) string {
-	if msg.Content == "" {
+
+	if len(msg.ToolCalls) == 0 && msg.Content == "" {
 		return ""
 	}
 
@@ -164,25 +179,69 @@ func RenderBotMessage(
 	}
 
 	content += msg.Content
-
-	if isVisualMode {
-		content = "\n🤖 " + content
-		userMsg, _ := renderer.Render(content)
-		output := strings.TrimSpace(userMsg)
-		return lipgloss.NewStyle().Render("\n" + output + "\n")
-	}
-
 	modelName := ""
+	icon := "\n 🤖 "
 	if len(msg.Model) > 0 {
 		modelName = "**[" + msg.Model + "]**\n"
 	}
-	content = "\n 🤖 " + modelName + content + "\n"
+
+	if isVisualMode {
+		content = icon + content
+		userMsg, _ := renderer.Render(content)
+		output := strings.TrimSpace(userMsg)
+		return lipgloss.NewStyle().Render(output + "\n")
+	}
+
+	content = icon + modelName + content + "\n"
 	aiResponse, _ := renderer.Render(content)
 	output := strings.TrimSpace(aiResponse)
 	return lipgloss.NewStyle().
 		BorderLeft(true).
 		BorderStyle(lipgloss.InnerHalfBlockBorder()).
 		BorderLeftForeground(colors.ActiveTabBorderColor).
+		Width(width - 1).
+		Render(output)
+}
+
+func RenderToolCall(msg LocalStoreMessage,
+	width int,
+	colors SchemeColors,
+	isVisualMode bool) string {
+
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width-WordWrapDelta),
+		colors.RendererThemeOption,
+	)
+
+	content := ""
+
+	if msg.Role == "tool" {
+
+		//toolData := "\n" + "## Tool calls:" + "\n"
+		toolData := "<div>--------------------</div>\n"
+
+		for _, tc := range msg.ToolCalls {
+			toolData += fmt.Sprintf("<div>[Executing tool call: %s] Args: %v </div>\n", tc.Name, tc.Args)
+		}
+		toolData += "<div>--------------------</div>\n"
+		toolData += "\n  \n"
+
+		content += toolData
+	}
+
+	if isVisualMode {
+		userMsg, _ := renderer.Render(content)
+		output := strings.TrimSpace(userMsg)
+		return lipgloss.NewStyle().Render(output + "\n")
+	}
+
+	aiResponse, _ := renderer.Render(content)
+	output := strings.TrimSpace(aiResponse)
+	return lipgloss.NewStyle().
+		BorderLeft(true).
+		BorderStyle(lipgloss.InnerHalfBlockBorder()).
+		BorderLeftForeground(colors.HighlightColor).
 		Width(width - 1).
 		Render(output)
 }

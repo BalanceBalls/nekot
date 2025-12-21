@@ -205,9 +205,24 @@ func (m *Orchestrator) GetCompletion(
 func (m *Orchestrator) ResumeCompletion(
 	ctx context.Context,
 	resp chan util.ProcessApiCompletionResponse,
-	messages []util.LocalStoreMessage,
+	toolResults []util.ToolCall,
 ) tea.Cmd {
-	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), messages, m.Settings, resp)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.ArrayOfMessages = append(m.ArrayOfMessages, util.LocalStoreMessage{
+		Model:       m.Settings.Model,
+		Role:        "tool",
+		Attachments: []util.Attachment{},
+		ToolCalls:   toolResults,
+	})
+
+	err := m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
+	if err != nil {
+		return m.resetStateAndCreateError(err.Error())
+	}
+
+	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), m.ArrayOfMessages, m.Settings, resp)
 }
 
 func (m *Orchestrator) setProcessingContext(ctx context.Context) context.Context {
@@ -349,7 +364,7 @@ func doWebSearch(ctx context.Context, args map[string]string) tea.Cmd {
 
 		if isSuccess {
 			toolCallResult = string(jsonData)
-			util.Slog.Debug("retrieved context from a web search", "data", toolCallResult)
+			util.Slog.Debug("retrieved context from a web search")
 		}
 		return ToolCallComplete{
 			IsSuccess: isSuccess,

@@ -51,6 +51,7 @@ type Choice struct {
 }
 
 type ToolCall struct {
+	Id     string            `json:"id"`
 	Args   map[string]string `json:"arguments"`
 	Name   string            `json:"name"`
 	Result *string           `json:"result"`
