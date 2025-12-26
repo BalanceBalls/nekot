@@ -222,7 +222,7 @@ func RenderToolCall(msg LocalStoreMessage,
 		toolData := "<div>--------------------</div>\n"
 
 		for _, tc := range msg.ToolCalls {
-			toolData += fmt.Sprintf("<div>[Executing tool call: %s] Args: %v </div>\n", tc.Name, tc.Args)
+			toolData += fmt.Sprintf("<div>[Executed tool call: %s] Args: %v </div>\n", tc.Name, tc.Args)
 		}
 		toolData += "<div>--------------------</div>\n"
 		toolData += "\n  \n"

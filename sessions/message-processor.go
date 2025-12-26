@@ -90,6 +90,7 @@ func (p MessageProcessor) Process(
 		return result, nil
 	}
 
+	result.ToolCalls = nil
 	result = result.handleTokenStats(chunk)
 
 	if p.isFinalChunk(chunk) {
@@ -104,10 +105,10 @@ func (p MessageProcessor) Process(
 		return result, nil
 	}
 
-	result.State = p.setProcessingState(util.ProcessingChunks)
-
 	if p.isLastResponseChunk(chunk) {
 		result.State = p.setProcessingState(util.AwaitingFinalization)
+	} else {
+		result.State = p.setProcessingState(util.ProcessingChunks)
 	}
 
 	result, bufferErr := result.composeProcessingResult(p, chunk)
@@ -170,9 +171,9 @@ func (p MessageProcessor) hasToolCalls(chunk util.ProcessApiCompletionResponse) 
 	}
 
 	choice := chunk.Result.Choices[0]
-	if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
-		return []util.ToolCall{}, false
-	}
+	// if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
+	// 	return []util.ToolCall{}, false
+	// }
 
 	if len(choice.ToolCalls) > 0 {
 		return choice.ToolCalls, true

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/config"
@@ -142,11 +143,11 @@ func (c GeminiClient) RequestCompletion(
 				Err:    nil,
 			}
 
+			processResultID++
 			if result.isToolCall {
 				break
 			}
 
-			processResultID++
 			if result.isFinal {
 				if len(citations) > 0 {
 					sendCitationsChunk(resultChan, processResultID, citations)
@@ -174,7 +175,7 @@ func getStartingProcessResultId(chatMsgs []util.LocalStoreMessage) int {
 	// 	return util.ChunkIndexStart
 	// }
 
-	return len(chatMsgs) + 1
+	return len(chatMsgs) + 10
 }
 
 func (c GeminiClient) RequestModelsList(ctx context.Context) util.ProcessModelsResponse {
@@ -317,10 +318,13 @@ func processResponseChunk(response *genai.GenerateContentResponse, id int) (proc
 				}
 			}
 
+			hasResponseContent := hasResponseContent(candidate.Content.Parts)
 			toolCalls := candidate.FunctionCalls()
-			if len(toolCalls) > 0 {
-				responseToolCalls := []util.ToolCall{}
 
+			util.Slog.Debug("reponse contains tool calls", "data", toolCalls)
+			if len(toolCalls) > 0 && !hasResponseContent {
+				responseToolCalls := []util.ToolCall{}
+				util.Slog.Debug("decided to include tool call request")
 				for _, tc := range toolCalls {
 					if tc.Name == webSearchTool.FunctionDeclarations[0].Name {
 						query := tc.Args["query"].(string)
@@ -349,11 +353,14 @@ func processResponseChunk(response *genai.GenerateContentResponse, id int) (proc
 		}
 
 		if finishReason != "" {
+
+			util.Slog.Debug("gemini finish reason", "data", finishReason)
 			choice.FinishReason = ""
 			chunk.Usage = &util.TokenUsage{
 				Prompt:     int(response.UsageMetadata.PromptTokenCount),
 				Completion: int(response.UsageMetadata.CandidatesTokenCount),
 			}
+
 			result.isFinal = true
 		}
 
@@ -362,6 +369,18 @@ func processResponseChunk(response *genai.GenerateContentResponse, id int) (proc
 
 	result.chunk = chunk
 	return result, nil
+}
+
+func hasResponseContent(parts []genai.Part) bool {
+	return slices.ContainsFunc(parts, func(p genai.Part) bool {
+		switch p.(type) {
+		case genai.Text:
+			return true
+		default:
+			return false
+		}
+	})
+
 }
 
 func formatResponsePart(part genai.Part) string {
@@ -469,7 +488,7 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 		}
 
 		chat = append(chat, &message)
-		util.Slog.Debug("constructed turn", "data", message)
+		// util.Slog.Debug("constructed turn", "data", message)
 	}
 
 	return chat, nil
