@@ -124,7 +124,15 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 	}
 
 	if !isModelFromSettingsAvailable && len(availableModels) > 0 {
-		modelIdx := rand.IntN(len(availableModels) - 1)
+
+		var modelIdx int
+		numModels := len(availableModels)
+		if numModels == 1 {
+			modelIdx = 0
+		} else {
+			modelIdx = rand.IntN(numModels - 1)
+		}
+
 		settings.Model = availableModels[modelIdx]
 		settings, err = ss.UpdateSettings(settings)
 		if err != nil {
