@@ -27,22 +27,6 @@ type Attachment struct {
 	Type    string `json:"type"`
 }
 
-type OpenAIConversationTurn struct {
-	Model   string          `json:"model"`
-	Role    string          `json:"role"`
-	Content []OpenAiContent `json:"content"`
-}
-
-type OpenAiContent struct {
-	Type     string      `json:"type"`
-	Text     string      `json:"text,omitempty"`
-	ImageURL OpenAiImage `json:"image_url,omitempty"`
-}
-
-type OpenAiImage struct {
-	URL string `json:"url"`
-}
-
 type Choice struct {
 	Index        int            `json:"index"`
 	Delta        map[string]any `json:"delta"`
@@ -51,10 +35,15 @@ type Choice struct {
 }
 
 type ToolCall struct {
-	Id     string            `json:"id"`
-	Args   map[string]string `json:"arguments"`
-	Name   string            `json:"name"`
-	Result *string           `json:"result"`
+	Id       string       `json:"id"`
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
+	Result   *string      `json:"result"`
+}
+
+type ToolFunction struct {
+	Args map[string]string `json:"arguments"`
+	Name string            `json:"name"`
 }
 
 type CompletionChunk struct {

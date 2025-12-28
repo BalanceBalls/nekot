@@ -180,7 +180,6 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		m.settingsReady = true
 
 	case util.ProcessApiCompletionResponse:
-		// util.Slog.Debug("response chunk recieved", "data", msg)
 		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
 		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, false))
 	}
@@ -284,35 +283,34 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	msg util.ProcessApiCompletionResponse,
 ) tea.Cmd {
 
-	m.mu.Lock()
-	// util.Slog.Debug("processing state before new chunk",
-	// 	"state", m.ResponseProcessingState,
-	// 	"chunks ready", len(m.ArrayOfProcessResult),
-	// 	"data", msg)
+	util.Slog.Debug("processing state before new chunk",
+		"state", m.ResponseProcessingState,
+		"chunks ready", len(m.ArrayOfProcessResult))
 
+	prevProcessingState := m.ResponseProcessingState
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
 	result, err := p.Process(msg)
 
-	// util.Slog.Debug("processed chunk",
-	// 	"id", msg.ID,
-	// 	"chunks ready", len(result.CurrentResponseDataChunks))
+	util.Slog.Debug("processed chunk",
+		"id", msg.ID,
+		"chunks ready", len(result.CurrentResponseDataChunks),
+		"response json", result.JSONResponse.Content)
 
 	if err != nil {
 		util.Slog.Error("error occured on processing a chunk", "chunk", msg, "error", err.Error())
-		m.mu.Unlock()
 		return m.resetStateAndCreateError(err.Error())
 	}
 
 	m.handleTokenStatsUpdate(result)
 	m.appendAndOrderProcessResults(result)
 
-	m.mu.Unlock()
-
 	if result.IsSkipped {
+		util.Slog.Info("result skipped", "data", msg.Result)
 		return nil
 	}
 
 	if result.IsCancelled {
+		util.Slog.Info("result cancelled", "json result", result.JSONResponse.Content)
 		return tea.Batch(
 			util.SendNotificationMsg(util.CancelledNotification),
 			m.finishResponseProcessing(result.JSONResponse, false))
@@ -325,9 +323,9 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 			"tools", result.ToolCalls)
 
 		for _, tc := range result.ToolCalls {
-			switch tc.Name {
+			switch tc.Function.Name {
 			case "web_search":
-				cmds = append(cmds, doWebSearch(m.setProcessingContext(m.processingCtx), tc.Args))
+				cmds = append(cmds, doWebSearch(m.setProcessingContext(m.processingCtx), tc.Id, tc.Function.Args))
 			}
 		}
 
@@ -339,17 +337,20 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	m.CurrentAnswer = result.CurrentResponse
 
 	if result.State == util.Finalized {
+		util.Slog.Debug("result finalized", "json result", result.JSONResponse.Content)
 		return m.finishResponseProcessing(result.JSONResponse, false)
+	}
+
+	if prevProcessingState != result.State {
+		return util.SendProcessingStateChangedMsg(result.State)
 	}
 
 	return nil
 }
 
-func doWebSearch(ctx context.Context, args map[string]string) tea.Cmd {
-	query := args["query"]
-	toolName := "web_search"
-
-	return func() tea.Msg {
+func doWebSearch(ctx context.Context, id string, args map[string]string) tea.Cmd {
+	ws := func(query string) tea.Cmd {
+		toolName := "web_search"
 		result, err := websearch.PrepareContextFromWebSearch(ctx, query)
 		isSuccess := true
 		if err != nil {
@@ -368,12 +369,17 @@ func doWebSearch(ctx context.Context, args map[string]string) tea.Cmd {
 			toolCallResult = string(jsonData)
 			util.Slog.Debug("retrieved context from a web search")
 		}
-		return ToolCallComplete{
-			IsSuccess: isSuccess,
-			Name:      toolName,
-			Result:    toolCallResult,
+		return func() tea.Msg {
+			return ToolCallComplete{
+				Id:        id,
+				IsSuccess: isSuccess,
+				Name:      toolName,
+				Result:    toolCallResult,
+			}
 		}
 	}
+
+	return ws(args["query"])
 }
 
 func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage, isToolCall bool) tea.Cmd {
@@ -390,21 +396,21 @@ func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage,
 		return m.resetStateAndCreateError(err.Error())
 	}
 
-	nextProcessincState := util.Idle
+	nextProcessingState := util.Idle
 	if isToolCall {
-		nextProcessincState = util.AwaitingToolCallResult
+		nextProcessingState = util.AwaitingToolCallResult
 	}
 
 	util.Slog.Info("response received in full, finishing response processing now",
-		"next state", nextProcessincState)
-	m.ResponseProcessingState = nextProcessincState
+		"next state", nextProcessingState)
+	m.ResponseProcessingState = nextProcessingState
 	m.CurrentAnswer = ""
 	m.ResponseBuffer = ""
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 
 	return tea.Batch(
 		SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, true),
-		util.SendProcessingStateChangedMsg(nextProcessincState))
+		util.SendProcessingStateChangedMsg(nextProcessingState))
 }
 
 func (m *Orchestrator) handleTokenStatsUpdate(processingResult ProcessingResult) {
@@ -418,6 +424,9 @@ func (m *Orchestrator) handleTokenStatsUpdate(processingResult ProcessingResult)
 }
 
 func (m *Orchestrator) appendAndOrderProcessResults(processingResult ProcessingResult) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.ResponseBuffer = processingResult.CurrentResponse
 	m.ArrayOfProcessResult = processingResult.CurrentResponseDataChunks
 	m.ResponseProcessingState = processingResult.State

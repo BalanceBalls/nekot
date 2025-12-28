@@ -193,6 +193,9 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p.initializePane(msg.Session)
 
 	case renderContentMsg:
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
 		if p.processingState == util.AwaitingToolCallResult {
 			p.chatView.SetContent(p.renderedHistory)
 			p.chatView.GotoBottom()
@@ -203,9 +206,6 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		if !p.isRendering {
 			break
 		}
-
-		p.mu.Lock()
-		defer p.mu.Unlock()
 
 		if len(p.chunksBuffer) == 0 {
 			p.idleCyclesCount++

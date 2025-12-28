@@ -66,6 +66,21 @@ const (
 	Openrouter
 )
 
+func GetNextProcessResultId(chatMsgs []LocalStoreMessage) int {
+	if len(chatMsgs) <= 1 {
+		return ChunkIndexStart
+	}
+
+	// if !slices.ContainsFunc(chatMsgs,
+	// 	func(c util.LocalStoreMessage) bool {
+	// 		return len(c.ToolCalls) > 0
+	// 	}) {
+	// 	return util.ChunkIndexStart
+	// }
+
+	return len(chatMsgs) + 10
+}
+
 func GetFilteredModelList(providerType string, apiUrl string, models []string) []string {
 	var modelNames []string
 

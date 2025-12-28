@@ -127,28 +127,33 @@ func getWebPageData(
 	req, err := http.NewRequestWithContext(ctx, "GET", searchResult.Link, nil)
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
+		return
 	}
 	client := &http.Client{Timeout: time.Second * 10}
 	resp, err := client.Do(req)
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
+		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
+		return
 	}
 
 	content := string(body)
 	markdown, err := htmltomarkdown.ConvertString(content)
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
+		return
 	}
 
 	rawChunks, err := splitMarkdownString(markdown, 1500, 100)
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
+		return
 	}
 
 	results <- WebPageDataExport{

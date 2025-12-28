@@ -52,7 +52,7 @@ func NewMessageProcessor(
 var stageChangeMap = map[util.ProcessingState][]util.ProcessingState{
 	util.Idle:                   {util.ProcessingChunks, util.AwaitingToolCallResult, util.Error},
 	util.ProcessingChunks:       {util.AwaitingFinalization, util.AwaitingToolCallResult, util.Finalized, util.Error},
-	util.AwaitingToolCallResult: {util.ProcessingChunks, util.AwaitingFinalization, util.Error},
+	util.AwaitingToolCallResult: {util.ProcessingChunks, util.AwaitingFinalization, util.Finalized, util.Error},
 	util.AwaitingFinalization:   {util.Finalized, util.Error},
 }
 
@@ -106,9 +106,9 @@ func (p MessageProcessor) Process(
 	}
 
 	if p.isLastResponseChunk(chunk) {
-		result.State = p.setProcessingState(util.AwaitingFinalization)
+		result.State = p.setProcessingState(util.AwaitingFinalization, result)
 	} else {
-		result.State = p.setProcessingState(util.ProcessingChunks)
+		result.State = p.setProcessingState(util.ProcessingChunks, result)
 	}
 
 	result, bufferErr := result.composeProcessingResult(p, chunk)
@@ -121,7 +121,7 @@ func (p MessageProcessor) Process(
 
 func (p MessageProcessor) finalizeProcessing(result ProcessingResult) ProcessingResult {
 	result.JSONResponse = p.prepareResponseJSONForDB(nil)
-	result.State = p.setProcessingState(util.Finalized)
+	result.State = p.setProcessingState(util.Finalized, result)
 	return result
 }
 
@@ -129,7 +129,7 @@ func (p MessageProcessor) prepareToolCallInterruption(
 	result ProcessingResult,
 	chunk util.ProcessApiCompletionResponse) ProcessingResult {
 	result.JSONResponse = p.prepareResponseJSONForDB(&chunk)
-	result.State = p.setProcessingState(util.AwaitingToolCallResult)
+	result.State = p.setProcessingState(util.AwaitingToolCallResult, result)
 	return result
 }
 
@@ -140,9 +140,14 @@ func (p MessageProcessor) orderChunks() MessageProcessor {
 	return p
 }
 
-func (p MessageProcessor) setProcessingState(newState util.ProcessingState) util.ProcessingState {
+func (p MessageProcessor) setProcessingState(newState util.ProcessingState, result ProcessingResult) util.ProcessingState {
 	if p.CurrentState == newState {
 		return newState
+	}
+
+	if p.CurrentState == util.AwaitingToolCallResult && newState == util.Finalized && !result.IsCancelled {
+		util.Slog.Warn("this state change only allowed for cancellation", "old state", p.CurrentState, "new state", newState)
+		return p.CurrentState
 	}
 
 	if slices.Contains(stageChangeMap[p.CurrentState], newState) {
@@ -166,6 +171,10 @@ func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) b
 
 func (p MessageProcessor) hasToolCalls(chunk util.ProcessApiCompletionResponse) ([]util.ToolCall, bool) {
 
+	if p.CurrentState == util.AwaitingToolCallResult {
+		return []util.ToolCall{}, false
+	}
+
 	if len(chunk.Result.Choices) == 0 {
 		return []util.ToolCall{}, false
 	}
@@ -183,6 +192,10 @@ func (p MessageProcessor) hasToolCalls(chunk util.ProcessApiCompletionResponse) 
 }
 
 func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionResponse) bool {
+	if chunk.Final {
+		return true
+	}
+
 	if chunk.Result.Choices == nil {
 		return true
 	}
@@ -217,7 +230,7 @@ func (p MessageProcessor) handleErrors(
 		return result, nil
 	}
 
-	result.State = p.setProcessingState(util.Error)
+	result.State = p.setProcessingState(util.Error, result)
 	return result, chunk.Err
 }
 
@@ -257,7 +270,7 @@ func (r ProcessingResult) composeProcessingResult(
 }
 
 func (p MessageProcessor) isFinalChunk(msg util.ProcessApiCompletionResponse) bool {
-	return msg.Final
+	return msg.Final && p.CurrentState != util.AwaitingToolCallResult
 }
 
 func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionResponse) bool {
@@ -299,9 +312,10 @@ func (p MessageProcessor) prepareResponseJSONForDB(currentChunk *util.ProcessApi
 	processed := []util.ProcessApiCompletionResponse{}
 	for _, responseChunk := range p.ResponseDataChunks {
 		processed = append(processed, responseChunk)
-		if p.isFinalChunk(responseChunk) {
-			break
-		}
+		// if p.isFinalChunk(responseChunk) {
+		// 	util.Slog.Warn("breaking json prep loop", "iteration", i, "chunk", responseChunk)
+		// 	break
+		// }
 
 		if len(responseChunk.Result.Choices) == 0 {
 			continue

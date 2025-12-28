@@ -99,7 +99,7 @@ func (c GeminiClient) RequestCompletion(
 
 		iter := cs.SendMessageStream(ctx, genai.Text(lastTurn.Content))
 
-		processResultID := getStartingProcessResultId(chatMsgs)
+		processResultID := util.GetNextProcessResultId(chatMsgs)
 
 		var citations []string
 		for {
@@ -161,21 +161,6 @@ func (c GeminiClient) RequestCompletion(
 
 		return nil
 	}
-}
-
-func getStartingProcessResultId(chatMsgs []util.LocalStoreMessage) int {
-	if len(chatMsgs) <= 1 {
-		return util.ChunkIndexStart
-	}
-
-	// if !slices.ContainsFunc(chatMsgs,
-	// 	func(c util.LocalStoreMessage) bool {
-	// 		return len(c.ToolCalls) > 0
-	// 	}) {
-	// 	return util.ChunkIndexStart
-	// }
-
-	return len(chatMsgs) + 10
 }
 
 func (c GeminiClient) RequestModelsList(ctx context.Context) util.ProcessModelsResponse {
@@ -329,10 +314,14 @@ func processResponseChunk(response *genai.GenerateContentResponse, id int) (proc
 					if tc.Name == webSearchTool.FunctionDeclarations[0].Name {
 						query := tc.Args["query"].(string)
 						responseToolCalls = append(responseToolCalls, util.ToolCall{
-							Args: map[string]string{
-								"query": query,
+							Id:   "gemini_func",
+							Type: "function",
+							Function: util.ToolFunction{
+								Args: map[string]string{
+									"query": query,
+								},
+								Name: tc.Name,
 							},
-							Name: tc.Name,
 						})
 					}
 				}
@@ -470,16 +459,16 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 				if role == "function" {
 					util.Slog.Debug("appending tool call result", "data", tc)
 					part = genai.FunctionResponse{
-						Name: tc.Name,
+						Name: tc.Function.Name,
 						Response: map[string]any{
-							"query":  tc.Args["query"],
+							"query":  tc.Function.Args["query"],
 							"result": *tc.Result,
 						}}
 				} else {
 					util.Slog.Debug("appending tool call request", "data", tc)
 					part = genai.FunctionCall{
-						Name: tc.Name,
-						Args: map[string]any{"query": tc.Args["query"]},
+						Name: tc.Function.Name,
+						Args: map[string]any{"query": tc.Function.Args["query"]},
 					}
 				}
 
@@ -488,7 +477,7 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 		}
 
 		chat = append(chat, &message)
-		// util.Slog.Debug("constructed turn", "data", message)
+		util.Slog.Debug("constructed turn", "data", message)
 	}
 
 	return chat, nil

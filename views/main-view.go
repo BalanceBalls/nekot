@@ -244,11 +244,13 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		toolResults := []util.ToolCall{}
 		if len(lastTurn.ToolCalls) > 0 {
 			for _, tc := range lastTurn.ToolCalls {
-				if tc.Name == msg.Name && tc.Id == msg.Id && msg.IsSuccess {
+				if tc.Function.Name == msg.Name && tc.Id == msg.Id && msg.IsSuccess {
 					toolResults = append(toolResults, util.ToolCall{
-						Id:     msg.Id,
-						Args:   tc.Args,
-						Name:   tc.Name,
+						Id: msg.Id,
+						Function: util.ToolFunction{
+							Args: tc.Function.Args,
+							Name: tc.Function.Name,
+						},
 						Result: &msg.Result,
 					})
 				}
