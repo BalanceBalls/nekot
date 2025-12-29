@@ -17,7 +17,7 @@ import (
 )
 
 const pagesMax = 10
-const chunksToInclude = 5
+const chunksToInclude = 2
 
 type WebSearchResult struct {
 	Data  string  `json:"data"`

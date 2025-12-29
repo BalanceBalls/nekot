@@ -3,6 +3,7 @@ package panes
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -180,8 +181,15 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p, nil
 
 	case util.ProcessingStateChanged:
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
 		p.processingState = msg.State
-		if msg.State == util.AwaitingToolCallResult {
+		switch msg.State {
+		case util.AwaitingToolCallResult:
+			cmds = append(cmds, renderingPulsar)
+		case util.ProcessingChunks:
+			p.isRendering = true
 			cmds = append(cmds, renderingPulsar)
 		}
 
@@ -228,12 +236,21 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		diff := getStringsDiff(p.responseBuffer, newContent)
 		p.responseBuffer += diff
 
+		renderWindow := p.responseBuffer
+
+		chatHeightDelta := p.chatView.Height + 20 // arbitrary , just my emperical guess
+		bufferLines := strings.Split(renderWindow, "\n")
+		if chatHeightDelta < len(bufferLines) {
+			to := len(bufferLines) - 1
+			from := to - chatHeightDelta
+			renderWindow = strings.Join(bufferLines[from:to], "\n")
+		}
+
 		if diff != "" {
-			styledBufferMessage := util.RenderBotMessage(util.LocalStoreMessage{
-				Content: p.responseBuffer,
+			p.renderedResponseBuffer = util.RenderBotMessage(util.LocalStoreMessage{
+				Content: renderWindow,
 				Role:    "assistant",
 			}, paneWidth, p.colors, false)
-			p.renderedResponseBuffer = styledBufferMessage
 		}
 
 		// renderedChunk := util.RenderBotChunk(diff, paneWidth, p.colors)
@@ -258,10 +275,10 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 		p.chunksBuffer = append(p.chunksBuffer, msg.ChunkMessage)
 
-		if !p.isRendering {
-			p.isRendering = true
-			cmds = append(cmds, renderingPulsar)
-		}
+		// if !p.isRendering {
+		// 	p.isRendering = true
+		// 	cmds = append(cmds, renderingPulsar)
+		// }
 
 		if !msg.IsComplete {
 			cmds = append(cmds, waitForActivity(p.msgChan))

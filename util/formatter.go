@@ -20,9 +20,9 @@ func GetMessagesAsPrettyString(
 
 	for _, message := range msgsToRender {
 
-		if message.Content == "" && len(message.ToolCalls) > 0 && message.Role != "tool" {
-			continue
-		}
+		// if message.Content == "" && len(message.ToolCalls) > 0 && message.Role != "tool" {
+		// 	continue
+		// }
 
 		messageToUse := message.Content
 
@@ -145,7 +145,11 @@ func RenderBotMessage(
 	isVisualMode bool,
 ) string {
 
-	if len(msg.ToolCalls) == 0 && msg.Content == "" {
+	if len(msg.ToolCalls) != 0 {
+		return RenderToolCall(msg, width, colors, isVisualMode)
+	}
+
+	if msg.Content == "" && msg.Resoning == "" {
 		return ""
 	}
 
@@ -203,7 +207,8 @@ func RenderBotMessage(
 		Render(output)
 }
 
-func RenderToolCall(msg LocalStoreMessage,
+func RenderToolCall(
+	msg LocalStoreMessage,
 	width int,
 	colors SchemeColors,
 	isVisualMode bool) string {
@@ -216,13 +221,38 @@ func RenderToolCall(msg LocalStoreMessage,
 
 	content := ""
 
+	if msg.Content != "" {
+		contentLines := strings.SplitSeq(msg.Content, "\n")
+
+		for contentLine := range contentLines {
+			if contentLine == "" || contentLine == "\n" {
+				continue
+			}
+
+			content += "<div>" + contentLine + "</div>\n"
+		}
+		content += "\n  \n"
+	}
+
+	if msg.Resoning != "" {
+		reasoningLines := strings.SplitSeq(msg.Resoning, "\n")
+
+		for reasoningLine := range reasoningLines {
+			if reasoningLine == "" || reasoningLine == "\n" {
+				continue
+			}
+
+			content += "<div>" + reasoningLine + "</div>\n"
+		}
+		content += "\n  \n"
+	}
+
 	if msg.Role == "tool" {
 
-		//toolData := "\n" + "## Tool calls:" + "\n"
 		toolData := "<div>--------------------</div>\n"
 
 		for _, tc := range msg.ToolCalls {
-			toolData += fmt.Sprintf("<div>[Executed tool call: %s] Args: %v </div>\n", tc.Function.Name, tc.Function.Args)
+			toolData += fmt.Sprintf("<div>[ 🛠️ Executed tool call: %s] Args: %v </div>\n", tc.Function.Name, tc.Function.Args)
 		}
 		toolData += "<div>--------------------</div>\n"
 		toolData += "\n  \n"

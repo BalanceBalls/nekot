@@ -283,18 +283,18 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	msg util.ProcessApiCompletionResponse,
 ) tea.Cmd {
 
-	util.Slog.Debug("processing state before new chunk",
-		"state", m.ResponseProcessingState,
-		"chunks ready", len(m.ArrayOfProcessResult))
+	// util.Slog.Debug("processing state before new chunk",
+	// 	"state", m.ResponseProcessingState,
+	// 	"chunks ready", len(m.ArrayOfProcessResult))
 
 	prevProcessingState := m.ResponseProcessingState
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
 	result, err := p.Process(msg)
 
-	util.Slog.Debug("processed chunk",
-		"id", msg.ID,
-		"chunks ready", len(result.CurrentResponseDataChunks),
-		"response json", result.JSONResponse.Content)
+	// util.Slog.Debug("processed chunk",
+	// 	"id", msg.ID,
+	// 	"chunks ready", len(result.CurrentResponseDataChunks),
+	// 	"response json", result.JSONResponse.Content)
 
 	if err != nil {
 		util.Slog.Error("error occured on processing a chunk", "chunk", msg, "error", err.Error())
@@ -312,8 +312,9 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	if result.IsCancelled {
 		util.Slog.Info("result cancelled", "json result", result.JSONResponse.Content)
 		return tea.Batch(
+			m.finishResponseProcessing(result.JSONResponse, false),
 			util.SendNotificationMsg(util.CancelledNotification),
-			m.finishResponseProcessing(result.JSONResponse, false))
+		)
 	}
 
 	if len(result.ToolCalls) > 0 {
