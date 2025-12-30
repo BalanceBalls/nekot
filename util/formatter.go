@@ -20,10 +20,6 @@ func GetMessagesAsPrettyString(
 
 	for _, message := range msgsToRender {
 
-		// if message.Content == "" && len(message.ToolCalls) > 0 && message.Role != "tool" {
-		// 	continue
-		// }
-
 		messageToUse := message.Content
 
 		switch message.Role {
@@ -55,9 +51,6 @@ func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeCol
 	var messages string
 	w = w - TextSelectorMaxWidthCorrection
 	for _, message := range msgsToRender {
-		if message.Content == "" && len(message.ToolCalls) > 0 && message.Role != "tool" {
-			continue
-		}
 
 		messageToUse := message.Content
 
@@ -212,6 +205,10 @@ func RenderToolCall(
 	width int,
 	colors SchemeColors,
 	isVisualMode bool) string {
+
+	if msg.Resoning == "" && msg.Content == "" && msg.Role != "tool" {
+		return ""
+	}
 
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),

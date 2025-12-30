@@ -187,6 +187,9 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		p.processingState = msg.State
 		switch msg.State {
 		case util.AwaitingToolCallResult:
+			p.responseBuffer = ""
+			p.chunksBuffer = []string{}
+
 			cmds = append(cmds, renderingPulsar)
 		case util.ProcessingChunks:
 			p.isRendering = true
@@ -204,12 +207,12 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 
-		if p.processingState == util.AwaitingToolCallResult {
-			p.chatView.SetContent(p.renderedHistory)
-			p.chatView.GotoBottom()
+		// if p.processingState == util.AwaitingToolCallResult {
+		// 	p.chatView.SetContent(p.renderedHistory)
+		// 	p.chatView.GotoBottom()
 
-			return p, renderingPulsar
-		}
+		// 	return p, renderingPulsar
+		// }
 
 		if !p.isRendering {
 			break
@@ -240,7 +243,11 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 		chatHeightDelta := p.chatView.Height + 20 // arbitrary , just my emperical guess
 		bufferLines := strings.Split(renderWindow, "\n")
+
+		showOldMessages := true
+
 		if chatHeightDelta < len(bufferLines) {
+			showOldMessages = false
 			to := len(bufferLines) - 1
 			from := to - chatHeightDelta
 			renderWindow = strings.Join(bufferLines[from:to], "\n")
@@ -253,10 +260,12 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			}, paneWidth, p.colors, false)
 		}
 
-		// renderedChunk := util.RenderBotChunk(diff, paneWidth, p.colors)
-		// p.renderedResponseBuffer += renderedChunk
+		result := p.renderedResponseBuffer
+		if showOldMessages {
+			result = p.renderedHistory + "\n" + p.renderedResponseBuffer
+		}
 
-		p.chatView.SetContent(p.renderedResponseBuffer)
+		p.chatView.SetContent(result)
 		p.chatView.GotoBottom()
 
 		return p, renderingPulsar
@@ -274,11 +283,6 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		}
 
 		p.chunksBuffer = append(p.chunksBuffer, msg.ChunkMessage)
-
-		// if !p.isRendering {
-		// 	p.isRendering = true
-		// 	cmds = append(cmds, renderingPulsar)
-		// }
 
 		if !msg.IsComplete {
 			cmds = append(cmds, waitForActivity(p.msgChan))

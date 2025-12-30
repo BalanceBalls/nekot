@@ -323,14 +323,14 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 			"chunk", msg.Result.Choices,
 			"tools", result.ToolCalls)
 
+		cmds = append(cmds, m.finishResponseProcessing(result.JSONResponse, true))
+
 		for _, tc := range result.ToolCalls {
 			switch tc.Function.Name {
 			case "web_search":
 				cmds = append(cmds, doWebSearch(m.setProcessingContext(m.processingCtx), tc.Id, tc.Function.Args))
 			}
 		}
-
-		cmds = append(cmds, m.finishResponseProcessing(result.JSONResponse, true))
 
 		return tea.Batch(cmds...)
 	}
@@ -350,7 +350,7 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 }
 
 func doWebSearch(ctx context.Context, id string, args map[string]string) tea.Cmd {
-	ws := func(query string) tea.Cmd {
+	return func(query string) tea.Cmd {
 		toolName := "web_search"
 		result, err := websearch.PrepareContextFromWebSearch(ctx, query)
 		isSuccess := true
@@ -378,9 +378,7 @@ func doWebSearch(ctx context.Context, id string, args map[string]string) tea.Cmd
 				Result:    toolCallResult,
 			}
 		}
-	}
-
-	return ws(args["query"])
+	}(args["query"])
 }
 
 func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage, isToolCall bool) tea.Cmd {
@@ -410,8 +408,9 @@ func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage,
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 
 	return tea.Batch(
+		util.SendProcessingStateChangedMsg(nextProcessingState),
 		SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, true),
-		util.SendProcessingStateChangedMsg(nextProcessingState))
+	)
 }
 
 func (m *Orchestrator) handleTokenStatsUpdate(processingResult ProcessingResult) {
