@@ -72,7 +72,6 @@ type ChatPane struct {
 	responseBuffer         string
 	renderedResponseBuffer string
 	renderedHistory        string
-	isRendering            bool
 	idleCyclesCount        int
 	processingState        util.ProcessingState
 	mu                     *sync.RWMutex
@@ -189,10 +188,10 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		case util.AwaitingToolCallResult:
 			p.responseBuffer = ""
 			p.chunksBuffer = []string{}
-
 			cmds = append(cmds, renderingPulsar)
 		case util.ProcessingChunks:
-			p.isRendering = true
+			cmds = append(cmds, renderingPulsar)
+		case util.Finalized:
 			cmds = append(cmds, renderingPulsar)
 		}
 
@@ -207,27 +206,16 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 
-		// if p.processingState == util.AwaitingToolCallResult {
-		// 	p.chatView.SetContent(p.renderedHistory)
-		// 	p.chatView.GotoBottom()
+		if p.processingState == util.AwaitingToolCallResult {
+			return p, renderingPulsar
+		}
 
-		// 	return p, renderingPulsar
-		// }
-
-		if !p.isRendering {
-			break
+		if p.processingState == util.Idle {
+			p.chunksBuffer = []string{}
+			return p, nil
 		}
 
 		if len(p.chunksBuffer) == 0 {
-			p.idleCyclesCount++
-
-			if p.idleCyclesCount > 3 {
-				p.isRendering = false
-				p.idleCyclesCount = 0
-				p.chunksBuffer = []string{}
-				return p, nil
-			}
-
 			return p, renderingPulsar
 		}
 
@@ -271,10 +259,6 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p, renderingPulsar
 
 	case sessions.ResponseChunkProcessed:
-
-		p.mu.Lock()
-		defer p.mu.Unlock()
-
 		if len(p.sessionContent) != len(msg.PreviousMsgArray) {
 			paneWidth := p.chatContainer.GetWidth()
 			p.renderedHistory = util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)

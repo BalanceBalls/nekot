@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/BalanceBalls/nekot/config"
@@ -51,6 +52,7 @@ type InfoPane struct {
 	quickChatLabel        lipgloss.Style
 	webSearchLabel        lipgloss.Style
 
+	mu               *sync.RWMutex
 	showNotification bool
 	notification     util.Notification
 	isProcessing     bool
@@ -109,6 +111,8 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 		sessionService: ss,
 		terminalWidth:  util.DefaultTerminalWidth,
 		terminalHeight: util.DefaultTerminalHeight,
+
+		mu: &sync.RWMutex{},
 	}
 }
 
@@ -156,6 +160,9 @@ func (p InfoPane) Update(msg tea.Msg) (InfoPane, tea.Cmd) {
 		p.showNotification = false
 
 	case util.ProcessingStateChanged:
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
 		p.isProcessing = util.IsProcessingActive(msg.State)
 		p.processingState = msg.State
 		if !p.isProcessing {

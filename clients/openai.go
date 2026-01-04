@@ -311,7 +311,7 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 		return nil, err
 	}
 
-	util.Slog.Debug("serialized request", "data", string(body))
+	// util.Slog.Debug("serialized request", "data", string(body))
 
 	return body, nil
 }
@@ -487,7 +487,7 @@ func (b *OpenAiToolCallsBuffer) handleToolCallChunk(chunk util.ProcessApiComplet
 
 		util.Slog.Debug("tool_calls finish reason hit")
 
-		toolCalls, err := b.mergeBuffer()
+		toolCalls, err := b.mergeBuffer(chunk)
 		if err != nil {
 			return util.ProcessApiCompletionResponse{ID: chunk.ID, Result: util.CompletionChunk{}, Err: err}, true
 		}
@@ -517,11 +517,40 @@ func (b *OpenAiToolCallsBuffer) handleToolCallChunk(chunk util.ProcessApiComplet
 	return util.ProcessApiCompletionResponse{}, false
 }
 
-func (b *OpenAiToolCallsBuffer) mergeBuffer() ([]util.ToolCall, error) {
+func (b *OpenAiToolCallsBuffer) mergeBuffer(chunk util.ProcessApiCompletionResponse) ([]util.ToolCall, error) {
 	result := []util.ToolCall{}
 
 	idx2call := map[int]*util.ToolCall{}
 	idx2Json := map[int]string{}
+
+	if len(b.Chunks) == 0 {
+		choice := chunk.Result.Choices[0]
+		if content, ok := choice.Delta["tool_calls"]; ok {
+			util.Slog.Debug("toolcalls found in delta")
+
+			toolCallsJSON, err := json.Marshal(content)
+			if err != nil {
+				return []util.ToolCall{}, err
+			}
+
+			var toolCalls []OpenAiToolCall
+			err = json.Unmarshal(toolCallsJSON, &toolCalls)
+			if err != nil {
+				util.Slog.Error("error unmarshalling JSON", "reason", err, "data", string(toolCallsJSON))
+				return []util.ToolCall{}, err
+			}
+
+			util.Slog.Debug("toolcalls parsed", "tool_calls", toolCalls)
+
+			result := []util.ToolCall{}
+			for _, tc := range toolCalls {
+				result = append(result, fromOpenAiToolCall(tc))
+			}
+
+			return result, nil
+		}
+		return []util.ToolCall{}, nil
+	}
 
 	util.Slog.Debug("merging tool call buffer", "data", b.Chunks)
 	for _, part := range b.Chunks {
@@ -594,6 +623,20 @@ func toOpenAiToolCall(tc util.ToolCall) OpenAiToolCall {
 		Function: OpenAiToolFunction{
 			Name:      &tc.Function.Name,
 			Arguments: string(args),
+		},
+	}
+}
+
+func fromOpenAiToolCall(tc OpenAiToolCall) util.ToolCall {
+	var args map[string]string
+
+	json.Unmarshal([]byte(tc.Function.Arguments), &args)
+	return util.ToolCall{
+		Id:   tc.Id,
+		Type: tc.Type,
+		Function: util.ToolFunction{
+			Name: *tc.Function.Name,
+			Args: args,
 		},
 	}
 }

@@ -32,8 +32,8 @@ func SortByNumberDesc[T any, V int | int64 | float64](slice []T, keyFunc func(T)
 func IsProcessingActive(state ProcessingState) bool {
 	processingStates := []ProcessingState{
 		ProcessingChunks,
-		AwaitingFinalization,
 		AwaitingToolCallResult,
+		AwaitingFinalization,
 		Finalized,
 	}
 	return slices.Contains(processingStates, state)

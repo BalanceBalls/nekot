@@ -64,6 +64,32 @@ func SendResponseChunkProcessedMsg(msg string, previousMsgs []util.LocalStoreMes
 	}
 }
 
+type InferenceFinalized struct {
+	Response   util.LocalStoreMessage
+	IsToolCall bool
+}
+
+func FinalizeResponse(response util.LocalStoreMessage, isToolCall bool) tea.Cmd {
+	return func() tea.Msg {
+		return InferenceFinalized{
+			Response:   response,
+			IsToolCall: isToolCall,
+		}
+	}
+}
+
+type ToolCallRequest struct {
+	ToolCall util.ToolCall
+}
+
+func ExecuteToolCallRequest(tc util.ToolCall) tea.Cmd {
+	return func() tea.Msg {
+		return ToolCallRequest{
+			ToolCall: tc,
+		}
+	}
+}
+
 type ToolCallComplete struct {
 	Id        string
 	IsSuccess bool

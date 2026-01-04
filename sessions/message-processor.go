@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"sort"
@@ -54,6 +55,7 @@ var stageChangeMap = map[util.ProcessingState][]util.ProcessingState{
 	util.ProcessingChunks:       {util.AwaitingFinalization, util.AwaitingToolCallResult, util.Finalized, util.Error},
 	util.AwaitingToolCallResult: {util.ProcessingChunks, util.AwaitingFinalization, util.Finalized, util.Error},
 	util.AwaitingFinalization:   {util.Finalized, util.Error},
+	util.Finalized:              {util.AwaitingToolCallResult, util.Idle},
 }
 
 func (p MessageProcessor) Process(
@@ -171,18 +173,18 @@ func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) b
 
 func (p MessageProcessor) hasToolCalls(chunk util.ProcessApiCompletionResponse) ([]util.ToolCall, bool) {
 
-	if p.CurrentState == util.AwaitingToolCallResult {
-		return []util.ToolCall{}, false
-	}
-
 	if len(chunk.Result.Choices) == 0 {
 		return []util.ToolCall{}, false
 	}
 
+	if p.CurrentState == util.AwaitingToolCallResult {
+		return []util.ToolCall{}, false
+	}
+
 	choice := chunk.Result.Choices[0]
-	// if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
-	// 	return []util.ToolCall{}, false
-	// }
+	if toolCalls, ok := getToolCalls(choice.Delta); ok {
+		return toolCalls, true
+	}
 
 	if len(choice.ToolCalls) > 0 {
 		return choice.ToolCalls, true
@@ -210,6 +212,12 @@ func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionRe
 	_, hasContent := getContent(choice.Delta)
 
 	if !hasContent && !hasReasoning {
+		return true
+	}
+
+	_, hasTools := getToolCalls(choice.Delta)
+	if choice.FinishReason == "tool_calls" && !hasTools {
+		util.Slog.Warn("wtf. tool calls finish reason encountered here")
 		return true
 	}
 
@@ -270,7 +278,7 @@ func (r ProcessingResult) composeProcessingResult(
 }
 
 func (p MessageProcessor) isFinalChunk(msg util.ProcessApiCompletionResponse) bool {
-	return msg.Final && p.CurrentState != util.AwaitingToolCallResult
+	return msg.Final && p.CurrentState == util.AwaitingFinalization
 }
 
 func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionResponse) bool {
@@ -280,6 +288,14 @@ func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionRespo
 	}
 
 	if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
+		return false
+	}
+
+	if _, ok := getToolCalls(choice.Delta); ok {
+		return false
+	}
+
+	if choice.FinishReason == "tool_calls" {
 		return false
 	}
 
@@ -432,6 +448,22 @@ func getContent(delta map[string]any) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func getToolCalls(delta map[string]any) ([]util.ToolCall, bool) {
+	if content, ok := delta["tool_calls"]; ok && content != nil {
+		if strContent, isString := content.(string); isString {
+
+			var toolCalls []util.ToolCall
+			err := json.Unmarshal([]byte(strContent), &toolCalls)
+			if err != nil {
+				util.Slog.Error("error unmarshalling JSON", "reason", err, "data", strContent)
+				return []util.ToolCall{}, false
+			}
+			return toolCalls, true
+		}
+	}
+	return []util.ToolCall{}, false
 }
 
 func getReasoningContent(delta map[string]any) (string, bool) {
