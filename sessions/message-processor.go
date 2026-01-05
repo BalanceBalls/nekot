@@ -194,30 +194,17 @@ func (p MessageProcessor) hasToolCalls(chunk util.ProcessApiCompletionResponse) 
 }
 
 func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionResponse) bool {
-	if chunk.Final {
-		return true
-	}
-
-	if chunk.Result.Choices == nil {
-		return true
-	}
 
 	if len(chunk.Result.Choices) == 0 {
 		return true
 	}
 
 	choice := chunk.Result.Choices[0]
-
+	hasFinishReason := choice.FinishReason != ""
 	_, hasReasoning := getReasoningContent(choice.Delta)
 	_, hasContent := getContent(choice.Delta)
 
-	if !hasContent && !hasReasoning {
-		return true
-	}
-
-	_, hasTools := getToolCalls(choice.Delta)
-	if choice.FinishReason == "tool_calls" && !hasTools {
-		util.Slog.Warn("wtf. tool calls finish reason encountered here")
+	if !hasContent && !hasReasoning && !hasFinishReason {
 		return true
 	}
 

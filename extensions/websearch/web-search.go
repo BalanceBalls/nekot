@@ -52,7 +52,14 @@ func PrepareContextFromWebSearch(ctx context.Context, query string) ([]WebSearch
 	rankedChunks := bm25.Search(query)
 	util.SortByNumberDesc(rankedChunks, func(s SearchResult) float64 { return s.Score })
 
-	topRankedChunks := rankedChunks[:chunksToInclude]
+	if len(rankedChunks) == 0 {
+		return []WebSearchResult{}, nil
+	}
+
+	topRankedChunks := rankedChunks
+	if len(rankedChunks) > chunksToInclude {
+		topRankedChunks = rankedChunks[:chunksToInclude]
+	}
 
 	results := []WebSearchResult{}
 	for _, topChunk := range topRankedChunks {
@@ -199,7 +206,12 @@ func performDuckDuckGoSearch(ctx context.Context, query string) ([]SearchEngineD
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
+
+		if resp.StatusCode == 202 {
+			return nil, fmt.Errorf("duckduckgo requests have been rate limited, wait for the limit to reset or temporarily disable web-search (ctrl+w)")
+		}
+
+		return nil, fmt.Errorf("duckduckgo web search returned a non-200 status code: %d", resp.StatusCode)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)

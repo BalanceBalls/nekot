@@ -188,7 +188,7 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		switch tc.Function.Name {
 		case "web_search":
 			webSearchCtx := m.setProcessingContext(m.processingCtx)
-			return m, doWebSearch(webSearchCtx, tc.Id, tc.Function.Args)
+			return m, m.doWebSearch(webSearchCtx, tc.Id, tc.Function.Args)
 		}
 
 	case InferenceFinalized:
@@ -362,13 +362,13 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	return nil
 }
 
-func doWebSearch(ctx context.Context, id string, args map[string]string) tea.Cmd {
+func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[string]string) tea.Cmd {
 	toolName := "web_search"
 	result, err := websearch.PrepareContextFromWebSearch(ctx, args["query"])
 	isSuccess := true
 	if err != nil {
 		util.Slog.Error("web search failed", "error", err.Error())
-		isSuccess = false
+		return m.resetStateAndCreateError(err.Error())
 	}
 
 	toolCallResult := ""

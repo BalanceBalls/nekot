@@ -245,9 +245,17 @@ func sendCompensationChunk(resultChan chan util.ProcessApiCompletionResponse, id
 	resultChan <- util.ProcessApiCompletionResponse{
 		ID:     id,
 		Result: chunk,
+		Final:  false,
+	}
+
+	nextId := id + 2
+	chunk.ID = fmt.Sprint(nextId)
+	resultChan <- util.ProcessApiCompletionResponse{
+		ID:     nextId,
+		Result: chunk,
 		Final:  true,
 	}
-	util.Slog.Debug("Gemini: compensation chunk sent")
+	util.Slog.Debug("Gemini: compensation chunks sent")
 }
 
 func setParams(model *genai.GenerativeModel, cfg config.Config, settings util.Settings) {
@@ -306,7 +314,6 @@ func processResponseChunk(response *genai.GenerateContentResponse, id int) (proc
 			hasResponseContent := hasResponseContent(candidate.Content.Parts)
 			toolCalls := candidate.FunctionCalls()
 
-			util.Slog.Debug("reponse contains tool calls", "data", toolCalls)
 			if len(toolCalls) > 0 && !hasResponseContent {
 				responseToolCalls := []util.ToolCall{}
 				util.Slog.Debug("decided to include tool call request")
