@@ -10,6 +10,7 @@ import (
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/sessions"
+	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -74,6 +75,7 @@ type ChatPane struct {
 	renderedHistory        string
 	idleCyclesCount        int
 	processingState        util.ProcessingState
+	currentSettings        util.Settings
 	mu                     *sync.RWMutex
 
 	terminalWidth  int
@@ -201,6 +203,9 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 	case sessions.UpdateCurrentSession:
 		return p.initializePane(msg.Session)
+
+	case settings.UpdateSettingsEvent:
+		p.currentSettings = msg.Settings
 
 	case renderContentMsg:
 		p.mu.Lock()
@@ -430,6 +435,10 @@ func (p ChatPane) renderInfoRow() string {
 		info += " | [Quick chat]"
 	}
 
+	if p.currentSettings.WebSearchEnabled {
+		info += " | [Web search]"
+	}
+
 	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
 	return infoBar
 }
@@ -465,7 +474,7 @@ func (p ChatPane) displaySession(
 	paneWidth int,
 	useScroll bool,
 ) ChatPane {
-	oldContent := util.GetMessagesAsPrettyString(messages, paneWidth, p.colors, p.quickChatActive)
+	oldContent := util.GetMessagesAsPrettyString(messages, paneWidth-1, p.colors, p.quickChatActive)
 	p.chatView.SetContent(oldContent)
 	if useScroll {
 		p.chatView.GotoBottom()

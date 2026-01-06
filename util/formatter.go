@@ -182,6 +182,8 @@ func RenderBotMessage(
 		modelName = "**[" + msg.Model + "]**\n"
 	}
 
+	content = CleanContent(content)
+
 	if isVisualMode {
 		content = icon + content
 		userMsg, _ := renderer.Render(content)
@@ -247,15 +249,20 @@ func RenderToolCall(
 	if msg.Role == "tool" {
 
 		toolData := "<div>--------------------</div>\n"
-
 		for _, tc := range msg.ToolCalls {
-			toolData += fmt.Sprintf("<div>[ 🛠️ Executed tool call: %s] Args: %v </div>\n", tc.Function.Name, tc.Function.Args)
+			toolData += fmt.Sprintf(
+				"<div>%s [Executed tool call: %s]\n Args: %v</div>                                           \n",
+				"🔧",
+				tc.Function.Name,
+				tc.Function.Args)
 		}
 		toolData += "<div>--------------------</div>\n"
 		toolData += "\n  \n"
 
 		content += toolData
 	}
+
+	content = CleanContent(content)
 
 	if isVisualMode {
 		userMsg, _ := renderer.Render(content)
@@ -320,4 +327,21 @@ func GetManual(w int, colors SchemeColors) string {
 func StripAnsiCodes(str string) string {
 	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[mG]`)
 	return ansiRegex.ReplaceAllString(str, "")
+}
+
+func CleanContent(content string) string {
+	byWords := strings.Split(content, " ")
+
+	cleanedUpWords := []string{}
+
+	for _, word := range byWords {
+		if len(word) > 5 && strings.Contains(word, "\u00ad") {
+			cleanedUpWords = append(cleanedUpWords, strings.ReplaceAll(word, "\u00ad", ""))
+			Slog.Debug("found non breaking space", "word", word, "fixed", strings.ReplaceAll(word, "\u00ad", ""))
+			continue
+		}
+		cleanedUpWords = append(cleanedUpWords, word)
+	}
+
+	return strings.Join(cleanedUpWords, " ")
 }
