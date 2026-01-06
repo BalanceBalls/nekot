@@ -52,6 +52,7 @@ type settingsKeyMap struct {
 	goBack          key.Binding
 	choose          key.Binding
 	enableWebSearch key.Binding
+	hideReasoning   key.Binding
 }
 
 var defaultSettingsKeyMap = settingsKeyMap{
@@ -81,6 +82,10 @@ var defaultSettingsKeyMap = settingsKeyMap{
 	enableWebSearch: key.NewBinding(
 		key.WithKeys("ctrl+w"),
 		key.WithHelp("ctrl+w", "toggle web search"),
+	),
+	hideReasoning: key.NewBinding(
+		key.WithKeys("ctrl+h"),
+		key.WithHelp("ctrl+h", "hide/show reasoning"),
 	),
 }
 
@@ -282,6 +287,12 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 
 		if key.Matches(msg, p.keyMap.enableWebSearch) {
 			p.settings.WebSearchEnabled = !p.settings.WebSearchEnabled
+			updatedSettings, err := p.settingsService.UpdateSettings(p.settings)
+			return p, settings.MakeSettingsUpdateMsg(updatedSettings, err)
+		}
+
+		if key.Matches(msg, p.keyMap.hideReasoning) {
+			p.settings.HideReasoning = !p.settings.HideReasoning
 			updatedSettings, err := p.settingsService.UpdateSettings(p.settings)
 			return p, settings.MakeSettingsUpdateMsg(updatedSettings, err)
 		}

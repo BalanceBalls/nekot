@@ -47,7 +47,8 @@ func (ss *SettingsService) GetPreset(id int) (util.Settings, error) {
 			top_p,
 			temperature,
 			preset_name,
-			web_search_enabled
+			web_search_enabled,
+			hide_reasoning
 		from settings where settings_id=$1`,
 		id,
 	)
@@ -61,6 +62,7 @@ func (ss *SettingsService) GetPreset(id int) (util.Settings, error) {
 		&settings.Temperature,
 		&settings.PresetName,
 		&settings.WebSearchEnabled,
+		&settings.HideReasoning,
 	)
 
 	if err != nil {
@@ -82,7 +84,8 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 			top_p,
 			temperature,
 			preset_name,
-			web_search_enabled
+			web_search_enabled,
+			hide_reasoning
 		from settings where settings_id=$1`,
 		id,
 	)
@@ -96,6 +99,7 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 		&settings.Temperature,
 		&settings.PresetName,
 		&settings.WebSearchEnabled,
+		&settings.HideReasoning,
 	)
 
 	availableModels, modelsError := ss.GetProviderModels(ctx, cfg.Provider, cfg.ProviderBaseUrl)
@@ -262,7 +266,8 @@ func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 			top_p,
 			temperature,
 			preset_name,
-			web_search_enabled
+			web_search_enabled,
+			hide_reasoning
 		from settings`,
 	)
 
@@ -282,6 +287,7 @@ func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 			&preset.Temperature,
 			&preset.PresetName,
 			&preset.WebSearchEnabled,
+			&preset.HideReasoning,
 		)
 		presets = append(presets, preset)
 	}
@@ -301,6 +307,7 @@ func (ss *SettingsService) ResetToDefault(current util.Settings) (util.Settings,
 		Temperature:      nil,
 		PresetName:       current.PresetName,
 		WebSearchEnabled: false,
+		HideReasoning:    false,
 	}
 
 	_, err := ss.UpdateSettings(defaultSettings)
@@ -315,9 +322,9 @@ func (ss *SettingsService) ResetToDefault(current util.Settings) (util.Settings,
 func (ss *SettingsService) SavePreset(newSettings util.Settings) (int, error) {
 	upsert := `
 		INSERT INTO settings
-			(settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name, web_search_enabled)
+			(settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name, web_search_enabled, hide_reasoning)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7, $8)
+			($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING settings_id
 	`
 
@@ -331,6 +338,7 @@ func (ss *SettingsService) SavePreset(newSettings util.Settings) (int, error) {
 		newSettings.SystemPrompt,
 		newSettings.PresetName,
 		newSettings.WebSearchEnabled,
+		newSettings.HideReasoning,
 	)
 
 	errId := -999999
@@ -362,9 +370,9 @@ func (ss *SettingsService) RemovePreset(id int) error {
 func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Settings, error) {
 	upsert := `
 		INSERT INTO settings
-			(settings_id, settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name, web_search_enabled)
+			(settings_id, settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name, web_search_enabled, hide_reasoning)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT(settings_id) DO UPDATE SET
 			settings_model=$2,
 			settings_max_tokens=$3,
@@ -373,7 +381,8 @@ func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Setti
 			top_p=$6,
 			system_msg=$7,
 			preset_name=$8,
-			web_search_enabled=$9;
+			web_search_enabled=$9,
+			hide_reasoning=$10;
 	`
 
 	_, err := ss.DB.Exec(
@@ -387,6 +396,7 @@ func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Setti
 		newSettings.SystemPrompt,
 		newSettings.PresetName,
 		newSettings.WebSearchEnabled,
+		newSettings.HideReasoning,
 	)
 	if err != nil {
 		return newSettings, err

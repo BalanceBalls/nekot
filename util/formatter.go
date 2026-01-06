@@ -15,6 +15,7 @@ func GetMessagesAsPrettyString(
 	w int,
 	colors SchemeColors,
 	isQuickChat bool,
+	settings Settings,
 ) string {
 	var messages string
 
@@ -26,9 +27,9 @@ func GetMessagesAsPrettyString(
 		case "user":
 			messageToUse = RenderUserMessage(message, w, colors, false)
 		case "assistant":
-			messageToUse = RenderBotMessage(message, w, colors, false)
+			messageToUse = RenderBotMessage(message, w, colors, false, settings)
 		case "tool":
-			messageToUse = RenderToolCall(message, w, colors, false)
+			messageToUse = RenderToolCall(message, w, colors, false, settings)
 		}
 
 		if messages == "" {
@@ -47,7 +48,7 @@ func GetMessagesAsPrettyString(
 	return messages
 }
 
-func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeColors) string {
+func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeColors, settings Settings) string {
 	var messages string
 	w = w - TextSelectorMaxWidthCorrection
 	for _, message := range msgsToRender {
@@ -58,9 +59,9 @@ func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeCol
 		case "user":
 			messageToUse = RenderUserMessage(message, w, colors, true)
 		case "assistant":
-			messageToUse = RenderBotMessage(message, w, colors, true)
+			messageToUse = RenderBotMessage(message, w, colors, true, settings)
 		case "tool":
-			messageToUse = RenderToolCall(message, w, colors, true)
+			messageToUse = RenderToolCall(message, w, colors, true, settings)
 		}
 
 		if messages == "" {
@@ -136,10 +137,11 @@ func RenderBotMessage(
 	width int,
 	colors SchemeColors,
 	isVisualMode bool,
+	settings Settings,
 ) string {
 
 	if len(msg.ToolCalls) != 0 {
-		return RenderToolCall(msg, width, colors, isVisualMode)
+		return RenderToolCall(msg, width, colors, isVisualMode, settings)
 	}
 
 	if msg.Content == "" && msg.Resoning == "" {
@@ -153,7 +155,7 @@ func RenderBotMessage(
 	)
 
 	content := ""
-	if msg.Resoning != "" {
+	if msg.Resoning != "" && !settings.HideReasoning {
 		reasoningLines := strings.Split(msg.Resoning, "\n")
 
 		content += "\n" + "## Reasoning content:" + "\n"
@@ -206,7 +208,8 @@ func RenderToolCall(
 	msg LocalStoreMessage,
 	width int,
 	colors SchemeColors,
-	isVisualMode bool) string {
+	isVisualMode bool,
+	settings Settings) string {
 
 	if msg.Resoning == "" && msg.Content == "" && msg.Role != "tool" {
 		return ""
@@ -233,7 +236,7 @@ func RenderToolCall(
 		content += "\n  \n"
 	}
 
-	if msg.Resoning != "" {
+	if msg.Resoning != "" && !settings.HideReasoning {
 		reasoningLines := strings.SplitSeq(msg.Resoning, "\n")
 
 		for reasoningLine := range reasoningLines {

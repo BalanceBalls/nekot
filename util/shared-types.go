@@ -10,6 +10,7 @@ type Settings struct {
 	Temperature      *float32
 	PresetName       string
 	WebSearchEnabled bool
+	HideReasoning    bool
 }
 
 type LocalStoreMessage struct {

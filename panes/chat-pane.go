@@ -205,7 +205,11 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p.initializePane(msg.Session)
 
 	case settings.UpdateSettingsEvent:
+		updateRender := msg.Settings.HideReasoning != p.currentSettings.HideReasoning
 		p.currentSettings = msg.Settings
+		if updateRender {
+			p = p.displaySession(p.sessionContent, p.terminalWidth, false)
+		}
 
 	case renderContentMsg:
 		p.mu.Lock()
@@ -250,7 +254,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			p.renderedResponseBuffer = util.RenderBotMessage(util.LocalStoreMessage{
 				Content: renderWindow,
 				Role:    "assistant",
-			}, paneWidth, p.colors, false)
+			}, paneWidth, p.colors, false, p.currentSettings)
 		}
 
 		result := p.renderedResponseBuffer
@@ -266,7 +270,12 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	case sessions.ResponseChunkProcessed:
 		if len(p.sessionContent) != len(msg.PreviousMsgArray) {
 			paneWidth := p.chatContainer.GetWidth()
-			p.renderedHistory = util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
+			p.renderedHistory = util.GetMessagesAsPrettyString(
+				msg.PreviousMsgArray,
+				paneWidth,
+				p.colors,
+				p.quickChatActive,
+				p.currentSettings)
 			p.sessionContent = msg.PreviousMsgArray
 			util.Slog.Debug("len(p.sessionContent) != len(msg.PreviousMsgArray)", "new length", len(msg.PreviousMsgArray))
 		}
@@ -308,7 +317,11 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			p.displayMode = selectionMode
 			enableUpdateOfViewport = false
 			p.chatContainer.BorderForeground(p.colors.AccentColor)
-			renderedContent := util.GetVisualModeView(p.sessionContent, p.chatView.Width, p.colors)
+			renderedContent := util.GetVisualModeView(
+				p.sessionContent,
+				p.chatView.Width,
+				p.colors,
+				p.currentSettings)
 			p.selectionView = components.NewTextSelector(
 				p.terminalWidth,
 				p.terminalHeight,
@@ -439,6 +452,10 @@ func (p ChatPane) renderInfoRow() string {
 		info += " | [Web search]"
 	}
 
+	if p.currentSettings.HideReasoning {
+		info += " | [Reasoning hidden]"
+	}
+
 	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
 	return infoBar
 }
@@ -474,7 +491,12 @@ func (p ChatPane) displaySession(
 	paneWidth int,
 	useScroll bool,
 ) ChatPane {
-	oldContent := util.GetMessagesAsPrettyString(messages, paneWidth-1, p.colors, p.quickChatActive)
+	oldContent := util.GetMessagesAsPrettyString(
+		messages,
+		paneWidth-1,
+		p.colors,
+		p.quickChatActive,
+		p.currentSettings)
 	p.chatView.SetContent(oldContent)
 	if useScroll {
 		p.chatView.GotoBottom()
