@@ -62,7 +62,6 @@ func renderingPulsar() tea.Msg {
 
 type ChatPane struct {
 	isChatPaneReady        bool
-	chatViewReady          bool
 	displayMode            displayMode
 	chatContent            string
 	isChatContainerFocused bool
@@ -129,7 +128,6 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 		colors:                 colors,
 		chatContainer:          chatContainerStyle,
 		chatView:               chatView,
-		chatViewReady:          false,
 		chatContent:            defaultChatContent,
 		renderedHistory:        defaultChatContent,
 		isChatContainerFocused: false,
@@ -205,10 +203,10 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		return p.initializePane(msg.Session)
 
 	case settings.UpdateSettingsEvent:
-		updateRender := msg.Settings.HideReasoning != p.currentSettings.HideReasoning
+		shouldReRender := msg.Settings.HideReasoning != p.currentSettings.HideReasoning
 		p.currentSettings = msg.Settings
-		if updateRender {
-			p = p.displaySession(p.sessionContent, p.terminalWidth, false)
+		if shouldReRender && len(p.sessionContent) != 0 {
+			p = p.handleWindowResize(p.terminalWidth, p.terminalHeight)
 		}
 
 	case renderContentMsg:

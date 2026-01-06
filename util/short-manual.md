@@ -10,6 +10,11 @@ ____________________________
  |_| \_|\___|_|\_\___/|_|
 ____________________________
 ```
+## Below is the short manual
+
+__`j/k` to navigate the manual__
+ <!------->
+__`2` to focus on the manual (pane)__
 
 # Global keybindings
 
@@ -20,6 +25,8 @@ ____________________________
 `Ctrl+x` Save quick chat
  <!------->
 `Ctrl+w` Toggle web search
+ <!------->
+`Ctrl+h` Hide/show reasoning
  <!------->
 `Ctrl+o` Toggle zen mode
  <!------->
