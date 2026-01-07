@@ -16,6 +16,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
  * 🌟 **Support for Gemini API**
  * 🔀 **Support for OpenRouter API**
  * 🖼️ **Images support**
+ * 🔍 **Web search tool**
  * 💬 **Chat sessions** management and quick chats
  * ⚙️ **Settings presets** (configure different personas with unique settings)
  * ✂️ **Convenient text selection** tool (vim-like line selection)
@@ -199,6 +200,8 @@ nekot -t blue
 - `Ctrl+o`: Toggles zen mode
 - `Ctrl+c`: Exit the program
 - `Ctrl+n`: Create new session
+- `Ctrl+w`: Toggles web search (preset level setting)
+- `Ctrl+h`: Hide/show reasoning tokens (preset level setting)
 - `Ctrl+q`: Start quick chat
 - `Ctrl+x`: Save quick chat to session
 
@@ -240,7 +243,8 @@ Selection mode allows to navigate the chat pane and select lines to copy. Suppor
  - `j`, `k` - go down and up a line
    - Multiline jumps like `3j` (3 lines down), `99k` (99 lines up) are also supported
 - `v`, `Shift+v` or `space` to enter or quit line selection mode
-- `y` to copy selected text
+- `y` to copy selected text (with formatting from the app)
+- `r`, `c` to copy selected text as raw LLM output
 - `Esc` to quit selection or navigation modes
 
 ## Settings Pane
