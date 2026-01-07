@@ -357,26 +357,26 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 }
 
 func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[string]string) tea.Cmd {
-	toolName := "web_search"
-	result, err := websearch.PrepareContextFromWebSearch(ctx, args["query"])
-	isSuccess := true
-	if err != nil {
-		util.Slog.Error("web search failed", "error", err.Error())
-		return m.resetStateAndCreateError(err.Error())
-	}
-
-	toolCallResult := ""
-	jsonData, err := json.Marshal(result)
-	if err != nil {
-		util.Slog.Error("failed to serialize web_search result data", "error", err.Error())
-		isSuccess = false
-	}
-
-	if isSuccess {
-		toolCallResult = string(jsonData)
-		util.Slog.Debug("retrieved context from a web search")
-	}
 	return func() tea.Msg {
+		toolName := "web_search"
+		result, err := websearch.PrepareContextFromWebSearch(ctx, args["query"])
+		isSuccess := true
+		if err != nil {
+			util.Slog.Error("web search failed", "error", err.Error())
+			return util.ErrorEvent{Message: err.Error()}
+		}
+
+		toolCallResult := ""
+		jsonData, err := json.Marshal(result)
+		if err != nil {
+			util.Slog.Error("failed to serialize web_search result data", "error", err.Error())
+			isSuccess = false
+		}
+
+		if isSuccess {
+			toolCallResult = string(jsonData)
+			util.Slog.Debug("retrieved context from a web search")
+		}
 		return ToolCallComplete{
 			Id:        id,
 			IsSuccess: isSuccess,
