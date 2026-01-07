@@ -86,16 +86,18 @@ type MainView struct {
 	currentSessionID string
 	keys             keyMap
 
-	chatPane     panes.ChatPane
-	promptPane   panes.PromptPane
-	sessionsPane panes.SessionsPane
-	settingsPane panes.SettingsPane
-	infoPane     panes.InfoPane
-	loadedDeps   []util.AsyncDependency
+	chatPane         panes.ChatPane
+	promptPane       panes.PromptPane
+	sessionsPane     panes.SessionsPane
+	settingsPane     panes.SettingsPane
+	infoPane         panes.InfoPane
+	loadedDeps       []util.AsyncDependency
+	pendingToolCalls []util.ToolCall
 
 	flags               config.StartupFlags
 	config              config.Config
 	sessionOrchestrator sessions.Orchestrator
+	sessionService      sessions.SessionService
 	context             context.Context
 
 	terminalWidth  int
@@ -118,6 +120,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 	sessionsPane := panes.NewSessionsPane(db, ctx)
 	settingsPane := panes.NewSettingsPane(db, ctx)
 	statusBarPane := panes.NewInfoPane(db, ctx)
+	sessionsService := sessions.NewSessionService(db)
 
 	w, h := util.CalcChatPaneSize(
 		util.DefaultTerminalWidth,
@@ -146,6 +149,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		focused:             util.PromptPane,
 		currentSessionID:    "",
 		sessionOrchestrator: orchestrator,
+		sessionService:      *sessionsService,
 		promptPane:          promptPane,
 		sessionsPane:        sessionsPane,
 		settingsPane:        settingsPane,
@@ -238,14 +242,17 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, util.MakeErrorMsg("did not expect a tool call result")
 		}
 
+		if len(m.pendingToolCalls) == 0 {
+			m.pendingToolCalls = []util.ToolCall{}
+		}
+
 		lastIdx := len(m.sessionOrchestrator.ArrayOfMessages) - 1
 		lastTurn := m.sessionOrchestrator.ArrayOfMessages[lastIdx]
 
-		toolResults := []util.ToolCall{}
 		if len(lastTurn.ToolCalls) > 0 {
 			for _, tc := range lastTurn.ToolCalls {
 				if tc.Function.Name == msg.Name && tc.Id == msg.Id && msg.IsSuccess {
-					toolResults = append(toolResults, util.ToolCall{
+					m.pendingToolCalls = append(m.pendingToolCalls, util.ToolCall{
 						Id: msg.Id,
 						Function: util.ToolFunction{
 							Args: tc.Function.Args,
@@ -257,10 +264,24 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		util.Slog.Debug("consturcted tool call results for continuation", "amount", len(toolResults))
+		if len(m.pendingToolCalls) == len(lastTurn.ToolCalls) {
+			updatedArray := append(m.sessionOrchestrator.ArrayOfMessages, util.LocalStoreMessage{
+				Model:       lastTurn.Model,
+				Role:        "tool",
+				Attachments: []util.Attachment{},
+				ToolCalls:   m.pendingToolCalls,
+			})
 
-		cmds = append(cmds, m.chatPane.ResumeCompletion(m.context, &m.sessionOrchestrator, toolResults))
-		return m, tea.Batch(cmds...)
+			err := m.sessionService.UpdateSessionMessages(m.sessionOrchestrator.GetCurrentSessionId(), updatedArray)
+			if err != nil {
+				return m, tea.Batch(util.MakeErrorMsg(err.Error()), util.SendProcessingStateChangedMsg(util.Idle))
+			}
+			util.Slog.Debug("consturcted tool call results for continuation", "amount", len(m.pendingToolCalls))
+
+			m.pendingToolCalls = []util.ToolCall{}
+			cmds = append(cmds, m.chatPane.ResumeCompletion(m.context, &m.sessionOrchestrator, m.pendingToolCalls))
+			return m, tea.Batch(cmds...)
+		}
 
 	case util.PromptReady:
 		m.error = util.ErrorEvent{}

@@ -75,8 +75,7 @@ func (c OpenrouterClient) RequestCompletion(
 
 		util.Slog.Debug("constructing message", "model", modelSettings.Model)
 
-		processResultID := util.ChunkIndexStart
-
+		processResultID := util.GetNextProcessResultId(chatMsgs)
 		toolCallsBuffer := OpenRouterToolCallsBuffer{
 			Chunks: []openrouter.ToolCall{},
 		}
@@ -171,10 +170,32 @@ func (c OpenrouterClient) RequestModelsList(ctx context.Context) util.ProcessMod
 	}
 }
 
+func constructOpenrouterToolCalls(msg util.LocalStoreMessage) []openrouter.ChatCompletionMessage {
+	toolCallTurns := []openrouter.ChatCompletionMessage{}
+	for _, tc := range msg.ToolCalls {
+		util.Slog.Debug("appending tool call request", "data", tc)
+
+		result := ""
+		if tc.Result != nil {
+			result = *tc.Result
+		}
+		toolResult := openrouter.ChatCompletionMessage{
+			Role:       openrouter.ChatMessageRoleTool,
+			ToolCalls:  []openrouter.ToolCall{toOpenRouterToolCall(tc)},
+			Content:    openrouter.Content{Text: result},
+			ToolCallID: tc.Id,
+		}
+
+		toolCallTurns = append(toolCallTurns, toolResult)
+	}
+
+	return toolCallTurns
+}
+
 func constructOpenrouterMessage(msg util.LocalStoreMessage) openrouter.ChatCompletionMessage {
 	isUserMsg := msg.Role == "user"
 
-	if len(msg.Attachments) == 0 {
+	if len(msg.Attachments) == 0 && len(msg.ToolCalls) == 0 {
 		if isUserMsg {
 			return openrouter.UserMessage(msg.Content)
 		}
@@ -182,7 +203,7 @@ func constructOpenrouterMessage(msg util.LocalStoreMessage) openrouter.ChatCompl
 		return openrouter.AssistantMessage(msg.Content)
 	}
 
-	messageWithImages := openrouter.ChatCompletionMessage{
+	message := openrouter.ChatCompletionMessage{
 		Role: "user",
 		Content: openrouter.Content{
 			Multi: []openrouter.ChatMessagePart{
@@ -194,20 +215,22 @@ func constructOpenrouterMessage(msg util.LocalStoreMessage) openrouter.ChatCompl
 		},
 	}
 
-	for _, attachment := range msg.Attachments {
-		data := getImageURLString(attachment)
+	if len(msg.Attachments) > 0 {
+		for _, attachment := range msg.Attachments {
+			data := getImageURLString(attachment)
 
-		part := openrouter.ChatMessagePart{
-			Type: "image_url",
-			ImageURL: &openrouter.ChatMessageImageURL{
-				URL: data,
-			},
+			part := openrouter.ChatMessagePart{
+				Type: "image_url",
+				ImageURL: &openrouter.ChatMessageImageURL{
+					URL: data,
+				},
+			}
+
+			message.Content.Multi = append(message.Content.Multi, part)
 		}
-
-		messageWithImages.Content.Multi = append(messageWithImages.Content.Multi, part)
 	}
 
-	return messageWithImages
+	return message
 }
 
 func setRequestContext(
@@ -243,11 +266,18 @@ func setRequestContext(
 			messageContent += singleMessage.Content
 		}
 
+		if len(singleMessage.ToolCalls) > 0 {
+			toolCalls := constructOpenrouterToolCalls(singleMessage)
+			chat = append(chat, toolCalls...)
+			continue
+		}
+
 		if messageContent != "" {
 			singleMessage.Content = messageContent
 			conversationTurn := constructOpenrouterMessage(singleMessage)
 			chat = append(chat, conversationTurn)
 		}
+
 	}
 
 	r.Messages = chat
@@ -452,6 +482,17 @@ func (b *OpenRouterToolCallsBuffer) mergeOpenRouterBuffer(chunk openrouter.ChatC
 
 	b.Chunks = []openrouter.ToolCall{}
 	return result, nil
+}
+func toOpenRouterToolCall(tc util.ToolCall) openrouter.ToolCall {
+	args, _ := json.Marshal(tc.Function.Args)
+	return openrouter.ToolCall{
+		ID:   tc.Id,
+		Type: openrouter.ToolTypeFunction,
+		Function: openrouter.FunctionCall{
+			Name:      tc.Function.Name,
+			Arguments: string(args),
+		},
+	}
 }
 
 func fromOpenRouterToolCall(tc openrouter.ToolCall) util.ToolCall {

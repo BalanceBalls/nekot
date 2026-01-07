@@ -254,7 +254,7 @@ func RenderToolCall(
 		toolData := "<div>--------------------</div>\n"
 		for _, tc := range msg.ToolCalls {
 			toolData += fmt.Sprintf(
-				"<div>%s [Executed tool call: %s]\n Args: %v</div>                                           \n",
+				"<div>%s [Executed tool call: %s]\n   Args: %v</div>                                           \n",
 				"🔧",
 				tc.Function.Name,
 				tc.Function.Args)

@@ -220,19 +220,9 @@ func (m *Orchestrator) ResumeCompletion(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.ArrayOfMessages = append(m.ArrayOfMessages, util.LocalStoreMessage{
-		Model:       m.Settings.Model,
-		Role:        "tool",
-		Attachments: []util.Attachment{},
-		ToolCalls:   toolResults,
-	})
-
-	err := m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
-	if err != nil {
-		return m.resetStateAndCreateError(err.Error())
-	}
-
-	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), m.ArrayOfMessages, m.Settings, resp)
+	updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
+	m.setCurrentSessionData(updatedSession)
+	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), updatedSession.Messages, m.Settings, resp)
 }
 
 func (m *Orchestrator) setProcessingContext(ctx context.Context) context.Context {
@@ -244,6 +234,10 @@ func (m *Orchestrator) setProcessingContext(ctx context.Context) context.Context
 	m.processingCancel = processingCancel
 	m.processingCtx = processingCtx
 	return processingCtx
+}
+
+func (m Orchestrator) GetCurrentSessionId() int {
+	return m.CurrentSessionID
 }
 
 func (m Orchestrator) IsIdle() bool {
