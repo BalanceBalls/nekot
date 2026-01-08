@@ -192,6 +192,18 @@ To specify color scheme use `-t` flag:
 nekot -t blue
 ```
 
+### Other flags
+
+To specify a model use `-m` flag:
+```bash
+nekot -m "qwen3:4b"
+```
+
+To create a new session on start use `-n` flag:
+```bash
+nekot -n
+```
+
 ## Global Keybindings
 
 - `Tab`: Change focus between panes. The currently focused pane will be highlighted
