@@ -108,6 +108,16 @@ export  OPENROUTER_API_KEY="some-key" # you would want to export this in your .z
 ```
 </details>
 
+## Web search (BETA)
+
+Web search feature uses tool calling for web search reqests exectution.
+This feature can be toggled using `ctrl+w`.
+
+### Details
+* Uses the [DuckDuckGo](https://duckduckgo.com/) search engine and requires no configuration
+* Results are scored using bm25 for better accuracy
+* **Using web search can significantly increase token usage**
+
 ## Config
 
 We provide a `config.json` file within your directory for easy access to essential settings.
