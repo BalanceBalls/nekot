@@ -42,7 +42,7 @@ var webSearchTool = &genai.Tool{
 	FunctionDeclarations: []*genai.FunctionDeclaration{
 		{
 			Name:        "web_search",
-			Description: "Perform a web search to retrive up to date info or piece of knowledge you have doubts about.",
+			Description: "Perform a web search to retrieve up to date info or piece of knowledge you have doubts about.",
 			Parameters: &genai.Schema{
 				Type: genai.TypeObject,
 				Properties: map[string]*genai.Schema{

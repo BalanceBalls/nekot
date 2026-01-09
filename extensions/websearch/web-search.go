@@ -18,6 +18,7 @@ import (
 
 const pagesMax = 10
 const chunksToInclude = 2
+const maxBodySize = 3 * 1024 * 1024 // 3MB limit
 
 type WebSearchResult struct {
 	Data  string  `json:"data"`
@@ -123,7 +124,7 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 		cleanChunks = append(cleanChunks, pageChunks...)
 	}
 
-	return cleanChunks, err
+	return cleanChunks, nil
 }
 
 func getWebPageData(
@@ -144,7 +145,7 @@ func getWebPageData(
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize))
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
 		return
@@ -192,7 +193,7 @@ func performDuckDuckGoSearch(ctx context.Context, query string) ([]SearchEngineD
 
 	util.Slog.Debug("looking up the following query", "value", query)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: time.Second * 30}
 	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
 	if err != nil {
 		return nil, err
@@ -207,7 +208,7 @@ func performDuckDuckGoSearch(ctx context.Context, query string) ([]SearchEngineD
 
 	if resp.StatusCode != 200 {
 
-		if resp.StatusCode == 202 {
+		if resp.StatusCode == 202 || resp.StatusCode == 429 {
 			return nil, fmt.Errorf("duckduckgo requests have been rate limited, wait for the limit to reset or temporarily disable web-search (ctrl+w)")
 		}
 

@@ -71,13 +71,7 @@ func GetNextProcessResultId(chatMsgs []LocalStoreMessage) int {
 		return ChunkIndexStart
 	}
 
-	// if !slices.ContainsFunc(chatMsgs,
-	// 	func(c util.LocalStoreMessage) bool {
-	// 		return len(c.ToolCalls) > 0
-	// 	}) {
-	// 	return util.ChunkIndexStart
-	// }
-
+	// 10 is arbitrary, just to increase ID for avoiding IDs overlapping and skipping chunks
 	return len(chatMsgs) + 10
 }
 

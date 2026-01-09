@@ -315,10 +315,6 @@ func (p MessageProcessor) prepareResponseJSONForDB(currentChunk *util.ProcessApi
 	processed := []util.ProcessApiCompletionResponse{}
 	for _, responseChunk := range p.ResponseDataChunks {
 		processed = append(processed, responseChunk)
-		// if p.isFinalChunk(responseChunk) {
-		// 	util.Slog.Warn("breaking json prep loop", "iteration", i, "chunk", responseChunk)
-		// 	break
-		// }
 
 		if len(responseChunk.Result.Choices) == 0 {
 			continue

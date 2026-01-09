@@ -215,7 +215,6 @@ func (m *Orchestrator) GetCompletion(
 func (m *Orchestrator) ResumeCompletion(
 	ctx context.Context,
 	resp chan util.ProcessApiCompletionResponse,
-	toolResults []util.ToolCall,
 ) tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -360,28 +359,28 @@ func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[stri
 	return func() tea.Msg {
 		toolName := "web_search"
 		result, err := websearch.PrepareContextFromWebSearch(ctx, args["query"])
-		isSuccess := true
 		if err != nil {
 			util.Slog.Error("web search failed", "error", err.Error())
 			return util.ErrorEvent{Message: err.Error()}
 		}
 
-		toolCallResult := ""
 		jsonData, err := json.Marshal(result)
 		if err != nil {
 			util.Slog.Error("failed to serialize web_search result data", "error", err.Error())
-			isSuccess = false
+			return ToolCallComplete{
+				Id:        id,
+				IsSuccess: false,
+				Name:      toolName,
+				Result:    "",
+			}
 		}
 
-		if isSuccess {
-			toolCallResult = string(jsonData)
-			util.Slog.Debug("retrieved context from a web search")
-		}
+		util.Slog.Debug("retrieved context from a web search")
 		return ToolCallComplete{
 			Id:        id,
-			IsSuccess: isSuccess,
+			IsSuccess: true,
 			Name:      toolName,
-			Result:    toolCallResult,
+			Result:    string(jsonData),
 		}
 	}
 }

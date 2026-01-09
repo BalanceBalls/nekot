@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"slices"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -223,7 +222,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case util.AsyncDependencyReady:
 		m.loadedDeps = append(m.loadedDeps, msg.Dependency)
 
-		if slices.Equal(m.loadedDeps, asyncDeps) {
+		if len(m.loadedDeps) == len(asyncDeps) {
 			m.viewReady = true
 			m.promptPane = m.promptPane.Enable()
 		}
@@ -240,10 +239,6 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.sessionOrchestrator.ResponseProcessingState != util.AwaitingToolCallResult {
 			return m, util.MakeErrorMsg("did not expect a tool call result")
-		}
-
-		if len(m.pendingToolCalls) == 0 {
-			m.pendingToolCalls = []util.ToolCall{}
 		}
 
 		lastIdx := len(m.sessionOrchestrator.ArrayOfMessages) - 1
@@ -279,7 +274,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			util.Slog.Debug("consturcted tool call results for continuation", "amount", len(m.pendingToolCalls))
 
 			m.pendingToolCalls = []util.ToolCall{}
-			cmds = append(cmds, m.chatPane.ResumeCompletion(m.context, &m.sessionOrchestrator, m.pendingToolCalls))
+			cmds = append(cmds, m.chatPane.ResumeCompletion(m.context, &m.sessionOrchestrator))
 			return m, tea.Batch(cmds...)
 		}
 

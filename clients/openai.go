@@ -109,7 +109,7 @@ var openAIwebSearchTool = OpenAiToolDefinition{
 	Type: "function",
 	Function: OpenAiFunction{
 		Name:        "web_search",
-		Description: "Perform a web search to retrive up to date info or piece of knowledge you have doubts about.",
+		Description: "Perform a web search to retrieve up to date info or piece of knowledge you have doubts about.",
 		Parameters: OpenAiFuncitonParameters{
 			Type:     "object",
 			Required: []string{"query"},

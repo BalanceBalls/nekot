@@ -18,7 +18,7 @@ var openRouterwebSearchTool = openrouter.Tool{
 	Type: openrouter.ToolTypeFunction,
 	Function: &openrouter.FunctionDefinition{
 		Name:        "web_search",
-		Description: "Perform a web search to retrive up to date info or piece of knowledge you have doubts about.",
+		Description: "Perform a web search to retrieve up to date info or piece of knowledge you have doubts about.",
 		Parameters: OpenAiFuncitonParameters{
 			Type:     "object",
 			Required: []string{"query"},

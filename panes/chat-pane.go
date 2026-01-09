@@ -385,10 +385,9 @@ func (p *ChatPane) DisplayCompletion(
 func (p *ChatPane) ResumeCompletion(
 	ctx context.Context,
 	orchestrator *sessions.Orchestrator,
-	toolResults []util.ToolCall,
 ) tea.Cmd {
 	return tea.Batch(
-		orchestrator.ResumeCompletion(ctx, p.msgChan, toolResults),
+		orchestrator.ResumeCompletion(ctx, p.msgChan),
 		waitForActivity(p.msgChan),
 	)
 }
