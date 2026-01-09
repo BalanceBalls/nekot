@@ -145,6 +145,14 @@ func getWebPageData(
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		results <- WebPageDataExport{
+			SearchEngineData: searchResult,
+			Err:              fmt.Errorf("HTTP %d: failed to fetch page", resp.StatusCode),
+		}
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize))
 	if err != nil {
 		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}

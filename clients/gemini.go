@@ -90,15 +90,13 @@ func (c GeminiClient) RequestCompletion(
 
 		setParams(model, *config, modelSettings)
 
-		lastTurn := chatMsgs[len(chatMsgs)-1]
 		cs := model.StartChat()
 		cs.History, err = buildChatHistory(chatMsgs, *config.IncludeReasoningTokensInContext)
 		if err != nil {
 			return util.MakeErrorMsg(err.Error())
 		}
 
-		iter := cs.SendMessageStream(ctx, genai.Text(lastTurn.Content))
-
+		iter := cs.SendMessageStream(ctx)
 		processResultID := util.GetNextProcessResultId(chatMsgs)
 
 		var citations []string

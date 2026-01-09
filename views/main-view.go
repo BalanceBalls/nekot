@@ -222,6 +222,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case util.AsyncDependencyReady:
 		m.loadedDeps = append(m.loadedDeps, msg.Dependency)
 
+		// TODO: implement correct comparison
 		if len(m.loadedDeps) == len(asyncDeps) {
 			m.viewReady = true
 			m.promptPane = m.promptPane.Enable()
@@ -239,6 +240,20 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.sessionOrchestrator.ResponseProcessingState != util.AwaitingToolCallResult {
 			return m, util.MakeErrorMsg("did not expect a tool call result")
+		}
+
+		if len(m.sessionOrchestrator.ArrayOfMessages) == 0 {
+			return m, tea.Batch(
+				util.MakeErrorMsg("tool call result received but session has no messages"),
+				util.SendProcessingStateChangedMsg(util.Idle),
+			)
+		}
+
+		if !msg.IsSuccess {
+			return m, tea.Batch(
+				util.MakeErrorMsg("tool call failed: "+msg.Name),
+				util.SendProcessingStateChangedMsg(util.Idle),
+			)
 		}
 
 		lastIdx := len(m.sessionOrchestrator.ArrayOfMessages) - 1
