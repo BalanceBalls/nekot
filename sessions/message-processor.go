@@ -323,7 +323,6 @@ func (p MessageProcessor) prepareResponseJSONForDB(currentChunk *util.ProcessApi
 		choice := responseChunk.Result.Choices[0]
 		if reasoning, ok := p.getChunkReasoningData(responseChunk, processed); ok {
 			newMessage.Resoning += reasoning
-			continue
 		}
 
 		if content, ok := getContent(choice.Delta); ok && content != "" {
