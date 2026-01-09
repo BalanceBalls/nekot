@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/sessions"
+	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,10 +38,11 @@ var defaultLabelStyle = lipgloss.NewStyle().
 	PaddingLeft(1)
 
 type InfoPane struct {
-	sessionService *sessions.SessionService
-	currentSession sessions.Session
-	colors         util.SchemeColors
-	spinner        spinner.Model
+	sessionService  *sessions.SessionService
+	currentSession  sessions.Session
+	currentSettings util.Settings
+	colors          util.SchemeColors
+	spinner         spinner.Model
 
 	processingIdleLabel   lipgloss.Style
 	processingActiveLabel lipgloss.Style
@@ -47,10 +50,13 @@ type InfoPane struct {
 	completionTokensLabel lipgloss.Style
 	notificationLabel     lipgloss.Style
 	quickChatLabel        lipgloss.Style
+	webSearchLabel        lipgloss.Style
 
+	mu               *sync.RWMutex
 	showNotification bool
 	notification     util.Notification
 	isProcessing     bool
+	processingState  util.ProcessingState
 	terminalWidth    int
 	terminalHeight   int
 }
@@ -83,8 +89,13 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 		Background(colors.NormalTabBorderColor).
 		BorderLeftForeground(colors.HighlightColor).
 		Align(lipgloss.Left).
-		Foreground(colors.DefaultTextColor)
-	quickChatLabel := defaultLabelStyle.Background(colors.HighlightColor)
+		Foreground(lipgloss.Color(colors.DefaultTextColor.Dark))
+	quickChatLabel := defaultLabelStyle.
+		Background(colors.HighlightColor).
+		Foreground(lipgloss.Color(colors.DefaultTextColor.Dark))
+	webSearchLabel := defaultLabelStyle.
+		Background(colors.ErrorColor).
+		Foreground(lipgloss.Color(colors.DefaultTextColor.Dark))
 
 	return InfoPane{
 		processingIdleLabel:   processingIdleLabel,
@@ -93,12 +104,15 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 		completionTokensLabel: completionTokensLabel,
 		notificationLabel:     notificationLabel,
 		quickChatLabel:        quickChatLabel,
+		webSearchLabel:        webSearchLabel,
 
 		spinner:        spinner,
 		colors:         colors,
 		sessionService: ss,
 		terminalWidth:  util.DefaultTerminalWidth,
 		terminalHeight: util.DefaultTerminalHeight,
+
+		mu: &sync.RWMutex{},
 	}
 }
 
@@ -146,8 +160,12 @@ func (p InfoPane) Update(msg tea.Msg) (InfoPane, tea.Cmd) {
 		p.showNotification = false
 
 	case util.ProcessingStateChanged:
-		p.isProcessing = msg.IsProcessing
-		if !msg.IsProcessing {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		p.isProcessing = util.IsProcessingActive(msg.State)
+		p.processingState = msg.State
+		if !p.isProcessing {
 			session, err := p.sessionService.GetSession(p.currentSession.ID)
 			if err != nil {
 				util.MakeErrorMsg(err.Error())
@@ -156,6 +174,10 @@ func (p InfoPane) Update(msg tea.Msg) (InfoPane, tea.Cmd) {
 		} else {
 			cmds = append(cmds, p.spinner.Tick)
 		}
+
+	case settings.UpdateSettingsEvent:
+		p.currentSettings = msg.Settings
+
 	}
 
 	return p, tea.Batch(cmds...)
@@ -165,7 +187,7 @@ func (p InfoPane) View() string {
 	paneWidth, _ := util.CalcSettingsPaneSize(p.terminalWidth, p.terminalHeight)
 	var processingLabel string
 	if p.isProcessing {
-		processingLabel = p.processingActiveLabel.Render(processingLabelText + p.spinner.View())
+		processingLabel = p.processingActiveLabel.Render(p.getProcessingStateText() + p.spinner.View())
 	} else {
 		processingLabel = p.processingIdleLabel.Render(idleLabelText)
 	}
@@ -182,12 +204,18 @@ func (p InfoPane) View() string {
 		quickChatLabel = p.quickChatLabel.Render("Q")
 	}
 
+	webSearchLabel := ""
+	if p.currentSettings.WebSearchEnabled {
+		webSearchLabel = p.webSearchLabel.Render("W")
+	}
+
 	firstRow := processingLabel
 	secondRow := lipgloss.JoinHorizontal(
 		lipgloss.Left,
 		promptTokensLablel,
 		completionTokensLabel,
 		quickChatLabel,
+		webSearchLabel,
 	)
 
 	if p.showNotification {
@@ -247,4 +275,23 @@ func tickAfter(seconds int) tea.Cmd {
 	return tea.Tick(time.Second*time.Duration(seconds), func(t time.Time) tea.Msg {
 		return tickMsg{}
 	})
+}
+
+func (p InfoPane) getProcessingStateText() string {
+	switch p.processingState {
+	case util.AwaitingFinalization:
+		return "Finishing"
+	case util.AwaitingToolCallResult:
+		return "Calling tools"
+	case util.Error:
+		return "Error"
+	case util.Finalized:
+		return "Done"
+	case util.Idle:
+		return "Idle"
+	case util.ProcessingChunks:
+		return "Processing"
+	default:
+		panic(fmt.Sprintf("unexpected util.ProcessingState: %#v", p.processingState))
+	}
 }

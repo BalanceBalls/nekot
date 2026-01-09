@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -14,17 +15,21 @@ func GetMessagesAsPrettyString(
 	w int,
 	colors SchemeColors,
 	isQuickChat bool,
+	settings Settings,
 ) string {
 	var messages string
 
 	for _, message := range msgsToRender {
+
 		messageToUse := message.Content
 
 		switch message.Role {
 		case "user":
 			messageToUse = RenderUserMessage(message, w, colors, false)
 		case "assistant":
-			messageToUse = RenderBotMessage(message, w, colors, false)
+			messageToUse = RenderBotMessage(message, w, colors, false, settings)
+		case "tool":
+			messageToUse = RenderToolCall(message, w, colors, false, settings)
 		}
 
 		if messages == "" {
@@ -43,17 +48,20 @@ func GetMessagesAsPrettyString(
 	return messages
 }
 
-func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeColors) string {
+func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeColors, settings Settings) string {
 	var messages string
 	w = w - TextSelectorMaxWidthCorrection
 	for _, message := range msgsToRender {
+
 		messageToUse := message.Content
 
 		switch message.Role {
 		case "user":
 			messageToUse = RenderUserMessage(message, w, colors, true)
 		case "assistant":
-			messageToUse = RenderBotMessage(message, w, colors, true)
+			messageToUse = RenderBotMessage(message, w, colors, true, settings)
+		case "tool":
+			messageToUse = RenderToolCall(message, w, colors, true, settings)
 		}
 
 		if messages == "" {
@@ -129,8 +137,14 @@ func RenderBotMessage(
 	width int,
 	colors SchemeColors,
 	isVisualMode bool,
+	settings Settings,
 ) string {
-	if msg.Content == "" {
+
+	if len(msg.ToolCalls) != 0 {
+		return RenderToolCall(msg, width, colors, isVisualMode, settings)
+	}
+
+	if msg.Content == "" && msg.Resoning == "" {
 		return ""
 	}
 
@@ -141,7 +155,7 @@ func RenderBotMessage(
 	)
 
 	content := ""
-	if msg.Resoning != "" {
+	if msg.Resoning != "" && !settings.HideReasoning {
 		reasoningLines := strings.Split(msg.Resoning, "\n")
 
 		content += "\n" + "## Reasoning content:" + "\n"
@@ -164,21 +178,123 @@ func RenderBotMessage(
 	}
 
 	content += msg.Content
-
-	if isVisualMode {
-		content = "\n🤖 " + content
-		userMsg, _ := renderer.Render(content)
-		output := strings.TrimSpace(userMsg)
-		return lipgloss.NewStyle().Render("\n" + output + "\n")
-	}
-
 	modelName := ""
+	icon := "\n 🤖 "
 	if len(msg.Model) > 0 {
 		modelName = "**[" + msg.Model + "]**\n"
 	}
-	content = "\n 🤖 " + modelName + content + "\n"
+
+	content = CleanContent(content)
+
+	if isVisualMode {
+		content = icon + content
+		userMsg, _ := renderer.Render(content)
+		output := strings.TrimSpace(userMsg)
+		return lipgloss.NewStyle().Render(output + "\n")
+	}
+
+	content = icon + modelName + content + "\n"
 	aiResponse, _ := renderer.Render(content)
 	output := strings.TrimSpace(aiResponse)
+	return lipgloss.NewStyle().
+		BorderLeft(true).
+		BorderStyle(lipgloss.InnerHalfBlockBorder()).
+		BorderLeftForeground(colors.ActiveTabBorderColor).
+		Width(width - 1).
+		Render(output)
+}
+
+func RenderToolCall(
+	msg LocalStoreMessage,
+	width int,
+	colors SchemeColors,
+	isVisualMode bool,
+	settings Settings) string {
+
+	if msg.Resoning == "" && msg.Content == "" && msg.Role != "tool" {
+		return ""
+	}
+
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width-WordWrapDelta),
+		colors.RendererThemeOption,
+	)
+
+	content := ""
+
+	if msg.Content != "" {
+		contentLines := strings.SplitSeq(msg.Content, "\n")
+
+		for contentLine := range contentLines {
+			if contentLine == "" || contentLine == "\n" {
+				continue
+			}
+
+			content += "<div>" + contentLine + "</div>\n"
+		}
+		content += "\n  \n"
+	}
+
+	if msg.Resoning != "" && !settings.HideReasoning {
+		reasoningLines := strings.SplitSeq(msg.Resoning, "\n")
+
+		for reasoningLine := range reasoningLines {
+			if reasoningLine == "" || reasoningLine == "\n" {
+				continue
+			}
+
+			content += "<div>" + reasoningLine + "</div>\n"
+		}
+		content += "\n  \n"
+	}
+
+	if msg.Role == "tool" {
+
+		toolData := "<div>--------------------</div>\n"
+		for _, tc := range msg.ToolCalls {
+			toolData += fmt.Sprintf(
+				"<div>%s [Executed tool call: %s]\n   Args: %v</div>                                           \n",
+				"🔧",
+				tc.Function.Name,
+				tc.Function.Args)
+		}
+		toolData += "<div>--------------------</div>\n"
+		toolData += "\n  \n"
+
+		content += toolData
+	}
+
+	content = CleanContent(content)
+
+	if isVisualMode {
+		userMsg, _ := renderer.Render(content)
+		output := strings.TrimSpace(userMsg)
+		return lipgloss.NewStyle().Render(output + "\n")
+	}
+
+	aiResponse, _ := renderer.Render(content)
+	output := strings.TrimSpace(aiResponse)
+	return lipgloss.NewStyle().
+		BorderLeft(true).
+		BorderStyle(lipgloss.InnerHalfBlockBorder()).
+		BorderLeftForeground(colors.HighlightColor).
+		Width(width - 1).
+		Render(output)
+}
+
+func RenderBotChunk(
+	chunk string,
+	width int,
+	colors SchemeColors) string {
+
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithPreservedNewLines(),
+		glamour.WithWordWrap(width-WordWrapDelta),
+		colors.RendererThemeOption,
+	)
+	userMsg, _ := renderer.Render(chunk)
+	output := strings.TrimSpace(userMsg)
 	return lipgloss.NewStyle().
 		BorderLeft(true).
 		BorderStyle(lipgloss.InnerHalfBlockBorder()).
@@ -214,4 +330,21 @@ func GetManual(w int, colors SchemeColors) string {
 func StripAnsiCodes(str string) string {
 	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[mG]`)
 	return ansiRegex.ReplaceAllString(str, "")
+}
+
+func CleanContent(content string) string {
+	byWords := strings.Split(content, " ")
+
+	cleanedUpWords := []string{}
+
+	for _, word := range byWords {
+		if len(word) > 5 && strings.Contains(word, "\u00ad") {
+			cleanedUpWords = append(cleanedUpWords, strings.ReplaceAll(word, "\u00ad", ""))
+			Slog.Debug("found non breaking space", "word", word, "fixed", strings.ReplaceAll(word, "\u00ad", ""))
+			continue
+		}
+		cleanedUpWords = append(cleanedUpWords, word)
+	}
+
+	return strings.Join(cleanedUpWords, " ")
 }

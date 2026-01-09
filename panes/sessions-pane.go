@@ -167,7 +167,7 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		}
 
 	case util.ProcessingStateChanged:
-		if !msg.IsProcessing {
+		if !util.IsProcessingActive(msg.State) {
 			session, err := p.sessionService.GetSession(p.currentSessionId)
 			if err != nil {
 				util.MakeErrorMsg(err.Error())
@@ -408,11 +408,11 @@ func (p SessionsPane) listItem(heading string, value string, isActive bool, widt
 	}
 	headingEl := lipgloss.NewStyle().
 		PaddingLeft(util.ListItemPaddingLeft).
-		Foreground(lipgloss.Color(headingColor)).
+		Foreground(lipgloss.AdaptiveColor{Dark: headingColor.Dark, Light: headingColor.Light}).
 		Bold(isActive).
 		Render
 	spanEl := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(color)).
+		Foreground(lipgloss.AdaptiveColor{Dark: color.Dark, Light: color.Light}).
 		Render
 
 	value = util.TrimListItem(value, widthCap)

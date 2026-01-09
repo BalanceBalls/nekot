@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -45,7 +46,9 @@ func (ss *SettingsService) GetPreset(id int) (util.Settings, error) {
 			system_msg,
 			top_p,
 			temperature,
-			preset_name
+			preset_name,
+			web_search_enabled,
+			hide_reasoning
 		from settings where settings_id=$1`,
 		id,
 	)
@@ -58,6 +61,8 @@ func (ss *SettingsService) GetPreset(id int) (util.Settings, error) {
 		&settings.TopP,
 		&settings.Temperature,
 		&settings.PresetName,
+		&settings.WebSearchEnabled,
+		&settings.HideReasoning,
 	)
 
 	if err != nil {
@@ -78,7 +83,9 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 			system_msg,
 			top_p,
 			temperature,
-			preset_name
+			preset_name,
+			web_search_enabled,
+			hide_reasoning
 		from settings where settings_id=$1`,
 		id,
 	)
@@ -91,6 +98,8 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 		&settings.TopP,
 		&settings.Temperature,
 		&settings.PresetName,
+		&settings.WebSearchEnabled,
+		&settings.HideReasoning,
 	)
 
 	availableModels, modelsError := ss.GetProviderModels(ctx, cfg.Provider, cfg.ProviderBaseUrl)
@@ -100,6 +109,11 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 			Settings: settings,
 			Err:      modelsError,
 		}
+	}
+
+	if len(cfg.DefaultModel) > 0 {
+		util.Slog.Warn("model is overriden from config", "override", cfg.DefaultModel)
+		settings.Model = cfg.DefaultModel
 	}
 
 	isModelFromSettingsAvailable := slices.Contains(availableModels, settings.Model)
@@ -112,20 +126,25 @@ func (ss *SettingsService) GetSettings(ctx context.Context, id int, cfg config.C
 			}
 		}
 
-		settings = util.Settings{
-			Model:     availableModels[0],
-			MaxTokens: 3000,
-		}
-
-		// if default model is set in config.json - use it instead
+		model := availableModels[0]
 		if len(cfg.DefaultModel) > 0 {
-			settings.Model = cfg.DefaultModel
+			model = cfg.DefaultModel
+		}
+		settings = util.Settings{
+			Model:     model,
+			MaxTokens: 3000,
 		}
 	}
 
 	if !isModelFromSettingsAvailable && len(availableModels) > 0 {
-		modelIdx := rand.IntN(len(availableModels) - 1)
-		settings.Model = availableModels[modelIdx]
+		modelIdx := rand.IntN(int(math.Max(1, float64(len(availableModels)-1))))
+		randomModel := availableModels[modelIdx]
+
+		util.Slog.Warn("specified model not found, will select a random available",
+			"specified model", cfg.DefaultModel,
+			"selected model", randomModel)
+
+		settings.Model = randomModel
 		settings, err = ss.UpdateSettings(settings)
 		if err != nil {
 			return UpdateSettingsEvent{
@@ -246,7 +265,9 @@ func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 			system_msg,
 			top_p,
 			temperature,
-			preset_name
+			preset_name,
+			web_search_enabled,
+			hide_reasoning
 		from settings`,
 	)
 
@@ -265,6 +286,8 @@ func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 			&preset.TopP,
 			&preset.Temperature,
 			&preset.PresetName,
+			&preset.WebSearchEnabled,
+			&preset.HideReasoning,
 		)
 		presets = append(presets, preset)
 	}
@@ -275,14 +298,16 @@ func (ss *SettingsService) GetPresetsList() ([]util.Settings, error) {
 
 func (ss *SettingsService) ResetToDefault(current util.Settings) (util.Settings, error) {
 	defaultSettings := util.Settings{
-		ID:           current.ID,
-		Model:        current.Model,
-		MaxTokens:    defaultMaxTokens,
-		Frequency:    nil,
-		SystemPrompt: current.SystemPrompt,
-		TopP:         nil,
-		Temperature:  nil,
-		PresetName:   current.PresetName,
+		ID:               current.ID,
+		Model:            current.Model,
+		MaxTokens:        defaultMaxTokens,
+		Frequency:        nil,
+		SystemPrompt:     current.SystemPrompt,
+		TopP:             nil,
+		Temperature:      nil,
+		PresetName:       current.PresetName,
+		WebSearchEnabled: false,
+		HideReasoning:    false,
 	}
 
 	_, err := ss.UpdateSettings(defaultSettings)
@@ -297,9 +322,9 @@ func (ss *SettingsService) ResetToDefault(current util.Settings) (util.Settings,
 func (ss *SettingsService) SavePreset(newSettings util.Settings) (int, error) {
 	upsert := `
 		INSERT INTO settings
-			(settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name)
+			(settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name, web_search_enabled, hide_reasoning)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7)
+			($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING settings_id
 	`
 
@@ -312,6 +337,8 @@ func (ss *SettingsService) SavePreset(newSettings util.Settings) (int, error) {
 		newSettings.TopP,
 		newSettings.SystemPrompt,
 		newSettings.PresetName,
+		newSettings.WebSearchEnabled,
+		newSettings.HideReasoning,
 	)
 
 	errId := -999999
@@ -343,9 +370,9 @@ func (ss *SettingsService) RemovePreset(id int) error {
 func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Settings, error) {
 	upsert := `
 		INSERT INTO settings
-			(settings_id, settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name)
+			(settings_id, settings_model, settings_max_tokens, settings_frequency, temperature, top_p, system_msg, preset_name, web_search_enabled, hide_reasoning)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7, $8)
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT(settings_id) DO UPDATE SET
 			settings_model=$2,
 			settings_max_tokens=$3,
@@ -353,7 +380,9 @@ func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Setti
 			temperature=$5,
 			top_p=$6,
 			system_msg=$7,
-			preset_name=$8;
+			preset_name=$8,
+			web_search_enabled=$9,
+			hide_reasoning=$10;
 	`
 
 	_, err := ss.DB.Exec(
@@ -366,6 +395,8 @@ func (ss *SettingsService) UpdateSettings(newSettings util.Settings) (util.Setti
 		newSettings.TopP,
 		newSettings.SystemPrompt,
 		newSettings.PresetName,
+		newSettings.WebSearchEnabled,
+		newSettings.HideReasoning,
 	)
 	if err != nil {
 		return newSettings, err

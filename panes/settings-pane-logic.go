@@ -29,6 +29,10 @@ func (p *SettingsPane) handlePresetMode(msg tea.KeyMsg) tea.Cmd {
 
 	switch {
 	case key.Matches(msg, p.keyMap.goBack):
+		if msg.String() == tea.KeyLeft.String() && !p.presetPicker.IsFirstPage() {
+			return nil
+		}
+
 		p.viewMode = defaultView
 		return cmd
 

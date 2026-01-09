@@ -81,6 +81,10 @@ func (l PresetsList) IsFiltering() bool {
 	return l.list.SettingFilter()
 }
 
+func (l PresetsList) IsFirstPage() bool {
+	return l.list.Paginator.Page == 0
+}
+
 func (l PresetsList) getCurrentPreset() (PresetsListItem, int) {
 	presets := l.list.Items()
 	currentIdx := l.list.Index()

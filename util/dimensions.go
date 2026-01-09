@@ -28,7 +28,7 @@ const (
 	// in order to properly align elements
 	SettingsPaneHeightCounterweight = 3
 	SessionsPaneHeightCounterweight = 4 // TODO: info pane hight
-	ChatPaneVisualModeCounterweight = 1
+	ChatPaneVisualModeCounterweight = 2
 )
 
 // UI elements

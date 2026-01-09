@@ -3,10 +3,14 @@ package panes
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/sessions"
+	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -47,15 +51,31 @@ var defaultChatPaneKeyMap = chatPaneKeyMap{
 	),
 }
 
+const pulsarIntervalMs = 100
+
+type renderContentMsg int
+
+func renderingPulsar() tea.Msg {
+	time.Sleep(time.Millisecond * pulsarIntervalMs)
+	return renderContentMsg(1)
+}
+
 type ChatPane struct {
 	isChatPaneReady        bool
-	chatViewReady          bool
 	displayMode            displayMode
 	chatContent            string
 	isChatContainerFocused bool
 	msgChan                chan util.ProcessApiCompletionResponse
 	viewMode               util.ViewMode
 	sessionContent         []util.LocalStoreMessage
+	chunksBuffer           []string
+	responseBuffer         string
+	renderedResponseBuffer string
+	renderedHistory        string
+	idleCyclesCount        int
+	processingState        util.ProcessingState
+	currentSettings        util.Settings
+	mu                     *sync.RWMutex
 
 	terminalWidth  int
 	terminalHeight int
@@ -79,6 +99,7 @@ var infoBarStyle = lipgloss.NewStyle().
 
 func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	chatView := viewport.New(w, h)
+	chatView.HighPerformanceRendering = true
 	msgChan := make(chan util.ProcessApiCompletionResponse)
 
 	config, ok := config.FromContext(ctx)
@@ -107,13 +128,15 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 		colors:                 colors,
 		chatContainer:          chatContainerStyle,
 		chatView:               chatView,
-		chatViewReady:          false,
 		chatContent:            defaultChatContent,
+		renderedHistory:        defaultChatContent,
 		isChatContainerFocused: false,
 		msgChan:                msgChan,
 		terminalWidth:          util.DefaultTerminalWidth,
 		terminalHeight:         util.DefaultTerminalHeight,
 		displayMode:            normalMode,
+		chunksBuffer:           []string{},
+		mu:                     &sync.RWMutex{},
 	}
 }
 
@@ -156,6 +179,22 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 		return p, nil
 
+	case util.ProcessingStateChanged:
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		p.processingState = msg.State
+		switch msg.State {
+		case util.AwaitingToolCallResult:
+			p.responseBuffer = ""
+			p.chunksBuffer = []string{}
+			cmds = append(cmds, renderingPulsar)
+		case util.ProcessingChunks:
+			cmds = append(cmds, renderingPulsar)
+		case util.Finalized:
+			cmds = append(cmds, renderingPulsar)
+		}
+
 	case sessions.LoadDataFromDB:
 		// util.Slog.Debug("case LoadDataFromDB: ", "message", msg)
 		return p.initializePane(msg.Session)
@@ -163,24 +202,89 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	case sessions.UpdateCurrentSession:
 		return p.initializePane(msg.Session)
 
-	case sessions.ResponseChunkProcessed:
-		paneWidth := p.chatContainer.GetWidth()
-
-		oldContent := util.GetMessagesAsPrettyString(msg.PreviousMsgArray, paneWidth, p.colors, p.quickChatActive)
-		styledBufferMessage := util.RenderBotMessage(util.LocalStoreMessage{
-			Content: msg.ChunkMessage,
-			Role:    "assistant",
-		}, paneWidth, p.colors, false)
-
-		if styledBufferMessage != "" {
-			styledBufferMessage = "\n" + styledBufferMessage
+	case settings.UpdateSettingsEvent:
+		shouldReRender := msg.Settings.HideReasoning != p.currentSettings.HideReasoning
+		p.currentSettings = msg.Settings
+		if shouldReRender && len(p.sessionContent) != 0 {
+			p = p.handleWindowResize(p.terminalWidth, p.terminalHeight)
 		}
 
-		rendered := oldContent + styledBufferMessage
-		p.chatView.SetContent(rendered)
+	case renderContentMsg:
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		if p.processingState == util.AwaitingToolCallResult {
+			return p, renderingPulsar
+		}
+
+		if p.processingState == util.Idle {
+			p.chunksBuffer = []string{}
+			return p, nil
+		}
+
+		if len(p.chunksBuffer) == 0 {
+			return p, renderingPulsar
+		}
+
+		paneWidth := p.chatContainer.GetWidth()
+		newContent := p.chunksBuffer[len(p.chunksBuffer)-1]
+
+		p.chunksBuffer = []string{}
+
+		diff := getStringsDiff(p.responseBuffer, newContent)
+		p.responseBuffer += diff
+
+		renderWindow := p.responseBuffer
+
+		chatHeightDelta := p.chatView.Height + 20 // arbitrary , just my emperical guess
+		bufferLines := strings.Split(renderWindow, "\n")
+
+		showOldMessages := true
+
+		if chatHeightDelta < len(bufferLines) {
+			showOldMessages = false
+			to := len(bufferLines) - 1
+			from := to - chatHeightDelta
+			renderWindow = strings.Join(bufferLines[from:to], "\n")
+		}
+
+		if diff != "" {
+			p.renderedResponseBuffer = util.RenderBotMessage(util.LocalStoreMessage{
+				Content: renderWindow,
+				Role:    "assistant",
+			}, paneWidth, p.colors, false, p.currentSettings)
+		}
+
+		result := p.renderedResponseBuffer
+		if showOldMessages {
+			result = p.renderedHistory + "\n" + p.renderedResponseBuffer
+		}
+
+		p.chatView.SetContent(result)
 		p.chatView.GotoBottom()
 
-		cmds = append(cmds, waitForActivity(p.msgChan))
+		return p, renderingPulsar
+
+	case sessions.ResponseChunkProcessed:
+		if len(p.sessionContent) != len(msg.PreviousMsgArray) {
+			paneWidth := p.chatContainer.GetWidth()
+			p.renderedHistory = util.GetMessagesAsPrettyString(
+				msg.PreviousMsgArray,
+				paneWidth,
+				p.colors,
+				p.quickChatActive,
+				p.currentSettings)
+			p.sessionContent = msg.PreviousMsgArray
+			util.Slog.Debug("len(p.sessionContent) != len(msg.PreviousMsgArray)", "new length", len(msg.PreviousMsgArray))
+		}
+
+		p.chunksBuffer = append(p.chunksBuffer, msg.ChunkMessage)
+
+		if !msg.IsComplete {
+			cmds = append(cmds, waitForActivity(p.msgChan))
+		}
+
+		return p, tea.Batch(cmds...)
 
 	case tea.WindowSizeMsg:
 		p = p.handleWindowResize(msg.Width, msg.Height)
@@ -211,7 +315,11 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			p.displayMode = selectionMode
 			enableUpdateOfViewport = false
 			p.chatContainer.BorderForeground(p.colors.AccentColor)
-			renderedContent := util.GetVisualModeView(p.sessionContent, p.chatView.Width, p.colors)
+			renderedContent := util.GetVisualModeView(
+				p.sessionContent,
+				p.chatView.Width,
+				p.colors,
+				p.currentSettings)
 			p.selectionView = components.NewTextSelector(
 				p.terminalWidth,
 				p.terminalHeight,
@@ -246,6 +354,16 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	return p, tea.Batch(cmds...)
 }
 
+func getStringsDiff(oldStr, newStr string) string {
+	i := 0
+
+	for i < len(oldStr) && i < len(newStr) && oldStr[i] == newStr[i] {
+		i++
+	}
+
+	return newStr[i:]
+}
+
 func (p ChatPane) IsSelectionMode() bool {
 	return p.displayMode == selectionMode
 }
@@ -254,12 +372,22 @@ func (p ChatPane) AllowFocusChange() bool {
 	return !p.selectionView.IsSelecting()
 }
 
-func (p ChatPane) DisplayCompletion(
+func (p *ChatPane) DisplayCompletion(
 	ctx context.Context,
-	orchestrator sessions.Orchestrator,
+	orchestrator *sessions.Orchestrator,
 ) tea.Cmd {
 	return tea.Batch(
 		orchestrator.GetCompletion(ctx, p.msgChan),
+		waitForActivity(p.msgChan),
+	)
+}
+
+func (p *ChatPane) ResumeCompletion(
+	ctx context.Context,
+	orchestrator *sessions.Orchestrator,
+) tea.Cmd {
+	return tea.Batch(
+		orchestrator.ResumeCompletion(ctx, p.msgChan),
 		waitForActivity(p.msgChan),
 	)
 }
@@ -317,6 +445,14 @@ func (p ChatPane) renderInfoRow() string {
 		info += " | [Quick chat]"
 	}
 
+	if p.currentSettings.WebSearchEnabled {
+		info += " | [Web search]"
+	}
+
+	if p.currentSettings.HideReasoning {
+		info += " | [Reasoning hidden]"
+	}
+
 	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
 	return infoBar
 }
@@ -343,6 +479,7 @@ func (p ChatPane) displayManual() ChatPane {
 	p.chatView.SetContent(manual)
 	p.chatView.GotoTop()
 	p.sessionContent = []util.LocalStoreMessage{}
+	p.renderedHistory = manual
 	return p
 }
 
@@ -351,12 +488,23 @@ func (p ChatPane) displaySession(
 	paneWidth int,
 	useScroll bool,
 ) ChatPane {
-	oldContent := util.GetMessagesAsPrettyString(messages, paneWidth, p.colors, p.quickChatActive)
+	oldContent := util.GetMessagesAsPrettyString(
+		messages,
+		paneWidth-1,
+		p.colors,
+		p.quickChatActive,
+		p.currentSettings)
 	p.chatView.SetContent(oldContent)
 	if useScroll {
 		p.chatView.GotoBottom()
 	}
 	p.sessionContent = messages
+	p.renderedHistory = oldContent
+
+	p.chunksBuffer = []string{}
+
+	p.responseBuffer = ""
+	p.renderedResponseBuffer = ""
 	return p
 }
 

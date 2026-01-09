@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"slices"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -30,6 +29,7 @@ type keyMap struct {
 	zenMode       key.Binding
 	editorMode    key.Binding
 	nextPane      key.Binding
+	previousPane  key.Binding
 	jumpToPane    key.Binding
 	newSession    key.Binding
 	quickChat     key.Binding
@@ -67,6 +67,10 @@ var defaultKeyMap = keyMap{
 		key.WithKeys(tea.KeyTab.String()),
 		key.WithHelp("TAB", "move to next pane"),
 	),
+	previousPane: key.NewBinding(
+		key.WithKeys(tea.KeyShiftTab.String()),
+		key.WithHelp("SHIFT+TAB", "move to previous pane"),
+	),
 	newSession: key.NewBinding(
 		key.WithKeys("ctrl+n"),
 		key.WithHelp("ctrl+n", "add new session"),
@@ -81,18 +85,19 @@ type MainView struct {
 	currentSessionID string
 	keys             keyMap
 
-	chatPane     panes.ChatPane
-	promptPane   panes.PromptPane
-	sessionsPane panes.SessionsPane
-	settingsPane panes.SettingsPane
-	infoPane     panes.InfoPane
-	loadedDeps   []util.AsyncDependency
+	chatPane         panes.ChatPane
+	promptPane       panes.PromptPane
+	sessionsPane     panes.SessionsPane
+	settingsPane     panes.SettingsPane
+	infoPane         panes.InfoPane
+	loadedDeps       []util.AsyncDependency
+	pendingToolCalls []util.ToolCall
 
+	flags               config.StartupFlags
 	config              config.Config
 	sessionOrchestrator sessions.Orchestrator
+	sessionService      sessions.SessionService
 	context             context.Context
-	completionContext   context.Context
-	cancelInference     context.CancelFunc
 
 	terminalWidth  int
 	terminalHeight int
@@ -114,6 +119,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 	sessionsPane := panes.NewSessionsPane(db, ctx)
 	settingsPane := panes.NewSettingsPane(db, ctx)
 	statusBarPane := panes.NewInfoPane(db, ctx)
+	sessionsService := sessions.NewSessionService(db)
 
 	w, h := util.CalcChatPaneSize(
 		util.DefaultTerminalWidth,
@@ -122,6 +128,12 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 	)
 	chatPane := panes.NewChatPane(ctx, w, h)
 	orchestrator := sessions.NewOrchestrator(db, ctx)
+
+	flags, ok := config.FlagsFromContext(ctx)
+	if !ok {
+		util.Slog.Error("failed to extract startup flags from context")
+		flags = &config.StartupFlags{}
+	}
 
 	config, ok := config.FromContext(ctx)
 	if !ok {
@@ -136,12 +148,14 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		focused:             util.PromptPane,
 		currentSessionID:    "",
 		sessionOrchestrator: orchestrator,
+		sessionService:      *sessionsService,
 		promptPane:          promptPane,
 		sessionsPane:        sessionsPane,
 		settingsPane:        settingsPane,
 		infoPane:            statusBarPane,
 		chatPane:            chatPane,
 		config:              *config,
+		flags:               *flags,
 		context:             ctx,
 	}
 }
@@ -172,7 +186,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.promptPane, cmd = m.promptPane.Update(msg)
 	cmds = append(cmds, cmd)
 
-	if m.sessionOrchestrator.ResponseProcessingState == sessions.Idle {
+	if m.sessionOrchestrator.ResponseProcessingState == util.Idle {
 		m.sessionsPane, cmd = m.sessionsPane.Update(msg)
 		cmds = append(cmds, cmd)
 		m.settingsPane, cmd = m.settingsPane.Update(msg)
@@ -182,10 +196,10 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case util.ErrorEvent:
-		m.sessionOrchestrator.ResponseProcessingState = sessions.Idle
+		m.sessionOrchestrator.ResponseProcessingState = util.Idle
 		m.error = msg
 		m.viewReady = true
-		cmds = append(cmds, util.SendProcessingStateChangedMsg(false))
+		cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
 
 	case checkDimensionsMsg:
 		if runtime.GOOS == "windows" {
@@ -207,13 +221,77 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case util.AsyncDependencyReady:
 		m.loadedDeps = append(m.loadedDeps, msg.Dependency)
-		for _, dependency := range asyncDeps {
-			if !slices.Contains(m.loadedDeps, dependency) {
-				continue
-			}
+
+		// TODO: implement correct comparison
+		if len(m.loadedDeps) == len(asyncDeps) {
 			m.viewReady = true
+			m.promptPane = m.promptPane.Enable()
 		}
-		m.promptPane = m.promptPane.Enable()
+
+		if m.viewReady && m.flags.StartNewSession {
+			cmds = append(cmds, util.AddNewSession(false))
+		}
+
+	case sessions.ToolCallComplete:
+		util.Slog.Debug("ToolCallComplete event received")
+		if m.sessionOrchestrator.ResponseProcessingState == util.Idle {
+			return m, nil
+		}
+
+		if m.sessionOrchestrator.ResponseProcessingState != util.AwaitingToolCallResult {
+			return m, util.MakeErrorMsg("did not expect a tool call result")
+		}
+
+		if len(m.sessionOrchestrator.ArrayOfMessages) == 0 {
+			return m, tea.Batch(
+				util.MakeErrorMsg("tool call result received but session has no messages"),
+				util.SendProcessingStateChangedMsg(util.Idle),
+			)
+		}
+
+		if !msg.IsSuccess {
+			return m, tea.Batch(
+				util.MakeErrorMsg("tool call failed: "+msg.Name),
+				util.SendProcessingStateChangedMsg(util.Idle),
+			)
+		}
+
+		lastIdx := len(m.sessionOrchestrator.ArrayOfMessages) - 1
+		lastTurn := m.sessionOrchestrator.ArrayOfMessages[lastIdx]
+
+		if len(lastTurn.ToolCalls) > 0 {
+			for _, tc := range lastTurn.ToolCalls {
+				if tc.Function.Name == msg.Name && tc.Id == msg.Id && msg.IsSuccess {
+					m.pendingToolCalls = append(m.pendingToolCalls, util.ToolCall{
+						Id: msg.Id,
+						Function: util.ToolFunction{
+							Args: tc.Function.Args,
+							Name: tc.Function.Name,
+						},
+						Result: &msg.Result,
+					})
+				}
+			}
+		}
+
+		if len(m.pendingToolCalls) == len(lastTurn.ToolCalls) {
+			updatedArray := append(m.sessionOrchestrator.ArrayOfMessages, util.LocalStoreMessage{
+				Model:       lastTurn.Model,
+				Role:        "tool",
+				Attachments: []util.Attachment{},
+				ToolCalls:   m.pendingToolCalls,
+			})
+
+			err := m.sessionService.UpdateSessionMessages(m.sessionOrchestrator.GetCurrentSessionId(), updatedArray)
+			if err != nil {
+				return m, tea.Batch(util.MakeErrorMsg(err.Error()), util.SendProcessingStateChangedMsg(util.Idle))
+			}
+			util.Slog.Debug("consturcted tool call results for continuation", "amount", len(m.pendingToolCalls))
+
+			m.pendingToolCalls = []util.ToolCall{}
+			cmds = append(cmds, m.chatPane.ResumeCompletion(m.context, &m.sessionOrchestrator))
+			return m, tea.Batch(cmds...)
+		}
 
 	case util.PromptReady:
 		m.error = util.ErrorEvent{}
@@ -250,12 +328,9 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		m.viewMode = util.NormalMode
 
-		completionContext, cancelInference := context.WithCancel(m.context)
-		m.completionContext = completionContext
-		m.cancelInference = cancelInference
 		return m, tea.Batch(
-			util.SendProcessingStateChangedMsg(true),
-			m.chatPane.DisplayCompletion(m.completionContext, m.sessionOrchestrator),
+			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
+			m.chatPane.DisplayCompletion(m.context, &m.sessionOrchestrator),
 			util.SendViewModeChangedMsg(m.viewMode))
 
 	case tea.KeyMsg:
@@ -279,11 +354,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.InitiateNewSession(false))
 
 		case key.Matches(msg, m.keys.cancel):
-			if m.cancelInference != nil {
-				m.cancelInference()
-				m.cancelInference = nil
-				cmds = append(cmds, util.SendProcessingStateChangedMsg(false))
-			}
+			cmds = append(cmds, util.SendInterruptProcessingMsg)
 
 		case key.Matches(msg, m.keys.zenMode):
 			m.focused = util.PromptPane
@@ -343,7 +414,15 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 
-			m.focused = util.GetNewFocusMode(m.viewMode, m.focused, m.terminalWidth)
+			m.focused = util.GetNewFocusMode(m.viewMode, m.focused, m.terminalWidth, false)
+			m.resetFocus()
+
+		case key.Matches(msg, m.keys.previousPane):
+			if !m.isFocusChangeAllowed() {
+				break
+			}
+
+			m.focused = util.GetNewFocusMode(m.viewMode, m.focused, m.terminalWidth, true)
 			m.resetFocus()
 		}
 

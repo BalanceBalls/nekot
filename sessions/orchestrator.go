@@ -1,21 +1,21 @@
 package sessions
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"slices"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/BalanceBalls/nekot/clients"
 	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/extensions/websearch"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/user"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
-	"golang.org/x/net/context"
 )
 
 type Orchestrator struct {
@@ -34,14 +34,16 @@ type Orchestrator struct {
 	ArrayOfMessages           []util.LocalStoreMessage
 	CurrentAnswer             string
 	ResponseBuffer            string
-	ResponseProcessingState   ProcessingState
+	ResponseProcessingState   util.ProcessingState
 	AllSessions               []Session
 	ProcessingMode            string
 
-	settingsReady bool
-	dataLoaded    bool
-	initialized   bool
-	mainCtx       context.Context
+	settingsReady    bool
+	dataLoaded       bool
+	initialized      bool
+	mainCtx          context.Context
+	processingCtx    context.Context
+	processingCancel context.CancelFunc
 }
 
 func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
@@ -69,14 +71,12 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 		userService:             us,
 		settingsService:         settingsService,
 		InferenceClient:         llmClient,
-		ResponseProcessingState: Idle,
+		ResponseProcessingState: util.Idle,
 		mu:                      &sync.RWMutex{},
 	}
 }
 
 func (m Orchestrator) Init() tea.Cmd {
-	// Need to load the latest session as the current session  (select recently created)
-	// OR we need to create a brand new session for the user with a random name (insert new and return)
 
 	initCtx, cancel := context.
 		WithTimeout(m.mainCtx, time.Duration(util.DefaultRequestTimeOutSec*time.Second))
@@ -130,6 +130,14 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
+	case util.InterruptProcessingMsg:
+		if m.processingCancel != nil {
+			util.Slog.Debug("cancellation func is not null")
+			m.processingCancel()
+			cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+			cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
+		}
+
 	case util.CopyLastMsg:
 		latestBotMessage, err := m.GetLatestBotMessage()
 		if err == nil {
@@ -172,9 +180,19 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		m.settingsReady = true
 
 	case util.ProcessApiCompletionResponse:
-		// util.Slog.Debug("response chunk recieved", "data", msg)
 		cmds = append(cmds, m.hanldeProcessAPICompletionResponse(msg))
-		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages))
+		cmds = append(cmds, SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, false))
+
+	case ToolCallRequest:
+		tc := msg.ToolCall
+		switch tc.Function.Name {
+		case "web_search":
+			webSearchCtx := m.setProcessingContext(m.processingCtx)
+			return m, m.doWebSearch(webSearchCtx, tc.Id, tc.Function.Args)
+		}
+
+	case InferenceFinalized:
+		return m, m.finishResponseProcessing(msg.Response, msg.IsToolCall)
 	}
 
 	if m.dataLoaded && m.settingsReady && !m.initialized {
@@ -185,24 +203,48 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m Orchestrator) GetCompletion(
+func (m *Orchestrator) GetCompletion(
 	ctx context.Context,
 	resp chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
-	return m.InferenceClient.RequestCompletion(ctx, m.ArrayOfMessages, m.Settings, resp)
+	m.processingCancel = nil
+	m.processingCtx = nil
+	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), m.ArrayOfMessages, m.Settings, resp)
+}
+
+func (m *Orchestrator) ResumeCompletion(
+	ctx context.Context,
+	resp chan util.ProcessApiCompletionResponse,
+) tea.Cmd {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
+	m.setCurrentSessionData(updatedSession)
+	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), updatedSession.Messages, m.Settings, resp)
+}
+
+func (m *Orchestrator) setProcessingContext(ctx context.Context) context.Context {
+	if m.processingCtx != nil {
+		return m.processingCtx
+	}
+
+	processingCtx, processingCancel := context.WithCancel(ctx)
+	m.processingCancel = processingCancel
+	m.processingCtx = processingCtx
+	return processingCtx
+}
+
+func (m Orchestrator) GetCurrentSessionId() int {
+	return m.CurrentSessionID
 }
 
 func (m Orchestrator) IsIdle() bool {
-	return m.ResponseProcessingState == Idle
+	return m.ResponseProcessingState == util.Idle
 }
 
 func (m Orchestrator) IsProcessing() bool {
-	processingStates := []ProcessingState{
-		ProcessingChunks,
-		AwaitingFinalization,
-		Finalized,
-	}
-	return slices.Contains(processingStates, m.ResponseProcessingState)
+	return util.IsProcessingActive(m.ResponseProcessingState)
 }
 
 func (m Orchestrator) GetLatestBotMessage() (string, error) {
@@ -246,53 +288,106 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 ) tea.Cmd {
 
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	// util.Slog.Debug("processing state before new chunk",
 	// 	"state", m.ResponseProcessingState,
-	// 	"chunks ready", len(m.ArrayOfProcessResult))
+	// 	"chunks ready", len(m.ArrayOfProcessResult),
+	// 	"data", msg.Result)
 
+	prevProcessingState := m.ResponseProcessingState
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
 	result, err := p.Process(msg)
 
 	// util.Slog.Debug("processed chunk",
 	// 	"id", msg.ID,
-	// 	"chunks ready", len(result.CurrentResponseDataChunks))
+	// 	"chunks ready", len(result.CurrentResponseDataChunks),
+	// 	"response json", result.JSONResponse.Content)
 
 	if err != nil {
 		util.Slog.Error("error occured on processing a chunk", "chunk", msg, "error", err.Error())
-		m.mu.Unlock()
 		return m.resetStateAndCreateError(err.Error())
 	}
 
 	m.handleTokenStatsUpdate(result)
 	m.appendAndOrderProcessResults(result)
 
-	m.mu.Unlock()
-
 	if result.IsSkipped {
+		util.Slog.Info("result skipped", "data", msg.Result)
 		return nil
 	}
 
 	if result.IsCancelled {
+		util.Slog.Info("result cancelled", "json result", result.JSONResponse.Content)
 		return tea.Batch(
+			FinalizeResponse(result.JSONResponse, true),
 			util.SendNotificationMsg(util.CancelledNotification),
-			m.finishResponseProcessing(result.JSONResponse))
+		)
+	}
+
+	if len(result.ToolCalls) > 0 {
+		var cmds []tea.Cmd
+		util.Slog.Debug("processed chunk with a tool call",
+			"chunk", msg.Result.Choices,
+			"tools", result.ToolCalls)
+
+		cmds = append(cmds, util.SendProcessingStateChangedMsg(result.State))
+		cmds = append(cmds, FinalizeResponse(result.JSONResponse, true))
+
+		for _, tc := range result.ToolCalls {
+			cmds = append(cmds, ExecuteToolCallRequest(tc))
+		}
+
+		return tea.Sequence(cmds...)
 	}
 
 	m.CurrentAnswer = result.CurrentResponse
 
-	if result.State == Finalized {
-		return m.finishResponseProcessing(result.JSONResponse)
+	if result.State == util.Finalized {
+		util.Slog.Debug("result finalized", "json result", result.JSONResponse.Content)
+		return FinalizeResponse(result.JSONResponse, false)
+	}
+
+	if prevProcessingState != result.State {
+		return util.SendProcessingStateChangedMsg(result.State)
 	}
 
 	return nil
 }
 
-func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage) tea.Cmd {
+func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[string]string) tea.Cmd {
+	return func() tea.Msg {
+		toolName := "web_search"
+		result, err := websearch.PrepareContextFromWebSearch(ctx, args["query"])
+		if err != nil {
+			util.Slog.Error("web search failed", "error", err.Error())
+			return util.ErrorEvent{Message: err.Error()}
+		}
+
+		jsonData, err := json.Marshal(result)
+		if err != nil {
+			util.Slog.Error("failed to serialize web_search result data", "error", err.Error())
+			return ToolCallComplete{
+				Id:        id,
+				IsSuccess: false,
+				Name:      toolName,
+				Result:    "",
+			}
+		}
+
+		util.Slog.Debug("retrieved context from a web search")
+		return ToolCallComplete{
+			Id:        id,
+			IsSuccess: true,
+			Name:      toolName,
+			Result:    string(jsonData),
+		}
+	}
+}
+
+func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage, isToolCall bool) tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	util.Slog.Info("response received in full, finishing response processing now")
-	util.Slog.Info("final response message", "content", response)
 
 	m.ArrayOfMessages = append(
 		m.ArrayOfMessages,
@@ -300,16 +395,27 @@ func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage)
 	)
 
 	err := m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
-	m.CurrentAnswer = ""
-	m.ResponseBuffer = ""
-	m.ResponseProcessingState = Idle
-	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
-
 	if err != nil {
 		return m.resetStateAndCreateError(err.Error())
 	}
 
-	return util.SendProcessingStateChangedMsg(false)
+	nextProcessingState := util.Idle
+	if isToolCall {
+		nextProcessingState = util.AwaitingToolCallResult
+	}
+
+	util.Slog.Info("response received in full, finishing response processing now",
+		"prev state", m.ResponseProcessingState,
+		"next state", nextProcessingState)
+	m.ResponseProcessingState = nextProcessingState
+	m.CurrentAnswer = ""
+	m.ResponseBuffer = ""
+	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
+
+	return tea.Batch(
+		util.SendProcessingStateChangedMsg(nextProcessingState),
+		SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, true),
+	)
 }
 
 func (m *Orchestrator) handleTokenStatsUpdate(processingResult ProcessingResult) {
@@ -326,15 +432,11 @@ func (m *Orchestrator) appendAndOrderProcessResults(processingResult ProcessingR
 	m.ResponseBuffer = processingResult.CurrentResponse
 	m.ArrayOfProcessResult = processingResult.CurrentResponseDataChunks
 	m.ResponseProcessingState = processingResult.State
-
-	sort.SliceStable(m.ArrayOfProcessResult, func(i, j int) bool {
-		return m.ArrayOfProcessResult[i].ID < m.ArrayOfProcessResult[j].ID
-	})
 }
 
 func (m *Orchestrator) resetStateAndCreateError(errMsg string) tea.Cmd {
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 	m.CurrentAnswer = ""
-	m.ResponseProcessingState = Idle
-	return tea.Batch(util.MakeErrorMsg(errMsg), util.SendProcessingStateChangedMsg(false))
+	m.ResponseProcessingState = util.Idle
+	return tea.Batch(util.MakeErrorMsg(errMsg), util.SendProcessingStateChangedMsg(util.Idle))
 }

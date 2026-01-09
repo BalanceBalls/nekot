@@ -8,12 +8,11 @@ import (
 	"os"
 	"path/filepath"
 
-	tea "github.com/charmbracelet/bubbletea"
-
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/migrations"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/BalanceBalls/nekot/views"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
 )
 
@@ -21,9 +20,12 @@ var purgeCache bool
 var provider string
 var baseUrl string
 var theme string
+var model string
+var newSession bool
 
 func init() {
 	flag.BoolVar(&purgeCache, "purge-cache", false, "Invalidate models cache")
+	flag.BoolVar(&newSession, "n", false, "Create a new session on startup")
 	flag.StringVar(
 		&provider,
 		"p",
@@ -32,15 +34,18 @@ func init() {
 	)
 	flag.StringVar(&baseUrl, "u", "", "Overrides LLM provider base url configuration")
 	flag.StringVar(&theme, "t", "", "Overrides theme configuration")
+	flag.StringVar(&model, "m", "", "Model name")
 }
 
 func main() {
 	flag.Parse()
 
 	flags := config.StartupFlags{
-		Theme:       theme,
-		Provider:    provider,
-		ProviderUrl: baseUrl,
+		Model:           model,
+		Theme:           theme,
+		Provider:        provider,
+		ProviderUrl:     baseUrl,
+		StartNewSession: newSession,
 	}
 
 	env := os.Getenv("NEKOT_ENV")
@@ -88,14 +93,20 @@ func main() {
 
 	ctx := context.Background()
 	ctxWithConfig := config.WithConfig(ctx, &configToUse)
+	appCtx := config.WithFlags(ctxWithConfig, &flags)
 
 	p := tea.NewProgram(
-		views.NewMainView(db, ctxWithConfig),
+		views.NewMainView(db, appCtx),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
+
 	_, err = p.Run()
 	if err != nil {
+		if err == tea.ErrProgramPanic {
+			fmt.Fprintf(os.Stderr, "Program panicked: %v\n", err)
+			os.Exit(1)
+		}
 		log.Fatal(err)
 	}
 }

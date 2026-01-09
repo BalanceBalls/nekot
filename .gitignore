@@ -30,3 +30,4 @@ vendor
 .release-env
 chatgpt-tui
 nekot
+package-lock.json

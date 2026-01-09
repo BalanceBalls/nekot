@@ -3,6 +3,7 @@ package components
 import (
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
@@ -23,6 +24,7 @@ type keyMap struct {
 	pageUp         key.Binding
 	pageDown       key.Binding
 	copy           key.Binding
+	copyRaw        key.Binding
 	bottom         key.Binding
 	top            key.Binding
 }
@@ -42,9 +44,10 @@ var defaultKeyMap = keyMap{
 		key.WithKeys("ctrl+d", "d"),
 		key.WithHelp("ctrl+d", "move down a page"),
 	),
-	copy:   key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy selection")),
-	bottom: key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "go to bottom")),
-	top:    key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "go to top")),
+	copy:    key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy selection")),
+	copyRaw: key.NewBinding(key.WithKeys("c", "r"), key.WithHelp("c/r", "raw copy selection")),
+	bottom:  key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "go to bottom")),
+	top:     key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "go to top")),
 }
 
 type cursor struct {
@@ -128,7 +131,14 @@ func (s TextSelector) Update(msg tea.Msg) (TextSelector, tea.Cmd) {
 
 		case key.Matches(msg, s.keys.copy):
 			if s.Selection.Active {
-				s.copySelectedLinesToClipboard()
+				s.copySelectedLinesToClipboard(false)
+				s.Selection.Active = false
+				cmds = append(cmds, util.SendNotificationMsg(util.CopiedNotification))
+			}
+
+		case key.Matches(msg, s.keys.copyRaw):
+			if s.Selection.Active {
+				s.copySelectedLinesToClipboard(true)
 				s.Selection.Active = false
 				cmds = append(cmds, util.SendNotificationMsg(util.CopiedNotification))
 			}
@@ -264,7 +274,7 @@ func (s TextSelector) handleLineJumps(keypress string, parsedNumber int) TextSel
 	return s
 }
 
-func (s TextSelector) copySelectedLinesToClipboard() {
+func (s TextSelector) copySelectedLinesToClipboard(isRawCopy bool) {
 	if !s.Selection.Active {
 		return
 	}
@@ -286,10 +296,19 @@ func (s TextSelector) copySelectedLinesToClipboard() {
 	var linesToCopy = make([]string, len(ansiFreeLines))
 
 	for i, line := range ansiFreeLines {
-		linesToCopy[i] = strings.TrimRight(line, " ")
+		if isRawCopy {
+			linesToCopy[i] = strings.TrimRightFunc(strings.TrimLeftFunc(line, unicode.IsSpace), unicode.IsSpace)
+		} else {
+			linesToCopy[i] = strings.TrimRight(line, " ")
+		}
 	}
 
-	clipboard.WriteAll(strings.Join(linesToCopy, "\n"))
+	joinSeparator := "\n"
+	if isRawCopy {
+		joinSeparator = " "
+	}
+
+	clipboard.WriteAll(strings.Join(linesToCopy, joinSeparator))
 }
 
 func filterLine(line string) string {

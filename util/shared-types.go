@@ -1,14 +1,16 @@
 package util
 
 type Settings struct {
-	ID           int
-	Model        string
-	MaxTokens    int
-	Frequency    *float32
-	SystemPrompt *string
-	TopP         *float32
-	Temperature  *float32
-	PresetName   string
+	ID               int
+	Model            string
+	MaxTokens        int
+	Frequency        *float32
+	SystemPrompt     *string
+	TopP             *float32
+	Temperature      *float32
+	PresetName       string
+	WebSearchEnabled bool
+	HideReasoning    bool
 }
 
 type LocalStoreMessage struct {
@@ -17,6 +19,7 @@ type LocalStoreMessage struct {
 	Content     string       `json:"content"`
 	Resoning    string       `json:"reasoning"`
 	Attachments []Attachment `json:"attachments"`
+	ToolCalls   []ToolCall   `json:"tool_calls"`
 }
 
 type Attachment struct {
@@ -25,26 +28,23 @@ type Attachment struct {
 	Type    string `json:"type"`
 }
 
-type OpenAIConversationTurn struct {
-	Model   string          `json:"model"`
-	Role    string          `json:"role"`
-	Content []OpenAiContent `json:"content"`
-}
-
-type OpenAiContent struct {
-	Type     string      `json:"type"`
-	Text     string      `json:"text,omitempty"`
-	ImageURL OpenAiImage `json:"image_url,omitempty"`
-}
-
-type OpenAiImage struct {
-	URL string `json:"url"`
-}
-
 type Choice struct {
 	Index        int            `json:"index"`
 	Delta        map[string]any `json:"delta"`
+	ToolCalls    []ToolCall     `json:"tool_calls"`
 	FinishReason string         `json:"finish_reason"`
+}
+
+type ToolCall struct {
+	Id       string       `json:"id"`
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
+	Result   *string      `json:"result"`
+}
+
+type ToolFunction struct {
+	Args map[string]string `json:"arguments"`
+	Name string            `json:"name"`
 }
 
 type CompletionChunk struct {
@@ -92,3 +92,14 @@ type ProcessModelsResponse struct {
 	Err    error
 	Final  bool
 }
+
+type ProcessingState int
+
+const (
+	Idle ProcessingState = iota
+	ProcessingChunks
+	AwaitingToolCallResult
+	AwaitingFinalization
+	Finalized
+	Error
+)

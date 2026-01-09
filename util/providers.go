@@ -66,6 +66,15 @@ const (
 	Openrouter
 )
 
+func GetNextProcessResultId(chatMsgs []LocalStoreMessage) int {
+	if len(chatMsgs) <= 1 {
+		return ChunkIndexStart
+	}
+
+	// 10 is arbitrary, just to increase ID for avoiding IDs overlapping and skipping chunks
+	return len(chatMsgs) + 10
+}
+
 func GetFilteredModelList(providerType string, apiUrl string, models []string) []string {
 	var modelNames []string
 

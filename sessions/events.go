@@ -51,13 +51,48 @@ func SendRefreshSessionsListMsg() tea.Cmd {
 type ResponseChunkProcessed struct {
 	PreviousMsgArray []util.LocalStoreMessage
 	ChunkMessage     string
+	IsComplete       bool
 }
 
-func SendResponseChunkProcessedMsg(msg string, previousMsgs []util.LocalStoreMessage) tea.Cmd {
+func SendResponseChunkProcessedMsg(msg string, previousMsgs []util.LocalStoreMessage, isComplete bool) tea.Cmd {
 	return func() tea.Msg {
 		return ResponseChunkProcessed{
 			PreviousMsgArray: previousMsgs,
 			ChunkMessage:     msg,
+			IsComplete:       isComplete,
 		}
 	}
+}
+
+type InferenceFinalized struct {
+	Response   util.LocalStoreMessage
+	IsToolCall bool
+}
+
+func FinalizeResponse(response util.LocalStoreMessage, isToolCall bool) tea.Cmd {
+	return func() tea.Msg {
+		return InferenceFinalized{
+			Response:   response,
+			IsToolCall: isToolCall,
+		}
+	}
+}
+
+type ToolCallRequest struct {
+	ToolCall util.ToolCall
+}
+
+func ExecuteToolCallRequest(tc util.ToolCall) tea.Cmd {
+	return func() tea.Msg {
+		return ToolCallRequest{
+			ToolCall: tc,
+		}
+	}
+}
+
+type ToolCallComplete struct {
+	Id        string
+	IsSuccess bool
+	Name      string
+	Result    string
 }

@@ -174,7 +174,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case util.ProcessingStateChanged:
-		p.isSessionIdle = !msg.IsProcessing
+		p.isSessionIdle = !util.IsProcessingActive(msg.State)
 
 	case util.FocusEvent:
 		return p, p.handleFocusEvent(msg)

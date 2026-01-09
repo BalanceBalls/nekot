@@ -1,13 +1,14 @@
 package sessions
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/BalanceBalls/nekot/util"
-	"golang.org/x/net/context"
 )
 
 type ProcessingResult struct {
@@ -18,12 +19,13 @@ type ProcessingResult struct {
 	CompletionTokens          int
 	CurrentResponse           string
 	CurrentResponseDataChunks []util.ProcessApiCompletionResponse
+	ToolCalls                 []util.ToolCall
 	JSONResponse              util.LocalStoreMessage
-	State                     ProcessingState
+	State                     util.ProcessingState
 }
 
 type MessageProcessor struct {
-	CurrentState          ProcessingState
+	CurrentState          util.ProcessingState
 	Settings              util.Settings
 	CurrentResponseBuffer string
 	ResponseDataChunks    []util.ProcessApiCompletionResponse
@@ -37,7 +39,7 @@ var (
 func NewMessageProcessor(
 	chunks []util.ProcessApiCompletionResponse,
 	currentResponse string,
-	processingState ProcessingState,
+	processingState util.ProcessingState,
 	settings util.Settings,
 ) MessageProcessor {
 	return MessageProcessor{
@@ -48,20 +50,12 @@ func NewMessageProcessor(
 	}
 }
 
-type ProcessingState int
-
-const (
-	Idle ProcessingState = iota
-	ProcessingChunks
-	AwaitingFinalization
-	Finalized
-	Error
-)
-
-var stageChangeMap = map[ProcessingState][]ProcessingState{
-	Idle:                 {ProcessingChunks, Error},
-	ProcessingChunks:     {AwaitingFinalization, Finalized, Error},
-	AwaitingFinalization: {Finalized, Error},
+var stageChangeMap = map[util.ProcessingState][]util.ProcessingState{
+	util.Idle:                   {util.ProcessingChunks, util.AwaitingToolCallResult, util.Error},
+	util.ProcessingChunks:       {util.AwaitingFinalization, util.AwaitingToolCallResult, util.Finalized, util.Error},
+	util.AwaitingToolCallResult: {util.ProcessingChunks, util.AwaitingFinalization, util.Finalized, util.Error},
+	util.AwaitingFinalization:   {util.Finalized, util.Error},
+	util.Finalized:              {util.AwaitingToolCallResult, util.Idle},
 }
 
 func (p MessageProcessor) Process(
@@ -90,6 +84,15 @@ func (p MessageProcessor) Process(
 		return result, nil
 	}
 
+	if toolCalls, ok := p.hasToolCalls(chunk); ok {
+		result.ToolCalls = toolCalls
+		result.CurrentResponseDataChunks = append(p.ResponseDataChunks, chunk)
+		result = p.prepareToolCallInterruption(result, chunk)
+		util.Slog.Debug("tool calls detected", "tools", toolCalls)
+		return result, nil
+	}
+
+	result.ToolCalls = nil
 	result = result.handleTokenStats(chunk)
 
 	if p.isFinalChunk(chunk) {
@@ -104,10 +107,10 @@ func (p MessageProcessor) Process(
 		return result, nil
 	}
 
-	result.State = p.setProcessingState(ProcessingChunks)
-
 	if p.isLastResponseChunk(chunk) {
-		result.State = p.setProcessingState(AwaitingFinalization)
+		result.State = p.setProcessingState(util.AwaitingFinalization, result)
+	} else {
+		result.State = p.setProcessingState(util.ProcessingChunks, result)
 	}
 
 	result, bufferErr := result.composeProcessingResult(p, chunk)
@@ -119,8 +122,16 @@ func (p MessageProcessor) Process(
 }
 
 func (p MessageProcessor) finalizeProcessing(result ProcessingResult) ProcessingResult {
-	result.JSONResponse = p.prepareResponseJSONForDB()
-	result.State = p.setProcessingState(Finalized)
+	result.JSONResponse = p.prepareResponseJSONForDB(nil)
+	result.State = p.setProcessingState(util.Finalized, result)
+	return result
+}
+
+func (p MessageProcessor) prepareToolCallInterruption(
+	result ProcessingResult,
+	chunk util.ProcessApiCompletionResponse) ProcessingResult {
+	result.JSONResponse = p.prepareResponseJSONForDB(&chunk)
+	result.State = p.setProcessingState(util.AwaitingToolCallResult, result)
 	return result
 }
 
@@ -131,9 +142,14 @@ func (p MessageProcessor) orderChunks() MessageProcessor {
 	return p
 }
 
-func (p MessageProcessor) setProcessingState(newState ProcessingState) ProcessingState {
+func (p MessageProcessor) setProcessingState(newState util.ProcessingState, result ProcessingResult) util.ProcessingState {
 	if p.CurrentState == newState {
 		return newState
+	}
+
+	if p.CurrentState == util.AwaitingToolCallResult && newState == util.Finalized && !result.IsCancelled {
+		util.Slog.Warn("this state change only allowed for cancellation", "old state", p.CurrentState, "new state", newState)
+		return p.CurrentState
 	}
 
 	if slices.Contains(stageChangeMap[p.CurrentState], newState) {
@@ -155,21 +171,40 @@ func (p MessageProcessor) isDuplicate(chunk util.ProcessApiCompletionResponse) b
 	return false
 }
 
-func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionResponse) bool {
-	if chunk.Result.Choices == nil {
-		return true
+func (p MessageProcessor) hasToolCalls(chunk util.ProcessApiCompletionResponse) ([]util.ToolCall, bool) {
+
+	if len(chunk.Result.Choices) == 0 {
+		return []util.ToolCall{}, false
 	}
+
+	if p.CurrentState == util.AwaitingToolCallResult {
+		return []util.ToolCall{}, false
+	}
+
+	choice := chunk.Result.Choices[0]
+	if toolCalls, ok := getToolCalls(choice.Delta); ok {
+		return toolCalls, true
+	}
+
+	if len(choice.ToolCalls) > 0 {
+		return choice.ToolCalls, true
+	}
+
+	return []util.ToolCall{}, false
+}
+
+func (p MessageProcessor) shouldSkipProcessing(chunk util.ProcessApiCompletionResponse) bool {
 
 	if len(chunk.Result.Choices) == 0 {
 		return true
 	}
 
 	choice := chunk.Result.Choices[0]
-
+	hasFinishReason := choice.FinishReason != ""
 	_, hasReasoning := getReasoningContent(choice.Delta)
 	_, hasContent := getContent(choice.Delta)
 
-	if !hasContent && !hasReasoning {
+	if !hasContent && !hasReasoning && !hasFinishReason {
 		return true
 	}
 
@@ -190,7 +225,7 @@ func (p MessageProcessor) handleErrors(
 		return result, nil
 	}
 
-	result.State = p.setProcessingState(Error)
+	result.State = p.setProcessingState(util.Error, result)
 	return result, chunk.Err
 }
 
@@ -207,23 +242,21 @@ func (r ProcessingResult) composeProcessingResult(
 	newChunk util.ProcessApiCompletionResponse,
 ) (ProcessingResult, error) {
 
-	updatedResponseBuffer := ""
-
+	updatedResponseBuffer := p.CurrentResponseBuffer
 	p.ResponseDataChunks = append(p.ResponseDataChunks, newChunk)
-	p = p.orderChunks()
 
-	for _, chunk := range p.ResponseDataChunks {
-		if p.shouldSkipProcessing(chunk) {
-			continue
-		}
+	if p.shouldSkipProcessing(newChunk) {
+		r.CurrentResponse = updatedResponseBuffer
+		r.CurrentResponseDataChunks = p.ResponseDataChunks
+		return r, nil
+	}
 
-		if choiceString, ok := getContent(chunk.Result.Choices[0].Delta); ok {
-			updatedResponseBuffer = updatedResponseBuffer + choiceString
-		}
+	if reasoning, ok := p.getChunkReasoningData(newChunk, p.ResponseDataChunks); ok {
+		updatedResponseBuffer = updatedResponseBuffer + reasoning
+	}
 
-		if reasoning, ok := p.getChunkReasoningData(chunk); ok {
-			updatedResponseBuffer = updatedResponseBuffer + reasoning
-		}
+	if choiceString, ok := getContent(newChunk.Result.Choices[0].Delta); ok {
+		updatedResponseBuffer = updatedResponseBuffer + choiceString
 	}
 
 	r.CurrentResponse = updatedResponseBuffer
@@ -232,12 +265,24 @@ func (r ProcessingResult) composeProcessingResult(
 }
 
 func (p MessageProcessor) isFinalChunk(msg util.ProcessApiCompletionResponse) bool {
-	return msg.Final
+	return msg.Final && p.CurrentState == util.AwaitingFinalization
 }
 
 func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionResponse) bool {
 	choice := msg.Result.Choices[0]
+	if _, ok := getReasoningContent(choice.Delta); ok {
+		return false
+	}
+
 	if _, ok := getContent(choice.Delta); ok && choice.FinishReason == "" {
+		return false
+	}
+
+	if _, ok := getToolCalls(choice.Delta); ok {
+		return false
+	}
+
+	if choice.FinishReason == "tool_calls" {
 		return false
 	}
 
@@ -256,34 +301,40 @@ func (p MessageProcessor) isLastResponseChunk(msg util.ProcessApiCompletionRespo
 	return false
 }
 
-func (p MessageProcessor) prepareResponseJSONForDB() util.LocalStoreMessage {
+func (p MessageProcessor) prepareResponseJSONForDB(currentChunk *util.ProcessApiCompletionResponse) util.LocalStoreMessage {
 	newMessage := util.LocalStoreMessage{
 		Role:    "assistant",
 		Content: "",
 		Model:   p.Settings.Model}
 
+	if currentChunk != nil {
+		p.ResponseDataChunks = append(p.ResponseDataChunks, *currentChunk)
+	}
+
 	p = p.orderChunks()
+	processed := []util.ProcessApiCompletionResponse{}
 	for _, responseChunk := range p.ResponseDataChunks {
-		if p.isFinalChunk(responseChunk) {
-			break
-		}
+		processed = append(processed, responseChunk)
 
 		if len(responseChunk.Result.Choices) == 0 {
 			continue
 		}
 
 		choice := responseChunk.Result.Choices[0]
-		if content, ok := getContent(choice.Delta); ok && content != "" {
-			newMessage.Content += content
-			continue
+		if reasoning, ok := p.getChunkReasoningData(responseChunk, processed); ok {
+			newMessage.Resoning += reasoning
 		}
 
-		if reasoning, ok := p.getChunkReasoningData(responseChunk); ok {
-			newMessage.Resoning += reasoning
+		if content, ok := getContent(choice.Delta); ok && content != "" {
+			newMessage.Content += content
+		}
+
+		if toolCalls, ok := p.hasToolCalls(responseChunk); ok {
+			newMessage.ToolCalls = toolCalls
 		}
 	}
 
-	newMessage.Resoning = formatThinkingContent(newMessage.Resoning)
+	// newMessage.Resoning = formatThinkingContent(newMessage.Resoning)
 	return newMessage
 }
 
@@ -294,13 +345,13 @@ func formatThinkingContent(text string) string {
 	return text
 }
 
-func (p MessageProcessor) anyChunkContainsText(text string) bool {
-	if len(p.ResponseDataChunks) == 0 {
+func anyChunkContainsText(chunks []util.ProcessApiCompletionResponse, text string) bool {
+	if len(chunks) == 0 {
 		return false
 	}
 
 	return slices.ContainsFunc(
-		p.ResponseDataChunks,
+		chunks,
 		func(c util.ProcessApiCompletionResponse) bool {
 			if len(c.Result.Choices) == 0 {
 				return false
@@ -328,6 +379,7 @@ func (p MessageProcessor) anyChunkContainsText(text string) bool {
 
 func (p MessageProcessor) getChunkReasoningData(
 	chunk util.ProcessApiCompletionResponse,
+	previousChunks []util.ProcessApiCompletionResponse,
 ) (string, bool) {
 	if len(chunk.Result.Choices) == 0 {
 		return "", false
@@ -350,7 +402,7 @@ func (p MessageProcessor) getChunkReasoningData(
 	}
 
 	// if chunk specifically contains <think> or </think> tokens
-	if strings.HasPrefix(chunkString, legacyThinkStartToken) {
+	if strings.Contains(chunkString, legacyThinkStartToken) {
 		return chunkString, true
 	}
 	if strings.Contains(chunkString, legacyThinkEndToken) {
@@ -358,13 +410,13 @@ func (p MessageProcessor) getChunkReasoningData(
 	}
 
 	// previous chunks have <think> token but no closing token </think>
-	if p.anyChunkContainsText(legacyThinkStartToken) &&
-		!p.anyChunkContainsText(legacyThinkEndToken) {
+	if anyChunkContainsText(previousChunks, legacyThinkStartToken) &&
+		!anyChunkContainsText(previousChunks, legacyThinkEndToken) {
 		return chunkString, true
 	}
 
 	// any chunk contains closing token </think>
-	if p.anyChunkContainsText(legacyThinkEndToken) {
+	if anyChunkContainsText(previousChunks, legacyThinkEndToken) {
 		return "", false
 	}
 
@@ -378,6 +430,22 @@ func getContent(delta map[string]any) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func getToolCalls(delta map[string]any) ([]util.ToolCall, bool) {
+	if content, ok := delta["tool_calls"]; ok && content != nil {
+		if strContent, isString := content.(string); isString {
+
+			var toolCalls []util.ToolCall
+			err := json.Unmarshal([]byte(strContent), &toolCalls)
+			if err != nil {
+				util.Slog.Error("error unmarshalling JSON", "reason", err, "data", strContent)
+				return []util.ToolCall{}, false
+			}
+			return toolCalls, true
+		}
+	}
+	return []util.ToolCall{}, false
 }
 
 func getReasoningContent(delta map[string]any) (string, bool) {

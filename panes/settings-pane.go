@@ -40,17 +40,19 @@ const (
 )
 
 type settingsKeyMap struct {
-	editTemp      key.Binding
-	editFrequency key.Binding
-	editTopP      key.Binding
-	editSysPrompt key.Binding
-	editMaxTokens key.Binding
-	changeModel   key.Binding
-	reset         key.Binding
-	savePreset    key.Binding
-	presetsMenu   key.Binding
-	goBack        key.Binding
-	choose        key.Binding
+	editTemp        key.Binding
+	editFrequency   key.Binding
+	editTopP        key.Binding
+	editSysPrompt   key.Binding
+	editMaxTokens   key.Binding
+	changeModel     key.Binding
+	reset           key.Binding
+	savePreset      key.Binding
+	presetsMenu     key.Binding
+	goBack          key.Binding
+	choose          key.Binding
+	enableWebSearch key.Binding
+	hideReasoning   key.Binding
 }
 
 var defaultSettingsKeyMap = settingsKeyMap{
@@ -73,10 +75,18 @@ var defaultSettingsKeyMap = settingsKeyMap{
 		key.WithHelp("]", "presets menu"),
 	),
 	goBack: key.NewBinding(
-		key.WithKeys(tea.KeyEsc.String(), "["),
+		key.WithKeys(tea.KeyEsc.String(), "[", tea.KeyLeft.String()),
 		key.WithHelp("esc, [", "go back"),
 	),
 	choose: key.NewBinding(key.WithKeys(tea.KeyEnter.String())),
+	enableWebSearch: key.NewBinding(
+		key.WithKeys("ctrl+w"),
+		key.WithHelp("ctrl+w", "toggle web search"),
+	),
+	hideReasoning: key.NewBinding(
+		key.WithKeys("ctrl+h"),
+		key.WithHelp("ctrl+h", "hide/show reasoning"),
+	),
 }
 
 type SettingsPane struct {
@@ -273,6 +283,18 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 	case tea.KeyMsg:
 		if p.initMode {
 			break
+		}
+
+		if key.Matches(msg, p.keyMap.enableWebSearch) {
+			p.settings.WebSearchEnabled = !p.settings.WebSearchEnabled
+			updatedSettings, err := p.settingsService.UpdateSettings(p.settings)
+			return p, settings.MakeSettingsUpdateMsg(updatedSettings, err)
+		}
+
+		if key.Matches(msg, p.keyMap.hideReasoning) {
+			p.settings.HideReasoning = !p.settings.HideReasoning
+			updatedSettings, err := p.settingsService.UpdateSettings(p.settings)
+			return p, settings.MakeSettingsUpdateMsg(updatedSettings, err)
 		}
 
 		if p.isFocused {

@@ -16,6 +16,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
  * 🌟 **Support for Gemini API**
  * 🔀 **Support for OpenRouter API**
  * 🖼️ **Images support**
+ * 🔍 **Web search tool**
  * 💬 **Chat sessions** management and quick chats
  * ⚙️ **Settings presets** (configure different personas with unique settings)
  * ✂️ **Convenient text selection** tool (vim-like line selection)
@@ -107,6 +108,16 @@ export  OPENROUTER_API_KEY="some-key" # you would want to export this in your .z
 ```
 </details>
 
+## Web search (BETA)
+
+Web search feature uses tool calling for web search reqests exectution.
+This feature can be toggled using `ctrl+w`.
+
+### Details
+* Uses the [DuckDuckGo](https://duckduckgo.com/) search engine and requires no configuration
+* Results are scored using bm25 for better accuracy
+* **Using web search can significantly increase token usage**
+
 ## Config
 
 We provide a `config.json` file within your directory for easy access to essential settings.
@@ -116,7 +127,7 @@ We provide a `config.json` file within your directory for easy access to essenti
 ### Example
 ```json
 {
-  "providerBaseUrl": "https://api.openai.com", // Or http://localhost:1143, or any other OpenAi compatible API
+  "providerBaseUrl": "https://api.openai.com", // Or http://localhost:11434, or any other OpenAi compatible API
   "systemMessage": "",
   "defaultModel": "",
   "colorScheme": "groove", // pink, blue, groove
@@ -191,6 +202,18 @@ To specify color scheme use `-t` flag:
 nekot -t blue
 ```
 
+### Other flags
+
+To specify a model use `-m` flag:
+```bash
+nekot -m "qwen3:4b"
+```
+
+To create a new session on start use `-n` flag:
+```bash
+nekot -n
+```
+
 ## Global Keybindings
 
 - `Tab`: Change focus between panes. The currently focused pane will be highlighted
@@ -199,6 +222,8 @@ nekot -t blue
 - `Ctrl+o`: Toggles zen mode
 - `Ctrl+c`: Exit the program
 - `Ctrl+n`: Create new session
+- `Ctrl+w`: Toggles web search (preset level setting)
+- `Ctrl+h`: Hide/show reasoning tokens (preset level setting)
 - `Ctrl+q`: Start quick chat
 - `Ctrl+x`: Save quick chat to session
 
@@ -240,7 +265,8 @@ Selection mode allows to navigate the chat pane and select lines to copy. Suppor
  - `j`, `k` - go down and up a line
    - Multiline jumps like `3j` (3 lines down), `99k` (99 lines up) are also supported
 - `v`, `Shift+v` or `space` to enter or quit line selection mode
-- `y` to copy selected text
+- `y` to copy selected text (with formatting from the app)
+- `r`, `c` to copy selected text as raw LLM output
 - `Esc` to quit selection or navigation modes
 
 ## Settings Pane
