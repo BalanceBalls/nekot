@@ -219,7 +219,7 @@ func (m *Orchestrator) ResumeCompletion(
 	m.setProcessingContext(ctx)
 	updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
 	m.setCurrentSessionData(updatedSession)
-	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), updatedSession.Messages, m.Settings, resp)
+	return m.InferenceClient.RequestCompletion(m.processingCtx, updatedSession.Messages, m.Settings, resp)
 }
 
 func (m *Orchestrator) setProcessingContext(ctx context.Context) {
