@@ -187,8 +187,7 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		tc := msg.ToolCall
 		switch tc.Function.Name {
 		case "web_search":
-			webSearchCtx := m.setProcessingContext(m.processingCtx)
-			return m, m.doWebSearch(webSearchCtx, tc.Id, tc.Function.Args)
+			return m, m.doWebSearch(m.processingCtx, tc.Id, tc.Function.Args)
 		}
 
 	case InferenceFinalized:
@@ -207,9 +206,8 @@ func (m *Orchestrator) GetCompletion(
 	ctx context.Context,
 	resp chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
-	m.processingCancel = nil
-	m.processingCtx = nil
-	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), m.ArrayOfMessages, m.Settings, resp)
+	m.setProcessingContext(ctx)
+	return m.InferenceClient.RequestCompletion(m.processingCtx, m.ArrayOfMessages, m.Settings, resp)
 }
 
 func (m *Orchestrator) ResumeCompletion(
@@ -218,21 +216,18 @@ func (m *Orchestrator) ResumeCompletion(
 ) tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
+	m.setProcessingContext(ctx)
 	updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
 	m.setCurrentSessionData(updatedSession)
 	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), updatedSession.Messages, m.Settings, resp)
 }
 
-func (m *Orchestrator) setProcessingContext(ctx context.Context) context.Context {
-	if m.processingCtx != nil {
-		return m.processingCtx
+func (m *Orchestrator) setProcessingContext(ctx context.Context) {
+	if m.processingCancel != nil {
+		m.processingCancel()
 	}
 
-	processingCtx, processingCancel := context.WithCancel(ctx)
-	m.processingCancel = processingCancel
-	m.processingCtx = processingCtx
-	return processingCtx
+	m.processingCtx, m.processingCancel = context.WithCancel(ctx)
 }
 
 func (m Orchestrator) GetCurrentSessionId() int {

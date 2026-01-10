@@ -1,5 +1,7 @@
 package util
 
+import "context"
+
 type Settings struct {
 	ID               int
 	Model            string
@@ -102,3 +104,11 @@ const (
 	Finalized
 	Error
 )
+
+func WriteToResponseChannel(ctx context.Context, ch chan<- ProcessApiCompletionResponse, msg ProcessApiCompletionResponse) {
+	select {
+	case ch <- msg:
+	case <-ctx.Done():
+		Slog.Debug("Context cancelled, skipping write to channel", "msg_id", msg.ID)
+	}
+}

@@ -87,6 +87,8 @@ type ChatPane struct {
 	chatView        viewport.Model
 	selectionView   components.TextSelector
 	mainCtx         context.Context
+	consumerCtx     context.Context
+	consumerCancel  context.CancelFunc
 }
 
 var chatContainerStyle = lipgloss.NewStyle().
@@ -123,6 +125,7 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 
 	return ChatPane{
 		mainCtx:                ctx,
+		consumerCtx:            context.Background(),
 		keyMap:                 defaultChatPaneKeyMap,
 		viewMode:               util.NormalMode,
 		colors:                 colors,
@@ -140,10 +143,14 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	}
 }
 
-func waitForActivity(sub chan util.ProcessApiCompletionResponse) tea.Cmd {
+func waitForActivity(ctx context.Context, sub chan util.ProcessApiCompletionResponse) tea.Cmd {
 	return func() tea.Msg {
-		someMessage := <-sub
-		return someMessage
+		select {
+		case someMessage := <-sub:
+			return someMessage
+		case <-ctx.Done():
+			return nil
+		}
 	}
 }
 
@@ -281,7 +288,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		p.chunksBuffer = append(p.chunksBuffer, msg.ChunkMessage)
 
 		if !msg.IsComplete {
-			cmds = append(cmds, waitForActivity(p.msgChan))
+			cmds = append(cmds, waitForActivity(p.consumerCtx, p.msgChan))
 		}
 
 		return p, tea.Batch(cmds...)
@@ -376,9 +383,14 @@ func (p *ChatPane) DisplayCompletion(
 	ctx context.Context,
 	orchestrator *sessions.Orchestrator,
 ) tea.Cmd {
+	if p.consumerCancel != nil {
+		p.consumerCancel()
+	}
+	p.consumerCtx, p.consumerCancel = context.WithCancel(ctx)
+
 	return tea.Batch(
 		orchestrator.GetCompletion(ctx, p.msgChan),
-		waitForActivity(p.msgChan),
+		waitForActivity(p.consumerCtx, p.msgChan),
 	)
 }
 
@@ -386,9 +398,14 @@ func (p *ChatPane) ResumeCompletion(
 	ctx context.Context,
 	orchestrator *sessions.Orchestrator,
 ) tea.Cmd {
+	if p.consumerCancel != nil {
+		p.consumerCancel()
+	}
+	p.consumerCtx, p.consumerCancel = context.WithCancel(ctx)
+
 	return tea.Batch(
 		orchestrator.ResumeCompletion(ctx, p.msgChan),
-		waitForActivity(p.msgChan),
+		waitForActivity(p.consumerCtx, p.msgChan),
 	)
 }
 
