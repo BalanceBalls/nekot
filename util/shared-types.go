@@ -79,7 +79,6 @@ type ModelsListResponse struct {
 	Data   []ModelDescription `json:"data"`
 }
 
-// Define a type for the data you want to return, if needed
 type ProcessApiCompletionResponse struct {
 	ID     int
 	Result CompletionChunk // or whatever type you need

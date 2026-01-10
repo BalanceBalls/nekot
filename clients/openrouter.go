@@ -175,20 +175,21 @@ func constructOpenrouterToolCalls(msg util.LocalStoreMessage) []openrouter.ChatC
 	for _, tc := range msg.ToolCalls {
 		util.Slog.Debug("appending tool call request", "data", tc)
 
-		result := ""
-		if tc.Result != nil {
-			result = *tc.Result
+		if tc.Result == nil {
+			continue
 		}
+
 		toolResult := openrouter.ChatCompletionMessage{
-			Role:       openrouter.ChatMessageRoleTool,
-			ToolCalls:  []openrouter.ToolCall{toOpenRouterToolCall(tc)},
-			Content:    openrouter.Content{Text: result},
+			Role: openrouter.ChatMessageRoleTool,
+			//ToolCalls:  []openrouter.ToolCall{toOpenRouterToolCall(tc)},
+			Content:    openrouter.Content{Text: *tc.Result},
 			ToolCallID: tc.Id,
 		}
 
 		toolCallTurns = append(toolCallTurns, toolResult)
 	}
 
+	util.Slog.Debug("constructed tool calls", "data", toolCallTurns)
 	return toolCallTurns
 }
 

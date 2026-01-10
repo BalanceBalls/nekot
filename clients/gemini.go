@@ -228,30 +228,39 @@ func sendCitationsChunk(
 // Since orchestrator is built for openai apis, need to mimic open ai response structure
 // Gemeni sends finish reason with the last response, and openai apis send finish reason with an empty response
 func sendCompensationChunk(resultChan chan util.ProcessApiCompletionResponse, id int) {
-	var chunk util.CompletionChunk
-	chunk.ID = fmt.Sprint(id)
-
-	choice := util.Choice{
-		Index: id,
-		Delta: map[string]any{
-			"content": "",
+	resultChan <- util.ProcessApiCompletionResponse{
+		ID: id,
+		Result: util.CompletionChunk{
+			ID: fmt.Sprint(id),
+			Choices: []util.Choice{
+				{
+					Index: id,
+					Delta: map[string]any{
+						"content": "",
+					},
+					FinishReason: "stop",
+				},
+			},
 		},
-		FinishReason: "stop",
+		Final: true,
 	}
 
-	chunk.Choices = []util.Choice{choice}
+	nextId := id + 1
 	resultChan <- util.ProcessApiCompletionResponse{
-		ID:     id,
-		Result: chunk,
-		Final:  false,
-	}
-
-	nextId := id + 2
-	chunk.ID = fmt.Sprint(nextId)
-	resultChan <- util.ProcessApiCompletionResponse{
-		ID:     nextId,
-		Result: chunk,
-		Final:  true,
+		ID: nextId,
+		Result: util.CompletionChunk{
+			ID: fmt.Sprint(nextId),
+			Choices: []util.Choice{
+				{
+					Index: nextId,
+					Delta: map[string]any{
+						"content": "",
+					},
+					FinishReason: "",
+				},
+			},
+		},
+		Final: true,
 	}
 	util.Slog.Debug("Gemini: compensation chunks sent")
 }

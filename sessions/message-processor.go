@@ -110,6 +110,9 @@ func (p MessageProcessor) Process(
 	if p.isLastResponseChunk(chunk) {
 		result.State = p.setProcessingState(util.AwaitingFinalization, result)
 	} else {
+		if p.CurrentState != util.ProcessingChunks {
+			util.Slog.Debug("started processing chunks", "data", chunk)
+		}
 		result.State = p.setProcessingState(util.ProcessingChunks, result)
 	}
 
