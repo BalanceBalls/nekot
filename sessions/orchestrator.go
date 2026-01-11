@@ -221,6 +221,36 @@ func (m *Orchestrator) Cancel() {
 	}
 }
 
+func (m *Orchestrator) FinalizeResponseOnCancel() tea.Cmd {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	hasBufferedContent := len(m.ArrayOfProcessResult) > 0 || m.CurrentAnswer != "" || m.ResponseBuffer != ""
+	if !hasBufferedContent {
+		if m.ResponseProcessingState != util.Idle {
+			m.ResponseProcessingState = util.Idle
+			m.CurrentAnswer = ""
+			m.ResponseBuffer = ""
+			m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
+			return util.SendProcessingStateChangedMsg(util.Idle)
+		}
+		return nil
+	}
+
+	processor := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
+	response := processor.prepareResponseJSONForDB(nil)
+
+	if response.Content == "" && response.Resoning == "" && len(response.ToolCalls) == 0 {
+		m.ResponseProcessingState = util.Idle
+		m.CurrentAnswer = ""
+		m.ResponseBuffer = ""
+		m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
+		return util.SendProcessingStateChangedMsg(util.Idle)
+	}
+
+	return FinalizeResponse(response, false)
+}
+
 func (m *Orchestrator) setProcessingContext(ctx context.Context) {
 	if m.processingCancel != nil {
 		m.processingCancel()

@@ -362,7 +362,13 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chatPane.Cancel()
 			m.processingCancel()
 
-			cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+			finalizeCmd := m.sessionOrchestrator.FinalizeResponseOnCancel()
+			if finalizeCmd != nil {
+				cmds = append(cmds, finalizeCmd)
+			} else {
+				cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+			}
+
 			cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
 			return m, tea.Batch(cmds...)
 
