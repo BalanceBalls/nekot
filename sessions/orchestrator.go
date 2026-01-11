@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -130,14 +131,6 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
-	case util.InterruptProcessingMsg:
-		if m.processingCancel != nil {
-			util.Slog.Debug("cancellation func is not null")
-			m.processingCancel()
-			cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
-			cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
-		}
-
 	case util.CopyLastMsg:
 		latestBotMessage, err := m.GetLatestBotMessage()
 		if err == nil {
@@ -220,6 +213,12 @@ func (m *Orchestrator) ResumeCompletion(
 	updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
 	m.setCurrentSessionData(updatedSession)
 	return m.InferenceClient.RequestCompletion(m.processingCtx, updatedSession.Messages, m.Settings, resp)
+}
+
+func (m *Orchestrator) Cancel() {
+	if m.processingCancel != nil {
+		m.processingCancel()
+	}
 }
 
 func (m *Orchestrator) setProcessingContext(ctx context.Context) {
@@ -356,6 +355,9 @@ func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[stri
 		toolName := "web_search"
 		result, err := websearch.PrepareContextFromWebSearch(ctx, args["query"])
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
 			util.Slog.Error("web search failed", "error", err.Error())
 			return util.ErrorEvent{Message: err.Error()}
 		}

@@ -389,9 +389,15 @@ func (p *ChatPane) DisplayCompletion(
 	p.consumerCtx, p.consumerCancel = context.WithCancel(ctx)
 
 	return tea.Batch(
-		orchestrator.GetCompletion(ctx, p.msgChan),
+		orchestrator.GetCompletion(p.consumerCtx, p.msgChan),
 		waitForActivity(p.consumerCtx, p.msgChan),
 	)
+}
+
+func (p *ChatPane) Cancel() {
+	if p.consumerCancel != nil {
+		p.consumerCancel()
+	}
 }
 
 func (p *ChatPane) ResumeCompletion(
@@ -404,7 +410,7 @@ func (p *ChatPane) ResumeCompletion(
 	p.consumerCtx, p.consumerCancel = context.WithCancel(ctx)
 
 	return tea.Batch(
-		orchestrator.ResumeCompletion(ctx, p.msgChan),
+		orchestrator.ResumeCompletion(p.consumerCtx, p.msgChan),
 		waitForActivity(p.consumerCtx, p.msgChan),
 	)
 }

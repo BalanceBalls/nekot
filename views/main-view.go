@@ -358,7 +358,13 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.InitiateNewSession(false))
 
 		case key.Matches(msg, m.keys.cancel):
-			cmds = append(cmds, util.SendInterruptProcessingMsg)
+			m.sessionOrchestrator.Cancel()
+			m.chatPane.Cancel()
+			m.processingCancel()
+
+			cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+			cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
+			return m, tea.Batch(cmds...)
 
 		case key.Matches(msg, m.keys.zenMode):
 			m.focused = util.PromptPane

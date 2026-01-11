@@ -184,12 +184,6 @@ func SendCopyAllMsgs() tea.Msg {
 	return CopyAllMsgs{}
 }
 
-type InterruptProcessingMsg struct{}
-
-func SendInterruptProcessingMsg() tea.Msg {
-	return InterruptProcessingMsg{}
-}
-
 type ViewModeChanged struct {
 	Mode ViewMode
 }
