@@ -150,7 +150,7 @@ func (c OpenAiClient) RequestCompletion(
 			return util.MakeErrorMsg(err.Error())
 		}
 
-		c.processCompletionResponse(resp, resultChan, &processResultID)
+		c.processCompletionResponse(ctx, resp, resultChan, &processResultID)
 		return nil
 	}
 }
@@ -393,6 +393,7 @@ func processModelsListResponse(resp *http.Response) util.ProcessModelsResponse {
 }
 
 func (c OpenAiClient) processCompletionResponse(
+	ctx context.Context,
 	resp *http.Response,
 	resultChan chan util.ProcessApiCompletionResponse,
 	processResultID *int,
@@ -402,10 +403,10 @@ func (c OpenAiClient) processCompletionResponse(
 	if resp.StatusCode >= 400 {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: err}
+			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: *processResultID, Err: err})
 			return
 		}
-		resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: fmt.Errorf("%s", string(bodyBytes))}
+		util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: *processResultID, Err: fmt.Errorf("%s", string(bodyBytes))})
 		return
 	}
 
@@ -421,7 +422,7 @@ func (c OpenAiClient) processCompletionResponse(
 		if err != nil {
 			if err == io.EOF {
 				util.Slog.Warn("OpenAI: scanner returned EOF", "error", err.Error())
-				resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: io.ErrUnexpectedEOF, Final: true}
+				util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: *processResultID, Err: io.ErrUnexpectedEOF, Final: true})
 				break
 			}
 
@@ -430,13 +431,13 @@ func (c OpenAiClient) processCompletionResponse(
 				"error",
 				err.Error(),
 			)
-			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: err, Final: true}
+			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: *processResultID, Err: err, Final: true})
 			return
 		}
 
 		if line == "data: [DONE]\n" {
 			util.Slog.Info("OpenAI: Received [DONE]")
-			resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: nil, Final: true}
+			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: *processResultID, Err: nil, Final: true})
 			return
 		}
 
@@ -450,13 +451,13 @@ func (c OpenAiClient) processCompletionResponse(
 				}
 
 				util.Slog.Info("OpenAI: Tool call interruption sent")
-				resultChan <- toolCallChunk
+				util.WriteToResponseChannel(ctx, resultChan, toolCallChunk)
 				*processResultID++
-				resultChan <- util.ProcessApiCompletionResponse{ID: *processResultID, Err: nil, Final: true}
+				util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: *processResultID, Err: nil, Final: true})
 				break
 			}
 
-			resultChan <- chunk
+			util.WriteToResponseChannel(ctx, resultChan, chunk)
 			*processResultID++
 		}
 	}

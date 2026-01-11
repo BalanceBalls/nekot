@@ -73,7 +73,7 @@ func (c GeminiClient) RequestCompletion(
 
 		client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
 		if err != nil {
-			resultChan <- util.ProcessApiCompletionResponse{ID: util.ChunkIndexStart, Err: err, Final: true}
+			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: util.ChunkIndexStart, Err: err, Final: true})
 			return nil
 		}
 		defer client.Close()
@@ -108,7 +108,7 @@ func (c GeminiClient) RequestCompletion(
 					"result id",
 					processResultID,
 				)
-				sendCompensationChunk(resultChan, processResultID)
+				sendCompensationChunk(ctx, resultChan, processResultID)
 				return nil
 			}
 
@@ -120,9 +120,9 @@ func (c GeminiClient) RequestCompletion(
 						"error",
 						apiErr.Body,
 					)
-					resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: apiErr}
+					util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: apiErr})
 				} else {
-					resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err}
+					util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: err})
 				}
 				break
 			}
@@ -130,16 +130,16 @@ func (c GeminiClient) RequestCompletion(
 			result, err := processResponseChunk(resp, processResultID)
 			if err != nil {
 				util.Slog.Error("Gemini: Encountered error during chunks processing", "error", err)
-				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err}
+				util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: err})
 				break
 			}
 
 			citations = append(citations, result.citations...)
-			resultChan <- util.ProcessApiCompletionResponse{
+			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
 				ID:     processResultID,
 				Result: result.chunk,
 				Err:    nil,
-			}
+			})
 
 			processResultID++
 			if result.isToolCall {
@@ -148,11 +148,11 @@ func (c GeminiClient) RequestCompletion(
 
 			if result.isFinal {
 				if len(citations) > 0 {
-					sendCitationsChunk(resultChan, processResultID, citations)
+					sendCitationsChunk(ctx, resultChan, processResultID, citations)
 					processResultID++
 				}
 
-				sendCompensationChunk(resultChan, processResultID)
+				sendCompensationChunk(ctx, resultChan, processResultID)
 				break
 			}
 		}
@@ -199,6 +199,7 @@ func (c GeminiClient) RequestModelsList(ctx context.Context) util.ProcessModelsR
 // The citations are collected from each chunk and sent together as the last chunk
 // because displaying citations all around the response is ugly
 func sendCitationsChunk(
+	ctx context.Context,
 	resultChan chan util.ProcessApiCompletionResponse,
 	id int,
 	citations []string,
@@ -218,41 +219,50 @@ func sendCitationsChunk(
 	}
 
 	chunk.Choices = []util.Choice{choice}
-	resultChan <- util.ProcessApiCompletionResponse{
+	util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
 		ID:     id,
 		Result: chunk,
 		Final:  false,
-	}
+	})
 }
 
 // Since orchestrator is built for openai apis, need to mimic open ai response structure
 // Gemeni sends finish reason with the last response, and openai apis send finish reason with an empty response
-func sendCompensationChunk(resultChan chan util.ProcessApiCompletionResponse, id int) {
-	var chunk util.CompletionChunk
-	chunk.ID = fmt.Sprint(id)
-
-	choice := util.Choice{
-		Index: id,
-		Delta: map[string]any{
-			"content": "",
+func sendCompensationChunk(ctx context.Context, resultChan chan util.ProcessApiCompletionResponse, id int) {
+	util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
+		ID: id,
+		Result: util.CompletionChunk{
+			ID: fmt.Sprint(id),
+			Choices: []util.Choice{
+				{
+					Index: id,
+					Delta: map[string]any{
+						"content": "",
+					},
+					FinishReason: "stop",
+				},
+			},
 		},
-		FinishReason: "stop",
-	}
+		Final: true,
+	})
 
-	chunk.Choices = []util.Choice{choice}
-	resultChan <- util.ProcessApiCompletionResponse{
-		ID:     id,
-		Result: chunk,
-		Final:  false,
-	}
-
-	nextId := id + 2
-	chunk.ID = fmt.Sprint(nextId)
-	resultChan <- util.ProcessApiCompletionResponse{
-		ID:     nextId,
-		Result: chunk,
-		Final:  true,
-	}
+	nextId := id + 1
+	util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
+		ID: nextId,
+		Result: util.CompletionChunk{
+			ID: fmt.Sprint(nextId),
+			Choices: []util.Choice{
+				{
+					Index: nextId,
+					Delta: map[string]any{
+						"content": "",
+					},
+					FinishReason: "",
+				},
+			},
+		},
+		Final: true,
+	})
 	util.Slog.Debug("Gemini: compensation chunks sent")
 }
 

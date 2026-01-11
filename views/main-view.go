@@ -98,6 +98,8 @@ type MainView struct {
 	sessionOrchestrator sessions.Orchestrator
 	sessionService      sessions.SessionService
 	context             context.Context
+	processingCtx       context.Context
+	processingCancel    context.CancelFunc
 
 	terminalWidth  int
 	terminalHeight int
@@ -289,7 +291,8 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			util.Slog.Debug("consturcted tool call results for continuation", "amount", len(m.pendingToolCalls))
 
 			m.pendingToolCalls = []util.ToolCall{}
-			cmds = append(cmds, m.chatPane.ResumeCompletion(m.context, &m.sessionOrchestrator))
+			m.setProcessingContext()
+			cmds = append(cmds, m.chatPane.ResumeCompletion(m.processingCtx, &m.sessionOrchestrator))
 			return m, tea.Batch(cmds...)
 		}
 
@@ -328,9 +331,10 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		m.viewMode = util.NormalMode
 
+		m.setProcessingContext()
 		return m, tea.Batch(
 			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
-			m.chatPane.DisplayCompletion(m.context, &m.sessionOrchestrator),
+			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator),
 			util.SendViewModeChangedMsg(m.viewMode))
 
 	case tea.KeyMsg:
@@ -354,7 +358,19 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.InitiateNewSession(false))
 
 		case key.Matches(msg, m.keys.cancel):
-			cmds = append(cmds, util.SendInterruptProcessingMsg)
+			m.sessionOrchestrator.Cancel()
+			m.chatPane.Cancel()
+			m.processingCancel()
+
+			finalizeCmd := m.sessionOrchestrator.FinalizeResponseOnCancel()
+			if finalizeCmd != nil {
+				cmds = append(cmds, finalizeCmd)
+			} else {
+				cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+			}
+
+			cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
+			return m, tea.Batch(cmds...)
 
 		case key.Matches(msg, m.keys.zenMode):
 			m.focused = util.PromptPane
@@ -482,6 +498,13 @@ func (m MainView) View() string {
 			promptView,
 		),
 	)
+}
+
+func (m *MainView) setProcessingContext() {
+	if m.processingCancel != nil {
+		m.processingCancel()
+	}
+	m.processingCtx, m.processingCancel = context.WithCancel(m.context)
 }
 
 func (m *MainView) resetFocus() {

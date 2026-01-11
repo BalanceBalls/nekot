@@ -68,7 +68,7 @@ func (c OpenrouterClient) RequestCompletion(
 
 		stream, err := client.CreateChatCompletionStream(ctx, request)
 		if err != nil {
-			resultChan <- util.ProcessApiCompletionResponse{ID: util.ChunkIndexStart, Err: err, Final: true}
+			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: util.ChunkIndexStart, Err: err, Final: true})
 			return nil
 		}
 		defer stream.Close()
@@ -89,14 +89,14 @@ func (c OpenrouterClient) RequestCompletion(
 					"error",
 					err.Error(),
 				)
-				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err, Final: true}
+				util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: err, Final: true})
 				break
 			}
 
 			processResultID++
 			if errors.Is(err, io.EOF) {
 				util.Slog.Info("Openrouter: Received [DONE]")
-				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: nil, Final: true}
+				util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: nil, Final: true})
 				break
 			}
 
@@ -108,30 +108,30 @@ func (c OpenrouterClient) RequestCompletion(
 				}
 
 				util.Slog.Info("OpenRouter: Tool call interruption sent")
-				resultChan <- util.ProcessApiCompletionResponse{
+				util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
 					ID:     processResultID,
 					Result: toolCallChunk,
 					Err:    nil,
 					Final:  false,
-				}
+				})
 
 				processResultID++
-				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: nil, Final: true}
+				util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: nil, Final: true})
 				break
 			}
 
 			result, err := processCompletionChunk(response)
 			if err != nil {
-				resultChan <- util.ProcessApiCompletionResponse{ID: processResultID, Err: err}
+				util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: err})
 				break
 			}
 
-			resultChan <- util.ProcessApiCompletionResponse{
+			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
 				ID:     processResultID,
 				Result: result,
 				Err:    nil,
 				Final:  false,
-			}
+			})
 		}
 
 		return nil
@@ -175,20 +175,21 @@ func constructOpenrouterToolCalls(msg util.LocalStoreMessage) []openrouter.ChatC
 	for _, tc := range msg.ToolCalls {
 		util.Slog.Debug("appending tool call request", "data", tc)
 
-		result := ""
-		if tc.Result != nil {
-			result = *tc.Result
+		if tc.Result == nil {
+			continue
 		}
+
 		toolResult := openrouter.ChatCompletionMessage{
-			Role:       openrouter.ChatMessageRoleTool,
-			ToolCalls:  []openrouter.ToolCall{toOpenRouterToolCall(tc)},
-			Content:    openrouter.Content{Text: result},
+			Role: openrouter.ChatMessageRoleTool,
+			//ToolCalls:  []openrouter.ToolCall{toOpenRouterToolCall(tc)},
+			Content:    openrouter.Content{Text: *tc.Result},
 			ToolCallID: tc.Id,
 		}
 
 		toolCallTurns = append(toolCallTurns, toolResult)
 	}
 
+	util.Slog.Debug("constructed tool calls", "data", toolCallTurns)
 	return toolCallTurns
 }
 

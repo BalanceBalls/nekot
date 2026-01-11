@@ -16,7 +16,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
  * 🌟 **Support for Gemini API**
  * 🔀 **Support for OpenRouter API**
  * 🖼️ **Images support**
- * 🔍 **Web search tool**
+ * 🔍 **Web search tool [BETA]**
  * 💬 **Chat sessions** management and quick chats
  * ⚙️ **Settings presets** (configure different personas with unique settings)
  * ✂️ **Convenient text selection** tool (vim-like line selection)

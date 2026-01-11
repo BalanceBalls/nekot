@@ -1,5 +1,7 @@
 package util
 
+import "context"
+
 type Settings struct {
 	ID               int
 	Model            string
@@ -79,7 +81,6 @@ type ModelsListResponse struct {
 	Data   []ModelDescription `json:"data"`
 }
 
-// Define a type for the data you want to return, if needed
 type ProcessApiCompletionResponse struct {
 	ID     int
 	Result CompletionChunk // or whatever type you need
@@ -103,3 +104,11 @@ const (
 	Finalized
 	Error
 )
+
+func WriteToResponseChannel(ctx context.Context, ch chan<- ProcessApiCompletionResponse, msg ProcessApiCompletionResponse) {
+	select {
+	case ch <- msg:
+	case <-ctx.Done():
+		Slog.Debug("Context cancelled, skipping write to channel", "msg_id", msg.ID)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -130,14 +131,6 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
-	case util.InterruptProcessingMsg:
-		if m.processingCancel != nil {
-			util.Slog.Debug("cancellation func is not null")
-			m.processingCancel()
-			cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
-			cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
-		}
-
 	case util.CopyLastMsg:
 		latestBotMessage, err := m.GetLatestBotMessage()
 		if err == nil {
@@ -187,8 +180,7 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		tc := msg.ToolCall
 		switch tc.Function.Name {
 		case "web_search":
-			webSearchCtx := m.setProcessingContext(m.processingCtx)
-			return m, m.doWebSearch(webSearchCtx, tc.Id, tc.Function.Args)
+			return m, m.doWebSearch(m.processingCtx, tc.Id, tc.Function.Args)
 		}
 
 	case InferenceFinalized:
@@ -207,9 +199,8 @@ func (m *Orchestrator) GetCompletion(
 	ctx context.Context,
 	resp chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
-	m.processingCancel = nil
-	m.processingCtx = nil
-	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), m.ArrayOfMessages, m.Settings, resp)
+	m.setProcessingContext(ctx)
+	return m.InferenceClient.RequestCompletion(m.processingCtx, m.ArrayOfMessages, m.Settings, resp)
 }
 
 func (m *Orchestrator) ResumeCompletion(
@@ -218,21 +209,54 @@ func (m *Orchestrator) ResumeCompletion(
 ) tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
+	m.setProcessingContext(ctx)
 	updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
 	m.setCurrentSessionData(updatedSession)
-	return m.InferenceClient.RequestCompletion(m.setProcessingContext(ctx), updatedSession.Messages, m.Settings, resp)
+	return m.InferenceClient.RequestCompletion(m.processingCtx, updatedSession.Messages, m.Settings, resp)
 }
 
-func (m *Orchestrator) setProcessingContext(ctx context.Context) context.Context {
-	if m.processingCtx != nil {
-		return m.processingCtx
+func (m *Orchestrator) Cancel() {
+	if m.processingCancel != nil {
+		m.processingCancel()
+	}
+}
+
+func (m *Orchestrator) FinalizeResponseOnCancel() tea.Cmd {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	hasBufferedContent := len(m.ArrayOfProcessResult) > 0 || m.CurrentAnswer != "" || m.ResponseBuffer != ""
+	if !hasBufferedContent {
+		if m.ResponseProcessingState != util.Idle {
+			m.ResponseProcessingState = util.Idle
+			m.CurrentAnswer = ""
+			m.ResponseBuffer = ""
+			m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
+			return util.SendProcessingStateChangedMsg(util.Idle)
+		}
+		return nil
 	}
 
-	processingCtx, processingCancel := context.WithCancel(ctx)
-	m.processingCancel = processingCancel
-	m.processingCtx = processingCtx
-	return processingCtx
+	processor := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
+	response := processor.prepareResponseJSONForDB(nil)
+
+	if response.Content == "" && response.Resoning == "" && len(response.ToolCalls) == 0 {
+		m.ResponseProcessingState = util.Idle
+		m.CurrentAnswer = ""
+		m.ResponseBuffer = ""
+		m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
+		return util.SendProcessingStateChangedMsg(util.Idle)
+	}
+
+	return FinalizeResponse(response, false)
+}
+
+func (m *Orchestrator) setProcessingContext(ctx context.Context) {
+	if m.processingCancel != nil {
+		m.processingCancel()
+	}
+
+	m.processingCtx, m.processingCancel = context.WithCancel(ctx)
 }
 
 func (m Orchestrator) GetCurrentSessionId() int {
@@ -290,19 +314,20 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// util.Slog.Debug("processing state before new chunk",
-	// 	"state", m.ResponseProcessingState,
-	// 	"chunks ready", len(m.ArrayOfProcessResult),
-	// 	"data", msg.Result)
+	util.Slog.Debug("processing state before new chunk",
+		"state", m.ResponseProcessingState,
+		"chunks ready", len(m.ArrayOfProcessResult),
+		"data", msg.Result,
+		"isFinal", msg.Final)
 
 	prevProcessingState := m.ResponseProcessingState
 	p := NewMessageProcessor(m.ArrayOfProcessResult, m.ResponseBuffer, m.ResponseProcessingState, m.Settings)
 	result, err := p.Process(msg)
 
-	// util.Slog.Debug("processed chunk",
-	// 	"id", msg.ID,
-	// 	"chunks ready", len(result.CurrentResponseDataChunks),
-	// 	"response json", result.JSONResponse.Content)
+	util.Slog.Debug("processed chunk",
+		"id", msg.ID,
+		"chunks ready", len(result.CurrentResponseDataChunks),
+		"state", result.State)
 
 	if err != nil {
 		util.Slog.Error("error occured on processing a chunk", "chunk", msg, "error", err.Error())
@@ -360,6 +385,9 @@ func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[stri
 		toolName := "web_search"
 		result, err := websearch.PrepareContextFromWebSearch(ctx, args["query"])
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
 			util.Slog.Error("web search failed", "error", err.Error())
 			return util.ErrorEvent{Message: err.Error()}
 		}
