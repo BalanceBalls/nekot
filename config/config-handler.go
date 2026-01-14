@@ -60,6 +60,7 @@ type StartupFlags struct {
 	Provider        string
 	ProviderUrl     string
 	StartNewSession bool
+	InitialPrompt   string
 }
 
 //go:embed config.json

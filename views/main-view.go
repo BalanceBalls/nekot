@@ -93,6 +93,7 @@ type MainView struct {
 	infoPane         panes.InfoPane
 	loadedDeps       []util.AsyncDependency
 	pendingToolCalls []util.ToolCall
+	initialPrompt    string
 
 	flags               config.StartupFlags
 	config              config.Config
@@ -160,6 +161,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		config:              *config,
 		flags:               *flags,
 		context:             ctx,
+		initialPrompt:       flags.InitialPrompt,
 	}
 }
 
@@ -222,6 +224,12 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetFocus()
 		}
 
+	case sessions.UpdateCurrentSession:
+		if m.initialPrompt != "" && m.flags.StartNewSession {
+			cmds = append(cmds, util.SendPromptReadyMsg(m.initialPrompt, []util.Attachment{}))
+			m.initialPrompt = ""
+		}
+
 	case util.AsyncDependencyReady:
 		if !slices.Contains(m.loadedDeps, msg.Dependency) {
 			m.loadedDeps = append(m.loadedDeps, msg.Dependency)
@@ -239,6 +247,12 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if allLoaded {
 				m.viewReady = true
 				m.promptPane = m.promptPane.Enable()
+
+				// if there is also a 'new session' flag - need to do it differently
+				if m.initialPrompt != "" && !m.flags.StartNewSession {
+					cmds = append(cmds, util.SendPromptReadyMsg(m.initialPrompt, []util.Attachment{}))
+					m.initialPrompt = ""
+				}
 			}
 		}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -40,12 +41,22 @@ func init() {
 func main() {
 	flag.Parse()
 
+	var pipedContent string
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) == 0 {
+		data, err := io.ReadAll(os.Stdin)
+		if err == nil {
+			pipedContent = string(data)
+		}
+	}
+
 	flags := config.StartupFlags{
 		Model:           model,
 		Theme:           theme,
 		Provider:        provider,
 		ProviderUrl:     baseUrl,
 		StartNewSession: newSession,
+		InitialPrompt:   pipedContent,
 	}
 
 	env := os.Getenv("NEKOT_ENV")
