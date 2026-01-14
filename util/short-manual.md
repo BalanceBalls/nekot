@@ -51,6 +51,8 @@ __`2` to focus on the manual (pane)__
 `space` Toggle line selection
  <!------->
 `y` Copy selected lines
+ <!------->
+`r` `c` Raw-copy selected lines
 
 # Prompt pane keybindings
 

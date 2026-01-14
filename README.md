@@ -81,8 +81,6 @@ To use the app, you will need to set `OPENAI_API_KEY` or/and `GEMINI_API_KEY`, `
 
 ### OpenAI APIs
 
-<i>For local models the key still needs to be set (`OPENAI_API_KEY=1` will do).</i>
-
 Set up your openai api key:
 * ChatGPT: [how to get an api key](https://platform.openai.com/api-keys)
 * Mistral: [how to get an api key](https://docs.mistral.ai/getting-started/quickstart/#account-setup)

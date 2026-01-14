@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -47,7 +48,7 @@ var (
 var (
 	openAiApiPrefixes  = []string{"api.openai.com"}
 	mistralApiPrefixes = []string{"api.mistral.ai"}
-	localApiPrefixes   = []string{"localhost", "127.0.0.1", "::1"}
+	localApiPrefixes   = []string{"localhost", "127.0.0.1", "::1", "192.168", "10.", "172."}
 )
 
 const (
@@ -190,6 +191,21 @@ func GetOpenAiInferenceProvider(providerType string, apiUrl string) ApiProvider 
 	}
 
 	return Local
+}
+
+func IsLocalProvider(providerUrl string) bool {
+	parsedUrl, err := url.Parse(providerUrl)
+	if err != nil {
+		return false
+	}
+
+	if slices.ContainsFunc(localApiPrefixes, func(p string) bool {
+		return strings.HasPrefix(parsedUrl.Host, p)
+	}) {
+		return true
+	}
+
+	return false
 }
 
 func (m ModelsListResponse) GetModelNamesFromResponse() []string {

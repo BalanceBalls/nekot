@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -222,12 +223,23 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case util.AsyncDependencyReady:
-		m.loadedDeps = append(m.loadedDeps, msg.Dependency)
+		if !slices.Contains(m.loadedDeps, msg.Dependency) {
+			m.loadedDeps = append(m.loadedDeps, msg.Dependency)
+		}
 
-		// TODO: implement correct comparison
 		if len(m.loadedDeps) == len(asyncDeps) {
-			m.viewReady = true
-			m.promptPane = m.promptPane.Enable()
+			allLoaded := true
+			for _, required := range asyncDeps {
+				if !slices.Contains(m.loadedDeps, required) {
+					allLoaded = false
+					break
+				}
+			}
+
+			if allLoaded {
+				m.viewReady = true
+				m.promptPane = m.promptPane.Enable()
+			}
 		}
 
 		if m.viewReady && m.flags.StartNewSession {
