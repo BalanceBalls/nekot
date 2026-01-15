@@ -24,27 +24,37 @@ var grooveBoxLightThemeBytes []byte
 //go:embed glamour-styles/pink.json
 var pinkThemeBytes []byte
 
+//go:embed glamour-styles/pink-light.json
+var pinkLightThemeBytes []byte
+
 //go:embed glamour-styles/blue.json
 var blueThemeBytes []byte
 
+//go:embed glamour-styles/blue-light.json
+var blueLightThemeBytes []byte
+
 var (
-	pink100   = "#F2B3E8"
-	pink200   = "#8C3A87"
-	pink300   = "#BD54BF"
-	purple    = "#432D59"
-	red       = "#DE3163"
-	white     = "#FFFFFF"
-	black     = "#000000"
-	lightGrey = "#bbbbbb"
+	pink100       = "#d48ac8"
+	pink200       = "#8C3A87"
+	pink300       = "#BD54BF"
+	purple        = "#432D59"
+	pinkThemeBlue = "#617a85" //"#3082a6" //"#4eacd4"
+	pinkThemeGrey = "#9c9a97"
+	red           = "#DE3163"
+	white         = "#FFFFFF"
+	black         = "#000000"
+	lightGrey     = "#bbbbbb"
 )
 
 var (
-	smoothBlue = "#90a0d3"
-	pinkYellow = "#e3b89f"
-	cyan       = "#c3f7f5"
-	lightGreen = "#a0d390"
-	blue       = "#6b81c5"
-	smoothRed  = "#af5f5f"
+	smoothBlue     = "#90a0d3"
+	pinkYellow     = "#e3b89f"
+	cyan           = "#c3f7f5"
+	lightGreen     = "#a0d390"
+	blue           = "#6b81c5"
+	smoothRed      = "#8a7774"
+	smoothRedLight = "#ba7575"
+	smoothBlueText = "#39456b"
 )
 
 var (
@@ -79,8 +89,8 @@ func (s ColorScheme) GetColors() SchemeColors {
 	defaultColors := SchemeColors{
 		MainColor:            lipgloss.AdaptiveColor{Dark: pink100, Light: pink100},
 		AccentColor:          lipgloss.AdaptiveColor{Dark: pink200, Light: pink200},
-		HighlightColor:       lipgloss.AdaptiveColor{Dark: pink300, Light: pink300},
-		DefaultTextColor:     lipgloss.AdaptiveColor{Dark: white, Light: white},
+		HighlightColor:       lipgloss.AdaptiveColor{Dark: pinkThemeGrey, Light: pinkThemeBlue},
+		DefaultTextColor:     lipgloss.AdaptiveColor{Dark: white, Light: purple},
 		ErrorColor:           lipgloss.AdaptiveColor{Dark: red, Light: red},
 		NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: lightGrey, Light: lightGrey},
 		ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: pink300, Light: pink300},
@@ -89,15 +99,19 @@ func (s ColorScheme) GetColors() SchemeColors {
 
 	switch s {
 	case SmoothBlue:
+		themeBytes := blueThemeBytes
+		if !lipgloss.HasDarkBackground() {
+			themeBytes = blueLightThemeBytes
+		}
 		return SchemeColors{
 			MainColor:            lipgloss.AdaptiveColor{Dark: pinkYellow, Light: pinkYellow},
 			AccentColor:          lipgloss.AdaptiveColor{Dark: lightGreen, Light: lightGreen},
 			HighlightColor:       lipgloss.AdaptiveColor{Dark: smoothRed, Light: smoothRed},
-			DefaultTextColor:     lipgloss.AdaptiveColor{Dark: white, Light: white},
-			ErrorColor:           lipgloss.AdaptiveColor{Dark: red, Light: red},
+			DefaultTextColor:     lipgloss.AdaptiveColor{Dark: white, Light: smoothBlueText},
+			ErrorColor:           lipgloss.AdaptiveColor{Dark: red, Light: smoothRed},
 			NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: smoothBlue, Light: smoothBlue},
 			ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: pinkYellow, Light: pinkYellow},
-			RendererThemeOption:  glamour.WithStylesFromJSONBytes(blueThemeBytes),
+			RendererThemeOption:  glamour.WithStylesFromJSONBytes(themeBytes),
 		}
 
 	case Groovebox:
@@ -117,6 +131,11 @@ func (s ColorScheme) GetColors() SchemeColors {
 		}
 
 	case OriginalPink:
+		themeBytes := pinkThemeBytes
+		if !lipgloss.HasDarkBackground() {
+			themeBytes = pinkLightThemeBytes
+		}
+		defaultColors.RendererThemeOption = glamour.WithStylesFromJSONBytes(themeBytes)
 		return defaultColors
 
 	default:
