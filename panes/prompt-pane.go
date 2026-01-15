@@ -547,7 +547,7 @@ func (p *PromptPane) openTextEditor(content string, op util.Operation, isFocused
 		p.textEditor.Focus()
 		return p.textEditor.Cursor.BlinkCmd()
 	}
-	p.textEditor.Placeholder = ""
+	p.textEditor.Placeholder = PlaceholderMsg
 
 	return nil
 }
