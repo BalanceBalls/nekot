@@ -384,19 +384,12 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.InitiateNewSession(false))
 
 		case key.Matches(msg, m.keys.cancel):
-			m.sessionOrchestrator.Cancel()
-			m.chatPane.Cancel()
-			m.processingCancel()
+			cancelCmd := m.CancelProcessing()
 
-			finalizeCmd := m.sessionOrchestrator.FinalizeResponseOnCancel()
-			if finalizeCmd != nil {
-				cmds = append(cmds, finalizeCmd)
-			} else {
-				cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+			if cancelCmd != nil {
+				cmds = append(cmds, cancelCmd)
+				return m, tea.Batch(cmds...)
 			}
-
-			cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
-			return m, tea.Batch(cmds...)
 
 		case key.Matches(msg, m.keys.zenMode):
 			m.focused = util.PromptPane
@@ -597,4 +590,26 @@ func (m *MainView) InitiateNewSession(isTemporary bool) tea.Cmd {
 		}
 	}
 	return util.AddNewSession(isTemporary)
+}
+
+func (m *MainView) CancelProcessing() tea.Cmd {
+	var cmds []tea.Cmd
+
+	if !m.sessionOrchestrator.IsProcessing() {
+		return nil
+	}
+
+	m.sessionOrchestrator.Cancel()
+	m.chatPane.Cancel()
+	m.processingCancel()
+
+	finalizeCmd := m.sessionOrchestrator.FinalizeResponseOnCancel()
+	if finalizeCmd != nil {
+		cmds = append(cmds, finalizeCmd)
+	} else {
+		cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+	}
+
+	cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
+	return tea.Batch(cmds...)
 }

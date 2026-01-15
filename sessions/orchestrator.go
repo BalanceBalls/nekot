@@ -273,7 +273,7 @@ func (m Orchestrator) IsProcessing() bool {
 
 func (m Orchestrator) GetLatestBotMessage() (string, error) {
 	// the last bot in the array is actually the blank message (the stop command)
-	lastIndex := len(m.ArrayOfMessages) - 2
+	lastIndex := len(m.ArrayOfMessages) - 1
 	// Check if lastIndex is within the bounds of the slice
 	if lastIndex >= 0 && lastIndex < len(m.ArrayOfMessages) {
 		return m.ArrayOfMessages[lastIndex].Content, nil

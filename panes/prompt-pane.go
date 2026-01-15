@@ -231,9 +231,11 @@ func (p *PromptPane) keyInsert() tea.Cmd {
 	switch p.viewMode {
 	case util.TextEditMode:
 		p.textEditor.Focus()
+		p.textEditor.Placeholder = ""
 		return p.textEditor.Cursor.BlinkCmd()
 	default:
 		p.input.Focus()
+		p.input.Placeholder = ""
 		return p.input.Cursor.BlinkCmd()
 	}
 }
@@ -243,8 +245,14 @@ func (p *PromptPane) keyClear() tea.Cmd {
 	switch p.viewMode {
 	case util.TextEditMode:
 		p.textEditor.Reset()
+		if p.inputMode != util.PromptInsertMode {
+			p.textEditor.Placeholder = PlaceholderMsg
+		}
 	default:
 		p.input.Reset()
+		if p.inputMode != util.PromptInsertMode {
+			p.input.Placeholder = PlaceholderMsg
+		}
 	}
 
 	return nil
@@ -258,8 +266,10 @@ func (p *PromptPane) keyExit() tea.Cmd {
 
 	switch p.viewMode {
 	case util.TextEditMode:
+		p.textEditor.Placeholder = PlaceholderMsg
 		if !p.textEditor.Focused() {
 			p.textEditor.Reset()
+
 			p.operation = util.NoOperaton
 			return util.SendViewModeChangedMsg(util.NormalMode)
 		}
@@ -270,6 +280,7 @@ func (p *PromptPane) keyExit() tea.Cmd {
 		break
 
 	default:
+		p.input.Placeholder = PlaceholderMsg
 		if !p.input.Focused() {
 			p.input.Reset()
 		} else {
@@ -506,6 +517,7 @@ func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput
 	inputLength := len(p.input.Value())
 	p.input.Focus()
 	p.input.SetCursor(inputLength)
+	p.input.Placeholder = ""
 	p.inputMode = util.PromptInsertMode
 	return p.input.Cursor.BlinkCmd()
 }
@@ -535,6 +547,7 @@ func (p *PromptPane) openTextEditor(content string, op util.Operation, isFocused
 		p.textEditor.Focus()
 		return p.textEditor.Cursor.BlinkCmd()
 	}
+	p.textEditor.Placeholder = ""
 
 	return nil
 }
