@@ -34,27 +34,30 @@ var blueThemeBytes []byte
 var blueLightThemeBytes []byte
 
 var (
-	pink100       = "#d48ac8"
-	pink200       = "#8C3A87"
-	pink300       = "#BD54BF"
-	purple        = "#432D59"
-	pinkThemeBlue = "#617a85" //"#3082a6" //"#4eacd4"
-	pinkThemeGrey = "#9c9a97"
-	red           = "#DE3163"
-	white         = "#FFFFFF"
-	black         = "#000000"
-	lightGrey     = "#bbbbbb"
+	pink100           = "#d48ac8"
+	pink200           = "#8C3A87"
+	pink300           = "#BD54BF"
+	purple            = "#432D59"
+	pinkThemeBlue     = "#617a85" //"#3082a6" //"#4eacd4"
+	pinkThemeGrey     = "#9c9a97"
+	red               = "#DE3163"
+	white             = "#FFFFFF"
+	black             = "#000000"
+	lightGrey         = "#bbbbbb"
+	pinkThemeDarkGrey = "#807c7c"
 )
 
 var (
-	smoothBlue     = "#90a0d3"
-	pinkYellow     = "#e3b89f"
-	cyan           = "#c3f7f5"
-	lightGreen     = "#a0d390"
-	blue           = "#6b81c5"
-	smoothRed      = "#8a7774"
-	smoothRedLight = "#ba7575"
-	smoothBlueText = "#39456b"
+	smoothBlue      = "#90a0d3"
+	pinkYellow      = "#e3b89f"
+	pinkYellowLight = "#535e8a" //"#bf8b6d"
+	cyan            = "#c3f7f5"
+	lightGreen      = "#70b55b"
+	darkGreen       = ""
+	blue            = "#6b81c5"
+	smoothRed       = "#8a7774"
+	smoothRedLight  = "#ba7575"
+	smoothBlueText  = "#39456b"
 )
 
 var (
@@ -92,7 +95,7 @@ func (s ColorScheme) GetColors() SchemeColors {
 		HighlightColor:       lipgloss.AdaptiveColor{Dark: pinkThemeGrey, Light: pinkThemeBlue},
 		DefaultTextColor:     lipgloss.AdaptiveColor{Dark: white, Light: purple},
 		ErrorColor:           lipgloss.AdaptiveColor{Dark: red, Light: red},
-		NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: lightGrey, Light: lightGrey},
+		NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: lightGrey, Light: pinkThemeDarkGrey},
 		ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: pink300, Light: pink300},
 		RendererThemeOption:  glamour.WithStylesFromJSONBytes(pinkThemeBytes),
 	}
@@ -104,13 +107,13 @@ func (s ColorScheme) GetColors() SchemeColors {
 			themeBytes = blueLightThemeBytes
 		}
 		return SchemeColors{
-			MainColor:            lipgloss.AdaptiveColor{Dark: pinkYellow, Light: pinkYellow},
+			MainColor:            lipgloss.AdaptiveColor{Dark: pinkYellow, Light: pinkYellowLight},
 			AccentColor:          lipgloss.AdaptiveColor{Dark: lightGreen, Light: lightGreen},
 			HighlightColor:       lipgloss.AdaptiveColor{Dark: smoothRed, Light: smoothRed},
 			DefaultTextColor:     lipgloss.AdaptiveColor{Dark: white, Light: smoothBlueText},
 			ErrorColor:           lipgloss.AdaptiveColor{Dark: red, Light: smoothRed},
 			NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: smoothBlue, Light: smoothBlue},
-			ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: pinkYellow, Light: pinkYellow},
+			ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: pinkYellow, Light: pinkYellowLight},
 			RendererThemeOption:  glamour.WithStylesFromJSONBytes(themeBytes),
 		}
 
