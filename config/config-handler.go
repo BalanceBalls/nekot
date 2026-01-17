@@ -60,6 +60,7 @@ type StartupFlags struct {
 	Provider        string
 	ProviderUrl     string
 	StartNewSession bool
+	InitialPrompt   string
 }
 
 //go:embed config.json
@@ -186,6 +187,10 @@ func (c Config) checkApiKeys() {
 			os.Exit(1)
 		}
 	case util.OpenAiProviderType:
+		if util.IsLocalProvider(c.ProviderBaseUrl) {
+			return
+		}
+
 		apiKey := os.Getenv("OPENAI_API_KEY")
 		if apiKey == "" {
 			fmt.Println("OPENAI_API_KEY not set; set it in your profile")

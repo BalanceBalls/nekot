@@ -161,12 +161,13 @@ func (s TextSelector) View() string {
 }
 
 func (s TextSelector) renderLines() string {
+	textColor := lipgloss.AdaptiveColor{Dark: "#000000", Light: "#ffffff"}
 	highlightStyle := lipgloss.NewStyle().
-		Foreground(s.colors.DefaultTextColor).
+		Foreground(textColor).
 		Background(s.colors.HighlightColor)
 
 	cursorStyle := lipgloss.NewStyle().
-		Foreground(s.colors.DefaultTextColor).
+		Foreground(textColor).
 		Background(s.colors.AccentColor)
 
 	// Pre-compute selection range if active

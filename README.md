@@ -81,8 +81,6 @@ To use the app, you will need to set `OPENAI_API_KEY` or/and `GEMINI_API_KEY`, `
 
 ### OpenAI APIs
 
-<i>For local models the key still needs to be set (`OPENAI_API_KEY=1` will do).</i>
-
 Set up your openai api key:
 * ChatGPT: [how to get an api key](https://platform.openai.com/api-keys)
 * Mistral: [how to get an api key](https://docs.mistral.ai/getting-started/quickstart/#account-setup)
@@ -107,6 +105,13 @@ Set up your api key - [how to get an api key](https://openrouter.ai/docs/api-ref
 export  OPENROUTER_API_KEY="some-key" # you would want to export this in your .zshrc or .bashrc
 ```
 </details>
+
+## Stdin piping
+
+You can pipe input into the app and do things like this:
+```bash
+cat PROMPT.md | nekot -p openai -u http://localhost:11434 -m gpt-oss:latest -n
+```
 
 ## Web search (BETA)
 
