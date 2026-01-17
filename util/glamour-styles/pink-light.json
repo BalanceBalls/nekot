@@ -10,9 +10,6 @@
     "italic": true,
     "indent": 2
   },
-  "paragraph": {
-    "color": "#432D59"
-  },
   "list": {
     "color": "#432D59",
     "level_indent": 2
@@ -25,8 +22,8 @@
   "h1": {
     "prefix": " ",
     "suffix": " ",
-    "color": "#31184a",
-    "background_color": "#F2B3E8",
+    "background_color": "#a84f8f",
+    "color": "#f5e9f7",
     "bold": true
   },
   "h2": {
@@ -44,16 +41,15 @@
   "h6": {
     "prefix": "###### "
   },
-  "text": {
-    "color": "#432D59"
-  },
+  "text": {},
+  "paragraph": {},
   "strikethrough": {
     "crossed_out": true,
     "color": "#bbbbbb"
   },
   "emph": {
-    "color": "#BD54BF",
-    "italic": true
+    "color": "#36525e",
+    "bold": true
   },
   "strong": {
     "color": "#8C3A87",
@@ -92,10 +88,10 @@
     "format": "Image: {{.text}} →"
   },
   "code": {
-    "color": "#432D59",
+    "color": "#ffffff",
     "prefix": " ",
     "suffix": " ",
-    "background_color": "#F2B3E8"
+    "background_color": "#bf6bba"
   },
   "code_block": {
     "color": "#ffb86c",
