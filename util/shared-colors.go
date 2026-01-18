@@ -106,7 +106,7 @@ func (s ColorScheme) GetColors() SchemeColors {
 			AccentColor:          lipgloss.AdaptiveColor{Dark: blueThemeLightGreen, Light: blueThemeLightGreen},
 			HighlightColor:       lipgloss.AdaptiveColor{Dark: blueThemeSmoothRed, Light: blueThemeSmoothRed},
 			DefaultTextColor:     lipgloss.AdaptiveColor{Dark: blueThemeWhite, Light: blueThemeDarkBlueLight},
-			ErrorColor:           lipgloss.AdaptiveColor{Dark: blueThemeRed, Light: blueThemeSmoothRed},
+			ErrorColor:           lipgloss.AdaptiveColor{Dark: blueThemeRed, Light: blueThemeRed},
 			NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: blueThemeSmoothBlue, Light: blueThemeSmoothBlue},
 			ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: blueThemePinkYellow, Light: blueThemePinkYellowLight},
 			RendererThemeOption:  glamour.WithStylesFromJSONBytes(themeBytes),
