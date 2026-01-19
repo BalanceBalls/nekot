@@ -52,6 +52,7 @@ type Config struct {
 	ColorScheme                     util.ColorScheme `json:"colorScheme"`
 	MaxAttachmentSizeMb             int              `json:"maxAttachmentSizeMb"`
 	IncludeReasoningTokensInContext *bool            `json:"includeReasoningTokensInContext"`
+	SessionExportDir                string           `json:"sessionExportDir"`
 }
 
 type StartupFlags struct {
@@ -108,6 +109,13 @@ func createConfig() (string, error) {
 }
 
 func validateConfig(config Config) bool {
+	if config.SessionExportDir != "" {
+		if !filepath.IsAbs(config.SessionExportDir) {
+			fmt.Println("SessionExportDir must be an absolute path")
+			return false
+		}
+	}
+
 	switch config.Provider {
 	case util.OpenrouterProviderType:
 		return true

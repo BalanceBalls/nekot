@@ -24,6 +24,7 @@ const (
 	sysPromptChangedLabelText = "System prompt updated"
 	presetSavedLabelText      = "Preset saved"
 	sessionSavedLableText     = "Session saved"
+	sessionExportedLabelText  = "Session exported"
 	idleLabelText             = "IDLE"
 	processingLabelText       = "Processing"
 )
@@ -225,6 +226,11 @@ func (p InfoPane) View() string {
 		switch p.notification {
 		case util.SessionSavedNotification:
 			notificationText = sessionSavedLableText
+			notificationLabel = p.notificationLabel.
+				Background(p.colors.AccentColor).
+				Width(paneWidth - 1)
+		case util.SessionExportedNotification:
+			notificationText = sessionExportedLabelText
 			notificationLabel = p.notificationLabel.
 				Background(p.colors.AccentColor).
 				Width(paneWidth - 1)

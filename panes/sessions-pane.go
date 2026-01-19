@@ -33,6 +33,7 @@ type sessionsKeyMap struct {
 	addNew key.Binding
 	delete key.Binding
 	rename key.Binding
+	export key.Binding
 	cancel key.Binding
 	apply  key.Binding
 }
@@ -40,6 +41,7 @@ type sessionsKeyMap struct {
 var defaultSessionsKeyMap = sessionsKeyMap{
 	delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "d delete")),
 	rename: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "e edit")),
+	export: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "X export")),
 	cancel: key.NewBinding(key.WithKeys(tea.KeyEsc.String()), key.WithHelp("esc", "cancel action")),
 	apply: key.NewBinding(
 		key.WithKeys(tea.KeyEnter.String()),
@@ -54,6 +56,8 @@ var tips = []string{
 		defaultSessionsKeyMap.rename.Help().Desc,
 		util.TipsSeparator,
 		defaultSessionsKeyMap.delete.Help().Desc,
+		util.TipsSeparator,
+		defaultSessionsKeyMap.export.Help().Desc,
 		util.TipsSeparator,
 		"/ filter"}, ""),
 }
@@ -79,6 +83,7 @@ type SessionsPane struct {
 	terminalWidth      int
 	terminalHeight     int
 	mainCtx            context.Context
+	config             config.Config
 }
 
 func NewSessionsPane(db *sql.DB, ctx context.Context) SessionsPane {
@@ -94,6 +99,7 @@ func NewSessionsPane(db *sql.DB, ctx context.Context) SessionsPane {
 
 	return SessionsPane{
 		mainCtx:           ctx,
+		config:            *config,
 		operationMode:     defaultMode,
 		operationTargetId: NoTargetSession,
 		keyMap:            defaultSessionsKeyMap,
@@ -261,6 +267,23 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 		}
 
 		cmd = p.textInput.Focus()
+
+	case key.Matches(msg, p.keyMap.export):
+		i, ok := p.sessionsList.GetSelectedItem()
+		if ok {
+			session, err := p.sessionService.GetSession(i.Id)
+			if err != nil {
+				cmd = util.MakeErrorMsg(err.Error())
+				break
+			}
+
+			err = sessions.ExportSessionToMarkdown(session, p.config.SessionExportDir)
+			if err != nil {
+				cmd = util.MakeErrorMsg(err.Error())
+			} else {
+				cmd = util.SendNotificationMsg(util.SessionExportedNotification)
+			}
+		}
 
 	case key.Matches(msg, p.keyMap.delete):
 		i, ok := p.sessionsList.GetSelectedItem()
