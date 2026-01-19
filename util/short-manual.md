@@ -42,7 +42,11 @@ __`2` to focus on the manual (pane)__
 <!------->
 `y` Copy last message
  <!------->
-`Y` Copy all messages
+`Shift+Y` Copy all messages
+ <!------->
+`g` Scroll to top
+ <!------->
+`Shift+G` Scroll to bottom
  <!------->
 `space` Enter line navigation mode
 

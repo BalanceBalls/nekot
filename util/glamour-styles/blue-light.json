@@ -131,7 +131,7 @@
         "color": "#39456b"
       },
       "name_builtin": {
-        "color": "#6b81c5"
+        "color": "#39456b"
       },
       "name_tag": {
         "color": "#6b81c5"
@@ -150,7 +150,7 @@
       },
       "name_exception": {},
       "name_function": {
-        "color": "#c7bc46"
+        "color": "#2b438f"
       },
       "name_other": {},
       "literal": {},
