@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/BalanceBalls/nekot/extensions/websearch/engines"
 	"github.com/BalanceBalls/nekot/util"
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
-	"github.com/PuerkitoBio/goquery"
 	"github.com/tmc/langchaingo/textsplitter"
 )
 
@@ -26,20 +24,14 @@ type WebSearchResult struct {
 	Score float64 `json:"score"`
 }
 
-type SearchEngineData struct {
-	Title   string `json:"title"`
-	Snippet string `json:"snippet"`
-	Link    string `json:"link"`
-}
-
 type WebPageDataExport struct {
-	SearchEngineData
+	engines.SearchEngineData
 	ContentChunks []string
 	Err           error
 }
 
 type PageChunk struct {
-	SearchEngineData
+	engines.SearchEngineData
 	Content string
 }
 
@@ -76,7 +68,7 @@ func PrepareContextFromWebSearch(ctx context.Context, query string) ([]WebSearch
 }
 
 func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, error) {
-	searchEngineResponse, err := performDuckDuckGoSearch(ctx, query)
+	searchEngineResponse, err := engines.PerformDuckDuckGoSearch(ctx, query)
 
 	if err != nil {
 		return []PageChunk{}, err
@@ -95,7 +87,7 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 		searchResult := searchEngineResponse[i]
 
 		wg.Add(1)
-		go func(result SearchEngineData) {
+		go func(result engines.SearchEngineData) {
 			defer wg.Done()
 			getWebPageData(ctx, result, loadedPages)
 		}(searchResult)
@@ -129,7 +121,7 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 
 func getWebPageData(
 	ctx context.Context,
-	searchResult SearchEngineData,
+	searchResult engines.SearchEngineData,
 	results chan<- WebPageDataExport,
 ) {
 	req, err := http.NewRequestWithContext(ctx, "GET", searchResult.Link, nil)
@@ -191,77 +183,4 @@ func splitMarkdownString(content string, size, overlap int) ([]string, error) {
 	}
 
 	return chunks, err
-}
-
-func performDuckDuckGoSearch(ctx context.Context, query string) ([]SearchEngineData, error) {
-	baseURL := "https://html.duckduckgo.com/html/?"
-	params := url.Values{}
-	params.Add("q", query)
-	requestURL := baseURL + params.Encode()
-
-	util.Slog.Debug("looking up the following query", "value", query)
-
-	client := &http.Client{Timeout: time.Second * 30}
-	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)AppleWebKit/537.36(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-
-		if resp.StatusCode == 202 || resp.StatusCode == 429 {
-			return nil, fmt.Errorf("duckduckgo requests have been rate limited, wait for the limit to reset or temporarily disable web-search (ctrl+w)")
-		}
-
-		return nil, fmt.Errorf("duckduckgo web search returned a non-200 status code: %d", resp.StatusCode)
-	}
-
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var results []SearchEngineData
-
-	doc.Find(".result.results_links.results_links_deep.web-result").
-		EachWithBreak(func(i int, s *goquery.Selection) bool {
-			if i >= 5 {
-				return false
-			}
-
-			title := strings.TrimSpace(s.Find("h2.result__title a.result__a").Text())
-			linkHref, _ := s.Find("h2.result__title a.result__a").Attr("href")
-			link := ""
-			if strings.Contains(linkHref, "/l/?uddg=") {
-				unescapedURL, err := url.Parse(linkHref)
-				if err == nil {
-					link = unescapedURL.Query().Get("uddg")
-				} else {
-					link = linkHref
-				}
-
-			} else {
-				link = linkHref
-			}
-
-			snippet := strings.TrimSpace(s.Find("a.result__snippet").Text())
-
-			if title != "" && link != "" {
-				results = append(results, SearchEngineData{
-					Title:   title,
-					Snippet: snippet,
-					Link:    link,
-				})
-			}
-			return true
-		})
-
-	return results, nil
 }
