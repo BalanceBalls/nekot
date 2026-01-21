@@ -151,7 +151,7 @@ func extractBraveResults(doc *goquery.Document) []SearchEngineData {
 		result := SearchEngineData{}
 
 		result.Title = normalizeBraveText(findTitleSelection(item))
-		result.Link = "[BRAVE]" + normalizeBraveURL(findHref(item))
+		result.Link = normalizeBraveURL(findHref(item))
 		result.Snippet = normalizeBraveText(item.Find("div.snippet div.content").Text())
 
 		results = append(results, result)

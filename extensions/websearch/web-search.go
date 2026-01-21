@@ -70,9 +70,27 @@ func PrepareContextFromWebSearch(ctx context.Context, query string) ([]WebSearch
 }
 
 func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, error) {
-	// TODO: parallelize these calls
-	ddgResponse, ddgErr := engines.PerformDuckDuckGoSearch(context.WithoutCancel(ctx), query)
-	braveResopnse, braveErr := engines.PerformBraveSearch(context.WithoutCancel(ctx), query)
+	var (
+		ddgResponse   []engines.SearchEngineData
+		braveResponse []engines.SearchEngineData
+		ddgErr        error
+		braveErr      error
+		wg            sync.WaitGroup
+	)
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		ddgResponse, ddgErr = engines.PerformDuckDuckGoSearch(context.WithoutCancel(ctx), query)
+	}()
+
+	go func() {
+		defer wg.Done()
+		braveResponse, braveErr = engines.PerformBraveSearch(context.WithoutCancel(ctx), query)
+	}()
+
+	wg.Wait()
 
 	if ddgErr != nil && braveErr != nil {
 		return []PageChunk{}, fmt.Errorf(
@@ -81,48 +99,64 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 			braveErr)
 	}
 
-	searchEngineResponse := []engines.SearchEngineData{}
-
-	half := pagesMax / 2
-	if len(ddgResponse) > half {
-		searchEngineResponse = append(searchEngineResponse, ddgResponse[:half]...)
-	} else {
-		searchEngineResponse = append(searchEngineResponse, ddgResponse...)
+	if ddgErr != nil {
+		util.Slog.Warn("DuckDuckGo search failed", "error", ddgErr)
+	}
+	if braveErr != nil {
+		util.Slog.Warn("Brave search failed", "error", braveErr)
 	}
 
-	if len(braveResopnse) > half {
-		searchEngineResponse = append(searchEngineResponse, braveResopnse[:half]...)
-	} else {
-		searchEngineResponse = append(searchEngineResponse, braveResopnse...)
+	allResults := append(ddgResponse, braveResponse...)
+
+	if len(allResults) == 0 {
+		return []PageChunk{}, fmt.Errorf("failed to get search engine data: no results found")
 	}
 
-	if len(searchEngineResponse) == 0 {
-
-		return []PageChunk{}, fmt.Errorf("failed to get search enginge data")
+	snippetChunks := make([]PageChunk, len(allResults))
+	for i, res := range allResults {
+		snippetChunks[i] = PageChunk{
+			SearchEngineData: res,
+			Content:          res.Title + " " + res.Snippet,
+		}
 	}
 
-	// TODO: use bm25 on the snippets first to take first 10 and only then fetch pages content
+	bm25 := NewBM25(snippetChunks)
+	rankedResults := bm25.Search(query)
 
-	var wg sync.WaitGroup
-	loadedPages := make(chan WebPageDataExport)
+	keepSearchResultsAmount := len(rankedResults) / 2
+	if keepSearchResultsAmount == 0 && len(rankedResults) > 0 {
+		keepSearchResultsAmount = 1
+	}
 
-	numPages := min(len(searchEngineResponse), pagesMax)
+	if keepSearchResultsAmount > pagesMax {
+		keepSearchResultsAmount = pagesMax
+	}
 
-	for i := range numPages {
-		searchResult := searchEngineResponse[i]
-		if searchResult.Link == "" {
+	finalSelection := make([]engines.SearchEngineData, 0, keepSearchResultsAmount)
+	for i := 0; i < keepSearchResultsAmount; i++ {
+		docID := rankedResults[i].DocID
+		finalSelection = append(finalSelection, allResults[docID])
+	}
+
+	util.Slog.Debug("final snippets selection for fetching pages", "data", finalSelection)
+
+	var contentWg sync.WaitGroup
+	loadedPages := make(chan WebPageDataExport, len(finalSelection))
+
+	for _, result := range finalSelection {
+		if result.Link == "" {
 			continue
 		}
 
-		wg.Add(1)
-		go func(result engines.SearchEngineData) {
-			defer wg.Done()
-			getWebPageData(ctx, result, loadedPages)
-		}(searchResult)
+		contentWg.Add(1)
+		go func(r engines.SearchEngineData) {
+			defer contentWg.Done()
+			getWebPageData(ctx, r, loadedPages)
+		}(result)
 	}
 
 	go func() {
-		wg.Wait()
+		contentWg.Wait()
 		close(loadedPages)
 	}()
 

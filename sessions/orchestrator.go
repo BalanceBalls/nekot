@@ -447,8 +447,8 @@ func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage,
 }
 
 func (m *Orchestrator) handleTokenStatsUpdate(processingResult ProcessingResult) {
-	if processingResult.PromptTokens > 0 && processingResult.CompletionTokens > 0 {
-		m.sessionService.UpdateSessionTokens(
+	if processingResult.PromptTokens > 0 || processingResult.CompletionTokens > 0 {
+		m.sessionService.AddSessionTokensStats(
 			m.CurrentSessionID,
 			processingResult.PromptTokens,
 			processingResult.CompletionTokens,
