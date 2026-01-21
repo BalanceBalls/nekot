@@ -57,6 +57,8 @@ func PrepareContextFromWebSearch(ctx context.Context, query string) ([]WebSearch
 	results := []WebSearchResult{}
 	for _, topChunk := range topRankedChunks {
 		chunkData := corpus[topChunk.DocID]
+		util.Slog.Warn("Appended search result", "data", chunkData.SearchEngineData)
+
 		results = append(results, WebSearchResult{
 			Link:  chunkData.Link,
 			Data:  chunkData.Content,
@@ -68,15 +70,38 @@ func PrepareContextFromWebSearch(ctx context.Context, query string) ([]WebSearch
 }
 
 func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, error) {
-	searchEngineResponse, err := engines.PerformDuckDuckGoSearch(ctx, query)
+	// TODO: parallelize these calls
+	ddgResponse, ddgErr := engines.PerformDuckDuckGoSearch(context.WithoutCancel(ctx), query)
+	braveResopnse, braveErr := engines.PerformBraveSearch(context.WithoutCancel(ctx), query)
 
-	if err != nil {
-		return []PageChunk{}, err
+	if ddgErr != nil && braveErr != nil {
+		return []PageChunk{}, fmt.Errorf(
+			"could not get response from search engines. Reasons: \n %w \n %w",
+			ddgErr,
+			braveErr)
+	}
+
+	searchEngineResponse := []engines.SearchEngineData{}
+
+	half := pagesMax / 2
+	if len(ddgResponse) > half {
+		searchEngineResponse = append(searchEngineResponse, ddgResponse[:half]...)
+	} else {
+		searchEngineResponse = append(searchEngineResponse, ddgResponse...)
+	}
+
+	if len(braveResopnse) > half {
+		searchEngineResponse = append(searchEngineResponse, braveResopnse[:half]...)
+	} else {
+		searchEngineResponse = append(searchEngineResponse, braveResopnse...)
 	}
 
 	if len(searchEngineResponse) == 0 {
-		return []PageChunk{}, nil
+
+		return []PageChunk{}, fmt.Errorf("failed to get search enginge data")
 	}
+
+	// TODO: use bm25 on the snippets first to take first 10 and only then fetch pages content
 
 	var wg sync.WaitGroup
 	loadedPages := make(chan WebPageDataExport)
@@ -85,6 +110,9 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 
 	for i := range numPages {
 		searchResult := searchEngineResponse[i]
+		if searchResult.Link == "" {
+			continue
+		}
 
 		wg.Add(1)
 		go func(result engines.SearchEngineData) {
@@ -126,13 +154,27 @@ func getWebPageData(
 ) {
 	req, err := http.NewRequestWithContext(ctx, "GET", searchResult.Link, nil)
 	if err != nil {
-		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
+		results <- WebPageDataExport{
+			SearchEngineData: searchResult,
+			Err: fmt.Errorf("failed to prepare request. Link: [%s] , Reason: %w",
+				searchResult.Link,
+				err),
+		}
 		return
 	}
+
+	req.Header.Set("User-Agent", engines.GetUserAgent())
+
 	client := &http.Client{Timeout: time.Second * 10}
 	resp, err := client.Do(req)
 	if err != nil {
-		results <- WebPageDataExport{SearchEngineData: searchResult, Err: err}
+		results <- WebPageDataExport{
+			SearchEngineData: searchResult,
+			Err: fmt.Errorf("failed to execute request. Link: [%s] , Title: [%s] , Reason: %w",
+				searchResult.Link,
+				searchResult.Title,
+				err),
+		}
 		return
 	}
 	defer resp.Body.Close()
@@ -140,7 +182,8 @@ func getWebPageData(
 	if resp.StatusCode != 200 {
 		results <- WebPageDataExport{
 			SearchEngineData: searchResult,
-			Err:              fmt.Errorf("HTTP %d: failed to fetch page", resp.StatusCode),
+			Err: fmt.Errorf("HTTP %d: failed to fetch page",
+				resp.StatusCode),
 		}
 		return
 	}
