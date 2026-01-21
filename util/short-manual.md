@@ -60,4 +60,18 @@ __`2` to focus on the manual (pane)__
 
 # Prompt pane keybindings
 
+`Ctrl+a` Attach an image
+ <!------->
 `Ctrl+r` Reset input
+ <!------->
+`Ctrl+e` Expand editor
+
+# Sessions pane keybindings
+
+`Ctrl+n` add new session
+ <!------->
+`e` edit session name
+ <!------->
+`d` delete session
+ <!------->
+`Shift+X` Export session

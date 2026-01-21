@@ -24,7 +24,6 @@ func ExportSessionToMarkdown(session Session, exportDir string) error {
 	fullPath := filepath.Join(exportDir, filename)
 
 	if _, err := os.Stat(fullPath); err == nil {
-		// File exists, append timestamp
 		timestamp := time.Now().Unix()
 		filename = fmt.Sprintf("%s_%d.md", sanitizeFilename(session.SessionName), timestamp)
 		fullPath = filepath.Join(exportDir, filename)
@@ -82,12 +81,9 @@ func generateMarkdownContent(session Session) string {
 }
 
 func sanitizeFilename(name string) string {
-	// Replace invalid characters with underscore
 	re := regexp.MustCompile(`[<>:"/\\|?*]`)
 	sanitized := re.ReplaceAllString(name, "_")
-	// Trim spaces and dots
 	sanitized = strings.Trim(sanitized, " .")
-	// Replace multiple underscores/spaces with single underscore
 	reSpace := regexp.MustCompile(`[\s_]+`)
 	sanitized = reSpace.ReplaceAllString(sanitized, "_")
 

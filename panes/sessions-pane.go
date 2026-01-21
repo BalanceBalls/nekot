@@ -41,7 +41,7 @@ type sessionsKeyMap struct {
 var defaultSessionsKeyMap = sessionsKeyMap{
 	delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "d delete")),
 	rename: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "e edit")),
-	export: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "X export")),
+	export: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "shift+x export")),
 	cancel: key.NewBinding(key.WithKeys(tea.KeyEsc.String()), key.WithHelp("esc", "cancel action")),
 	apply: key.NewBinding(
 		key.WithKeys(tea.KeyEnter.String()),
@@ -51,13 +51,15 @@ var defaultSessionsKeyMap = sessionsKeyMap{
 }
 
 var tips = []string{
-	defaultSessionsKeyMap.addNew.Help().Desc,
+	strings.Join([]string{
+		defaultSessionsKeyMap.addNew.Help().Desc,
+		util.TipsSeparator,
+		defaultSessionsKeyMap.export.Help().Desc,
+	}, ""),
 	strings.Join([]string{
 		defaultSessionsKeyMap.rename.Help().Desc,
 		util.TipsSeparator,
 		defaultSessionsKeyMap.delete.Help().Desc,
-		util.TipsSeparator,
-		defaultSessionsKeyMap.export.Help().Desc,
 		util.TipsSeparator,
 		"/ filter"}, ""),
 }
