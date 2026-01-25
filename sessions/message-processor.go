@@ -73,6 +73,8 @@ func (p MessageProcessor) Process(
 		return result, nonCancelErr
 	}
 
+	result = result.handleTokenStats(chunk)
+
 	if result.IsCancelled {
 		result = p.finalizeProcessing(result)
 		return result, nil
@@ -93,7 +95,6 @@ func (p MessageProcessor) Process(
 	}
 
 	result.ToolCalls = nil
-	result = result.handleTokenStats(chunk)
 
 	if p.isFinalChunk(chunk) {
 		result.CurrentResponseDataChunks = append(p.ResponseDataChunks, chunk)

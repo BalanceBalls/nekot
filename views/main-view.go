@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -92,6 +93,7 @@ type MainView struct {
 	infoPane         panes.InfoPane
 	loadedDeps       []util.AsyncDependency
 	pendingToolCalls []util.ToolCall
+	initialPrompt    string
 
 	flags               config.StartupFlags
 	config              config.Config
@@ -159,6 +161,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		config:              *config,
 		flags:               *flags,
 		context:             ctx,
+		initialPrompt:       flags.InitialPrompt,
 	}
 }
 
@@ -221,13 +224,36 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetFocus()
 		}
 
-	case util.AsyncDependencyReady:
-		m.loadedDeps = append(m.loadedDeps, msg.Dependency)
+	case sessions.UpdateCurrentSession:
+		if m.initialPrompt != "" && m.flags.StartNewSession {
+			cmds = append(cmds, util.SendPromptReadyMsg(m.initialPrompt, []util.Attachment{}))
+			m.initialPrompt = ""
+		}
 
-		// TODO: implement correct comparison
+	case util.AsyncDependencyReady:
+		if !slices.Contains(m.loadedDeps, msg.Dependency) {
+			m.loadedDeps = append(m.loadedDeps, msg.Dependency)
+		}
+
 		if len(m.loadedDeps) == len(asyncDeps) {
-			m.viewReady = true
-			m.promptPane = m.promptPane.Enable()
+			allLoaded := true
+			for _, required := range asyncDeps {
+				if !slices.Contains(m.loadedDeps, required) {
+					allLoaded = false
+					break
+				}
+			}
+
+			if allLoaded {
+				m.viewReady = true
+				m.promptPane = m.promptPane.Enable()
+
+				// if there is also a 'new session' flag - need to do it differently
+				if m.initialPrompt != "" && !m.flags.StartNewSession {
+					cmds = append(cmds, util.SendPromptReadyMsg(m.initialPrompt, []util.Attachment{}))
+					m.initialPrompt = ""
+				}
+			}
 		}
 
 		if m.viewReady && m.flags.StartNewSession {
@@ -358,19 +384,12 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.InitiateNewSession(false))
 
 		case key.Matches(msg, m.keys.cancel):
-			m.sessionOrchestrator.Cancel()
-			m.chatPane.Cancel()
-			m.processingCancel()
+			cancelCmd := m.CancelProcessing()
 
-			finalizeCmd := m.sessionOrchestrator.FinalizeResponseOnCancel()
-			if finalizeCmd != nil {
-				cmds = append(cmds, finalizeCmd)
-			} else {
-				cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+			if cancelCmd != nil {
+				cmds = append(cmds, cancelCmd)
+				return m, tea.Batch(cmds...)
 			}
-
-			cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
-			return m, tea.Batch(cmds...)
 
 		case key.Matches(msg, m.keys.zenMode):
 			m.focused = util.PromptPane
@@ -571,4 +590,26 @@ func (m *MainView) InitiateNewSession(isTemporary bool) tea.Cmd {
 		}
 	}
 	return util.AddNewSession(isTemporary)
+}
+
+func (m *MainView) CancelProcessing() tea.Cmd {
+	var cmds []tea.Cmd
+
+	if !m.sessionOrchestrator.IsProcessing() {
+		return nil
+	}
+
+	m.sessionOrchestrator.Cancel()
+	m.chatPane.Cancel()
+	m.processingCancel()
+
+	finalizeCmd := m.sessionOrchestrator.FinalizeResponseOnCancel()
+	if finalizeCmd != nil {
+		cmds = append(cmds, finalizeCmd)
+	} else {
+		cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
+	}
+
+	cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
+	return tea.Batch(cmds...)
 }

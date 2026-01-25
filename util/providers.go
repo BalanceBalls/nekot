@@ -2,6 +2,9 @@ package util
 
 import (
 	"context"
+	"net"
+	"net/netip"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -47,7 +50,7 @@ var (
 var (
 	openAiApiPrefixes  = []string{"api.openai.com"}
 	mistralApiPrefixes = []string{"api.mistral.ai"}
-	localApiPrefixes   = []string{"localhost", "127.0.0.1", "::1"}
+	localApiPrefixes   = []string{"localhost", "127.0.0.1", "::1", "192.168", "10.", "172."}
 )
 
 const (
@@ -182,14 +185,36 @@ func GetOpenAiInferenceProvider(providerType string, apiUrl string) ApiProvider 
 			return Mistral
 		}
 
-		if slices.ContainsFunc(localApiPrefixes, func(p string) bool {
-			return strings.Contains(apiUrl, p)
-		}) {
+		if IsLocalProvider(apiUrl) {
 			return Local
 		}
 	}
 
 	return Local
+}
+
+func IsLocalProvider(providerUrl string) bool {
+	parsedUrl, err := url.Parse(providerUrl)
+	if err != nil {
+		return false
+	}
+
+	ipAddr := parsedUrl.Hostname()
+	if ipAddr == "" {
+		return false
+	}
+
+	ip, err := netip.ParseAddr(ipAddr)
+	if err != nil {
+		ips, lookupErr := net.LookupIP(ipAddr)
+		if lookupErr != nil || len(ips) == 0 {
+			Slog.Error("failed to deterime if address is local", "addr", parsedUrl.Host, "reason", err)
+			return false
+		}
+		ip, _ = netip.ParseAddr(ips[0].String())
+	}
+
+	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
 }
 
 func (m ModelsListResponse) GetModelNamesFromResponse() []string {

@@ -30,6 +30,8 @@ type chatPaneKeyMap struct {
 	exit          key.Binding
 	copyLast      key.Binding
 	copyAll       key.Binding
+	goUp          key.Binding
+	goDown        key.Binding
 }
 
 var defaultChatPaneKeyMap = chatPaneKeyMap{
@@ -48,6 +50,14 @@ var defaultChatPaneKeyMap = chatPaneKeyMap{
 	selectionMode: key.NewBinding(
 		key.WithKeys(tea.KeySpace.String(), "v", "V"),
 		key.WithHelp("<space>, v, V", "enter selection mode"),
+	),
+	goUp: key.NewBinding(
+		key.WithKeys("g"),
+		key.WithHelp("g", "scroll to top"),
+	),
+	goDown: key.NewBinding(
+		key.WithKeys("G"),
+		key.WithHelp("G", "scroll to bottom"),
 	),
 }
 
@@ -315,6 +325,16 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		}
 
 		switch {
+		case key.Matches(msg, p.keyMap.goUp):
+			if p.displayMode == normalMode {
+				p.chatView.GotoTop()
+			}
+
+		case key.Matches(msg, p.keyMap.goDown):
+			if p.displayMode == normalMode {
+				p.chatView.GotoBottom()
+			}
+
 		case key.Matches(msg, p.keyMap.selectionMode):
 			if !p.isChatContainerFocused || len(p.sessionContent) == 0 {
 				break

@@ -36,6 +36,7 @@ const (
 	SysPromptChangedNotification
 	PresetSavedNotification
 	SessionSavedNotification
+	SessionExportedNotification
 )
 
 type ViewMode int

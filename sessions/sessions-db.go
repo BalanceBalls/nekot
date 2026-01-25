@@ -58,7 +58,7 @@ SELECT sessions_id, sessions_messages, sessions_created_at, sessions_session_nam
 func (ss *SessionService) GetSession(id int) (Session, error) {
 	var messages string
 	rows, err := ss.DB.Query(
-		`SELECT 
+		`SELECT
 			sessions_id,
 			sessions_messages,
 			sessions_created_at,
@@ -66,7 +66,7 @@ func (ss *SessionService) GetSession(id int) (Session, error) {
 			prompt_tokens,
 			completion_tokens,
 			is_temporary
-		FROM sessions 
+		FROM sessions
 		WHERE sessions_id=$1`,
 		id,
 	)
@@ -109,7 +109,7 @@ func (ss *SessionService) GetSession(id int) (Session, error) {
 // get me all the sessions
 func (ss *SessionService) GetAllSessions() ([]Session, error) {
 	rows, err := ss.DB.Query(
-		`SELECT 
+		`SELECT
 			sessions_id,
 			sessions_created_at,
 			sessions_session_name,
@@ -160,7 +160,7 @@ func (ss *SessionService) UpdateSessionMessages(id int, messages []util.LocalSto
 	return nil
 }
 
-func (ss *SessionService) UpdateSessionTokens(id int, promptTokens, completionTokens int) error {
+func (ss *SessionService) AddSessionTokensStats(id int, promptTokens, completionTokens int) error {
 	_, err := ss.DB.Exec(`
 			UPDATE sessions
 			SET

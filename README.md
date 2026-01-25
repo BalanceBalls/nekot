@@ -81,8 +81,6 @@ To use the app, you will need to set `OPENAI_API_KEY` or/and `GEMINI_API_KEY`, `
 
 ### OpenAI APIs
 
-<i>For local models the key still needs to be set (`OPENAI_API_KEY=1` will do).</i>
-
 Set up your openai api key:
 * ChatGPT: [how to get an api key](https://platform.openai.com/api-keys)
 * Mistral: [how to get an api key](https://docs.mistral.ai/getting-started/quickstart/#account-setup)
@@ -108,13 +106,20 @@ export  OPENROUTER_API_KEY="some-key" # you would want to export this in your .z
 ```
 </details>
 
+## Stdin piping
+
+You can pipe input into the app and do things like this:
+```bash
+cat PROMPT.md | nekot -p openai -u http://localhost:11434 -m gpt-oss:latest -n
+```
+
 ## Web search (BETA)
 
 Web search feature uses tool calling for web search reqests exectution.
-This feature can be toggled using `ctrl+w`.
+This feature can be toggled using `Ctrl+w`.
 
 ### Details
-* Uses the [DuckDuckGo](https://duckduckgo.com/) search engine and requires no configuration
+* Uses the [DuckDuckGo](https://duckduckgo.com/) and [Brave](https://search.brave.com/) search engines and requires no configuration
 * Results are scored using bm25 for better accuracy
 * **Using web search can significantly increase token usage**
 
@@ -133,7 +138,8 @@ We provide a `config.json` file within your directory for easy access to essenti
   "colorScheme": "groove", // pink, blue, groove
   "provider": "openai", // openai, gemini, openrouter
   "maxAttachmentSizeMb": 3,
-  "includeReasoningTokensInContext": true
+  "includeReasoningTokensInContext": true,
+  "sessionExportDir": "/must/be/absolute/path/to/exports"
 }
 ```
 
@@ -143,6 +149,8 @@ We provide a `config.json` file within your directory for easy access to essenti
  - `defaultModel` field sets the default model.  **Better to set it from the app**
  - `maxAttachmentSizeMb` field sets maximum allowed image size
  - `includeReasoningTokensInContext` field sets whether to include reasoning tokens in the next request or not.
+ - `sessionExportDir` allows to specify directory for session exports. If not set, exports are saved to current directory. **The path must be an absolute path**
+
 
 ### Providers
 
@@ -242,7 +250,7 @@ nekot -n
     \```
 - `esc`: Exit insert mode for the prompt
     * When in 'Prompt editor' mode, pressing `esc` second time will close editor
-- `ctrl+a`: open file picker for attaching images. You can also attach images by typing: [img=/path/to/image]
+- `Ctrl+a`: open file picker for attaching images. You can also attach images by typing: [img=/path/to/image]
 
 ## Chat Messages Pane
 
@@ -291,6 +299,7 @@ Selection mode allows to navigate the chat pane and select lines to copy. Suppor
 ## Sessions Pane
 
 - `Ctrl+n`: Creates a new session.
+- `Shift+X`: Exports session to a markdown file.
 - `d`: Deletes the currently selected session from the list.
 - `e`: Edit session name
 - `Enter`: Switches to the session that is currently selected.

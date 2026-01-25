@@ -52,6 +52,7 @@ type Config struct {
 	ColorScheme                     util.ColorScheme `json:"colorScheme"`
 	MaxAttachmentSizeMb             int              `json:"maxAttachmentSizeMb"`
 	IncludeReasoningTokensInContext *bool            `json:"includeReasoningTokensInContext"`
+	SessionExportDir                string           `json:"sessionExportDir"`
 }
 
 type StartupFlags struct {
@@ -60,6 +61,7 @@ type StartupFlags struct {
 	Provider        string
 	ProviderUrl     string
 	StartNewSession bool
+	InitialPrompt   string
 }
 
 //go:embed config.json
@@ -107,6 +109,13 @@ func createConfig() (string, error) {
 }
 
 func validateConfig(config Config) bool {
+	if config.SessionExportDir != "" {
+		if !filepath.IsAbs(config.SessionExportDir) {
+			fmt.Println("SessionExportDir must be an absolute path")
+			return false
+		}
+	}
+
 	switch config.Provider {
 	case util.OpenrouterProviderType:
 		return true
@@ -186,6 +195,10 @@ func (c Config) checkApiKeys() {
 			os.Exit(1)
 		}
 	case util.OpenAiProviderType:
+		if util.IsLocalProvider(c.ProviderBaseUrl) {
+			return
+		}
+
 		apiKey := os.Getenv("OPENAI_API_KEY")
 		if apiKey == "" {
 			fmt.Println("OPENAI_API_KEY not set; set it in your profile")
