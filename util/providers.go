@@ -199,7 +199,11 @@ func IsLocalProvider(providerUrl string) bool {
 		return false
 	}
 
-	ipAddr, _, _ := net.SplitHostPort(parsedUrl.Host)
+	ipAddr := parsedUrl.Hostname()
+	if ipAddr == "" {
+		return false
+	}
+
 	ip, err := netip.ParseAddr(ipAddr)
 	if err != nil {
 		ips, lookupErr := net.LookupIP(ipAddr)
