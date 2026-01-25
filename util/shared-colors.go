@@ -84,6 +84,10 @@ type SchemeColors struct {
 }
 
 func (s ColorScheme) GetColors() SchemeColors {
+	defaultThemeBytes := pinkThemeBytes
+	if !lipgloss.HasDarkBackground() {
+		defaultThemeBytes = pinkLightThemeBytes
+	}
 	defaultColors := SchemeColors{
 		MainColor:            lipgloss.AdaptiveColor{Dark: pinkThemeLightPink, Light: pinkThemeLightPink},
 		AccentColor:          lipgloss.AdaptiveColor{Dark: pinkThemePurple, Light: pinkThemePurple},
@@ -92,7 +96,7 @@ func (s ColorScheme) GetColors() SchemeColors {
 		ErrorColor:           lipgloss.AdaptiveColor{Dark: pinkThemeRed, Light: pinkThemeRed},
 		NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: pinkThemeLightGrey, Light: pinkThemeDarkGreyLight},
 		ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: pinkThemeSolidPink, Light: pinkThemeSolidPink},
-		RendererThemeOption:  glamour.WithStylesFromJSONBytes(pinkThemeBytes),
+		RendererThemeOption:  glamour.WithStylesFromJSONBytes(defaultThemeBytes),
 	}
 
 	switch s {

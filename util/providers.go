@@ -2,6 +2,8 @@ package util
 
 import (
 	"context"
+	"net"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
@@ -183,9 +185,7 @@ func GetOpenAiInferenceProvider(providerType string, apiUrl string) ApiProvider 
 			return Mistral
 		}
 
-		if slices.ContainsFunc(localApiPrefixes, func(p string) bool {
-			return strings.Contains(apiUrl, p)
-		}) {
+		if IsLocalProvider(apiUrl) {
 			return Local
 		}
 	}
@@ -199,13 +199,18 @@ func IsLocalProvider(providerUrl string) bool {
 		return false
 	}
 
-	if slices.ContainsFunc(localApiPrefixes, func(p string) bool {
-		return strings.HasPrefix(parsedUrl.Host, p)
-	}) {
-		return true
+	ipAddr, _, _ := net.SplitHostPort(parsedUrl.Host)
+	ip, err := netip.ParseAddr(ipAddr)
+	if err != nil {
+		ips, lookupErr := net.LookupIP(ipAddr)
+		if lookupErr != nil || len(ips) == 0 {
+			Slog.Error("failed to deterime if address is local", "addr", parsedUrl.Host, "reason", err)
+			return false
+		}
+		ip, _ = netip.ParseAddr(ips[0].String())
 	}
 
-	return false
+	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
 }
 
 func (m ModelsListResponse) GetModelNamesFromResponse() []string {

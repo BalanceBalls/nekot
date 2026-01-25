@@ -139,7 +139,7 @@ We provide a `config.json` file within your directory for easy access to essenti
   "provider": "openai", // openai, gemini, openrouter
   "maxAttachmentSizeMb": 3,
   "includeReasoningTokensInContext": true,
-  "sessionExportDir": "~/.nekot/exports"
+  "sessionExportDir": "/must/be/absolute/path/to/exports"
 }
 ```
 
@@ -149,7 +149,7 @@ We provide a `config.json` file within your directory for easy access to essenti
  - `defaultModel` field sets the default model.  **Better to set it from the app**
  - `maxAttachmentSizeMb` field sets maximum allowed image size
  - `includeReasoningTokensInContext` field sets whether to include reasoning tokens in the next request or not.
- - `sessionExportDir` allows to specify directory for session exports. If not set, exports are saved to current directory
+ - `sessionExportDir` allows to specify directory for session exports. If not set, exports are saved to current directory. **The path must be an absolute path**
 
 
 ### Providers

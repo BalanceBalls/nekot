@@ -116,7 +116,7 @@ func buildBravePayload(query, region string) (url.Values, []*http.Cookie, error)
 	country := parts[0]
 
 	cookies := []*http.Cookie{
-		{Name: country, Value: country},
+		{Name: "country", Value: country},
 		{Name: "useLocation", Value: "0"},
 	}
 
