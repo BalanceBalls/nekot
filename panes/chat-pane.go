@@ -326,12 +326,12 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 		switch {
 		case key.Matches(msg, p.keyMap.goUp):
-			if p.displayMode == normalMode {
+			if p.displayMode == normalMode && p.isChatContainerFocused {
 				p.chatView.GotoTop()
 			}
 
 		case key.Matches(msg, p.keyMap.goDown):
-			if p.displayMode == normalMode {
+			if p.displayMode == normalMode && p.isChatContainerFocused {
 				p.chatView.GotoBottom()
 			}
 

@@ -163,6 +163,8 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 	cmds = append(cmds, p.processTextInputUpdates(msg))
 	cmds = append(cmds, p.processFilePickerUpdates(msg))
 
+	p.handlePlaceholder()
+
 	switch msg := msg.(type) {
 
 	case util.OpenTextEditorMsg:
@@ -231,11 +233,9 @@ func (p *PromptPane) keyInsert() tea.Cmd {
 	switch p.viewMode {
 	case util.TextEditMode:
 		p.textEditor.Focus()
-		p.textEditor.Placeholder = ""
 		return p.textEditor.Cursor.BlinkCmd()
 	default:
 		p.input.Focus()
-		p.input.Placeholder = ""
 		return p.input.Cursor.BlinkCmd()
 	}
 }
@@ -245,14 +245,8 @@ func (p *PromptPane) keyClear() tea.Cmd {
 	switch p.viewMode {
 	case util.TextEditMode:
 		p.textEditor.Reset()
-		if p.inputMode != util.PromptInsertMode {
-			p.textEditor.Placeholder = PlaceholderMsg
-		}
 	default:
 		p.input.Reset()
-		if p.inputMode != util.PromptInsertMode {
-			p.input.Placeholder = PlaceholderMsg
-		}
 	}
 
 	return nil
@@ -266,10 +260,7 @@ func (p *PromptPane) keyExit() tea.Cmd {
 
 	switch p.viewMode {
 	case util.TextEditMode:
-		p.textEditor.Placeholder = PlaceholderMsg
 		if !p.textEditor.Focused() {
-			p.textEditor.Reset()
-
 			p.operation = util.NoOperaton
 			return util.SendViewModeChangedMsg(util.NormalMode)
 		}
@@ -280,10 +271,7 @@ func (p *PromptPane) keyExit() tea.Cmd {
 		break
 
 	default:
-		p.input.Placeholder = PlaceholderMsg
-		if !p.input.Focused() {
-			p.input.Reset()
-		} else {
+		if p.input.Focused() {
 			p.input.Blur()
 		}
 	}
@@ -372,6 +360,33 @@ func (p *PromptPane) keyPasteCode() tea.Cmd {
 		p.insertBufferContentAsCodeBlock()
 	}
 	return nil
+}
+
+func (p *PromptPane) handlePlaceholder() {
+	if !p.ready {
+		return
+	}
+
+	isInsertMode := p.inputMode == util.PromptInsertMode
+
+	switch p.viewMode {
+	case util.TextEditMode:
+		if isInsertMode {
+			p.textEditor.Placeholder = ""
+			break
+		}
+		p.textEditor.Placeholder = PlaceholderMsg
+
+	case util.FilePickerMode:
+		break
+
+	default:
+		if isInsertMode {
+			p.input.Placeholder = ""
+			return
+		}
+		p.input.Placeholder = PlaceholderMsg
+	}
 }
 
 func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
@@ -506,9 +521,15 @@ func (p *PromptPane) getCurrentInput() string {
 func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
 	w, _ := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 	if previousViewMode == util.TextEditMode {
-		p.input.Width = w
+		p.input.Width = w - 2
 		p.textEditor.Blur()
 		p.textEditor.Reset()
+
+		currentInput = strings.ReplaceAll(currentInput, "\n\n", " ")
+		currentInput = strings.ReplaceAll(currentInput, "\r\n", " ")
+		currentInput = strings.ReplaceAll(currentInput, "\n", " ")
+
+		currentInput = strings.TrimSpace(currentInput)
 
 		p.input.SetValue(currentInput)
 		return nil
@@ -517,7 +538,6 @@ func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput
 	inputLength := len(p.input.Value())
 	p.input.Focus()
 	p.input.SetCursor(inputLength)
-	p.input.Placeholder = ""
 	p.inputMode = util.PromptInsertMode
 	return p.input.Cursor.BlinkCmd()
 }
@@ -547,7 +567,6 @@ func (p *PromptPane) openTextEditor(content string, op util.Operation, isFocused
 		p.textEditor.Focus()
 		return p.textEditor.Cursor.BlinkCmd()
 	}
-	p.textEditor.Placeholder = PlaceholderMsg
 
 	return nil
 }
@@ -632,7 +651,6 @@ func (p PromptPane) AllowFocusChange() bool {
 }
 
 func (p PromptPane) Enable() PromptPane {
-	p.input.Placeholder = PlaceholderMsg
 	p.ready = true
 	return p
 }
