@@ -15,6 +15,7 @@ import (
 	"github.com/BalanceBalls/nekot/views"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 var purgeCache bool
@@ -105,6 +106,7 @@ func main() {
 	ctx := context.Background()
 	ctxWithConfig := config.WithConfig(ctx, &configToUse)
 	appCtx := config.WithFlags(ctxWithConfig, &flags)
+	zone.NewGlobal()
 
 	p := tea.NewProgram(
 		views.NewMainView(db, appCtx),

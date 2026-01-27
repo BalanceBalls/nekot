@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 type settingsViewMode int
@@ -280,6 +281,15 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		p.viewMode = modelsView
 		p.updateModelsList(msg.Models)
 
+	case tea.MouseMsg:
+		if !zone.Get("settings_pane").InBounds(msg) {
+			break
+		}
+
+		if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft && !p.isFocused {
+			return p, util.SwitchToPane(util.SettingsPane)
+		}
+
 	case tea.KeyMsg:
 		if p.initMode {
 			break
@@ -413,7 +423,7 @@ func (p SettingsPane) View() string {
 		borderColor = p.colors.ActiveTabBorderColor
 	}
 
-	return p.container.Width(w).BorderForeground(borderColor).Render(
+	rendered := p.container.Width(w).BorderForeground(borderColor).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
 			defaultHeader,
 			lipgloss.NewStyle().Height(listItemsHeight).Render(
@@ -429,6 +439,8 @@ func (p SettingsPane) View() string {
 			lowerRows,
 		),
 	)
+
+	return zone.Mark("settings_pane", rendered)
 }
 
 func (p SettingsPane) AllowFocusChange() bool {

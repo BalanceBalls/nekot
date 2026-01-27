@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 type displayMode int
@@ -306,6 +307,15 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		p = p.handleWindowResize(msg.Width, msg.Height)
 
+	case tea.MouseMsg:
+		if !zone.Get("chat_pane").InBounds(msg) {
+			break
+		}
+
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft && !p.isChatContainerFocused {
+			return p, util.SwitchToPane(util.ChatPane)
+		}
+
 	case tea.KeyMsg:
 		if !p.isChatContainerFocused {
 			enableUpdateOfViewport = false
@@ -452,7 +462,7 @@ func (p ChatPane) View() string {
 
 	infoRow := p.renderInfoRow()
 	content := lipgloss.JoinVertical(lipgloss.Left, viewportContent, infoRow)
-	return p.chatContainer.BorderForeground(borderColor).Render(content)
+	return zone.Mark("chat_pane", p.chatContainer.BorderForeground(borderColor).Render(content))
 }
 
 func (p ChatPane) DisplayError(error string) string {

@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 const NoTargetSession = -1
@@ -183,6 +184,15 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 			cmds = append(cmds, p.handleUpdateCurrentSession(session))
 		}
 
+	case tea.MouseMsg:
+		if !zone.Get("sessions_pane").InBounds(msg) {
+			break
+		}
+
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft && !p.isFocused {
+			return p, util.SwitchToPane(util.SessionsPane)
+		}
+
 	case tea.KeyMsg:
 		if p.isFocused && !p.sessionsList.IsFiltering() {
 			switch p.operationMode {
@@ -212,13 +222,13 @@ func (p SessionsPane) View() string {
 	borderColor := p.colors.NormalTabBorderColor
 	lowerRows := ""
 	if !p.isFocused {
-		return p.container.BorderForeground(borderColor).Render(
+		return zone.Mark("sessions_pane", p.container.BorderForeground(borderColor).Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				p.listHeader("[Sessions]"),
 				listView,
 				lowerRows,
 			),
-		)
+		))
 	}
 
 	if p.sessionsList.IsFiltering() {
@@ -234,13 +244,13 @@ func (p SessionsPane) View() string {
 		lowerRows = util.HelpStyle.Render(strings.Join(tips, "\n"))
 	}
 
-	return p.container.BorderForeground(borderColor).Render(
+	return zone.Mark("sessions_pane", p.container.BorderForeground(borderColor).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
 			p.listHeader("[Sessions]"),
 			p.sessionsList.EditListView(),
 			lowerRows,
 		),
-	)
+	))
 }
 
 func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {

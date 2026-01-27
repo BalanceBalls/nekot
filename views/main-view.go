@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 	"golang.org/x/term"
 
 	"github.com/BalanceBalls/nekot/config"
@@ -510,13 +511,13 @@ func (m MainView) View() string {
 
 	promptView := m.promptPane.View()
 
-	return lipgloss.NewStyle().Render(
+	return zone.Scan(lipgloss.NewStyle().Render(
 		lipgloss.JoinVertical(
 			lipgloss.Left,
 			windowViews,
 			promptView,
 		),
-	)
+	))
 }
 
 func (m *MainView) setProcessingContext() {
