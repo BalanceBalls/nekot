@@ -189,8 +189,11 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		if !zone.Get("prompt_pane").InBounds(msg) {
 			break
 		}
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft && !p.isFocused {
-			return p, util.SwitchToPane(util.PromptPane)
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if !p.isFocused {
+				return p, util.SwitchToPane(util.PromptPane)
+			}
+			cmds = append(cmds, p.keyInsert())
 		}
 
 	case tea.KeyMsg:

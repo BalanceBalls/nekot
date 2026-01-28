@@ -50,8 +50,9 @@ func (d sessionItemDelegate) Render(w io.Writer, m list.Model, index int, listIt
 		return
 	}
 
-	str := zone.Mark(i.Id, fmt.Sprintf("%s", i.Text))
+	str := fmt.Sprintf("%s", i.Text)
 	str = util.TrimListItem(str, m.Width())
+	str = zone.Mark(i.Id, str)
 
 	fn := itemStyle.Render
 	selectedRender := selectedItemStyle.Render

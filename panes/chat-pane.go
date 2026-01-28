@@ -112,7 +112,6 @@ var infoBarStyle = lipgloss.NewStyle().
 
 func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	chatView := viewport.New(w, h)
-	chatView.HighPerformanceRendering = true
 	msgChan := make(chan util.ProcessApiCompletionResponse)
 
 	config, ok := config.FromContext(ctx)
@@ -308,6 +307,16 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		p = p.handleWindowResize(msg.Width, msg.Height)
 
 	case tea.MouseMsg:
+		if msg.Button == tea.MouseButtonWheelUp && p.isChatContainerFocused {
+			p.chatView.ScrollUp(3)
+			return p, nil
+		}
+
+		if msg.Button == tea.MouseButtonWheelDown && p.isChatContainerFocused {
+			p.chatView.ScrollDown(3)
+			return p, nil
+		}
+
 		if !zone.Get("chat_pane").InBounds(msg) {
 			break
 		}
@@ -514,6 +523,8 @@ func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 	paneWidth, paneHeight := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 	if !p.isChatPaneReady {
 		p.chatView = viewport.New(paneWidth, paneHeight-2)
+		p.chatView.MouseWheelEnabled = false
+
 		p.isChatPaneReady = true
 	}
 
