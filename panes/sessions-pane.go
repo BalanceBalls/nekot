@@ -193,6 +193,29 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 			return p, util.SwitchToPane(util.SessionsPane)
 		}
 
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft && p.isFocused {
+			for idx, listItem := range p.sessionsList.VisibleItems() {
+				v, _ := listItem.(components.SessionListItem)
+				if zone.Get(v.Id).InBounds(msg) {
+
+					selected, ok := p.sessionsList.GetSelectedItem()
+					if ok && selected.SessionId == v.SessionId {
+						session, err := p.sessionService.GetSession(v.SessionId)
+						p.currentSessionId = v.SessionId
+						if err != nil {
+							return p, util.MakeErrorMsg(err.Error())
+						}
+
+						cmds = append(cmds, p.handleUpdateCurrentSession(session))
+						break
+					}
+
+					p.sessionsList.SetSelectedItem(idx)
+					break
+				}
+			}
+		}
+
 	case tea.KeyMsg:
 		if p.isFocused && !p.sessionsList.IsFiltering() {
 			switch p.operationMode {
@@ -261,8 +284,8 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, p.keyMap.apply):
 		i, ok := p.sessionsList.GetSelectedItem()
 		if ok {
-			session, err := p.sessionService.GetSession(i.Id)
-			p.currentSessionId = i.Id
+			session, err := p.sessionService.GetSession(i.SessionId)
+			p.currentSessionId = i.SessionId
 			if err != nil {
 				util.MakeErrorMsg(err.Error())
 			}
@@ -274,7 +297,7 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 		p.operationMode = editMode
 		i, ok := p.sessionsList.GetSelectedItem()
 		if ok {
-			p.operationTargetId = i.Id
+			p.operationTargetId = i.SessionId
 			p.textInput = p.createInput("New Session Name", 100, util.EmptyValidator)
 		}
 
@@ -283,7 +306,7 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, p.keyMap.export):
 		i, ok := p.sessionsList.GetSelectedItem()
 		if ok {
-			session, err := p.sessionService.GetSession(i.Id)
+			session, err := p.sessionService.GetSession(i.SessionId)
 			if err != nil {
 				cmd = util.MakeErrorMsg(err.Error())
 				break
@@ -299,13 +322,13 @@ func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
 
 	case key.Matches(msg, p.keyMap.delete):
 		i, ok := p.sessionsList.GetSelectedItem()
-		if p.currentSession.ID == i.Id {
+		if p.currentSession.ID == i.SessionId {
 			break
 		}
 
 		p.operationMode = deleteMode
 		if ok {
-			p.operationTargetId = i.Id
+			p.operationTargetId = i.SessionId
 			p.textInput = p.createInput("Delete session? y/n", 1, util.DeleteSessionValidator)
 		}
 
@@ -406,9 +429,10 @@ func constructSessionsListItems(sessions []sessions.Session, currentSessionId in
 
 	for _, session := range sessions {
 		anItem := components.SessionListItem{
-			Id:       session.ID,
-			Text:     session.SessionName,
-			IsActive: session.ID == currentSessionId,
+			Id:        "session_list_item_" + fmt.Sprint(session.ID),
+			SessionId: session.ID,
+			Text:      session.SessionName,
+			IsActive:  session.ID == currentSessionId,
 		}
 		items = append(items, anItem)
 	}

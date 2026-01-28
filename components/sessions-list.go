@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 var (
@@ -20,16 +21,17 @@ var (
 )
 
 type SessionListItem struct {
-	Id       int
-	Text     string
-	IsActive bool
+	Id        string
+	SessionId int
+	Text      string
+	IsActive  bool
 }
 
 type SessionsList struct {
 	list list.Model
 }
 
-func (i SessionListItem) FilterValue() string { return i.Text }
+func (i SessionListItem) FilterValue() string { return zone.Mark(i.Id, i.Text) }
 
 type sessionItemDelegate struct{}
 
@@ -48,7 +50,7 @@ func (d sessionItemDelegate) Render(w io.Writer, m list.Model, index int, listIt
 		return
 	}
 
-	str := fmt.Sprintf("%s", i.Text)
+	str := zone.Mark(i.Id, fmt.Sprintf("%s", i.Text))
 	str = util.TrimListItem(str, m.Width())
 
 	fn := itemStyle.Render
@@ -73,6 +75,10 @@ func (l *SessionsList) GetSelectedItem() (SessionListItem, bool) {
 	return item, ok
 }
 
+func (l *SessionsList) SetSelectedItem(id int) {
+	l.list.Select(id)
+}
+
 func (l *SessionsList) SetItems(items []list.Item) {
 	l.list.ResetFilter()
 	l.list.SetItems(items)
@@ -89,6 +95,10 @@ func (l *SessionsList) SetSize(w, h int) {
 	}
 }
 
+func (l SessionsList) VisibleItems() []list.Item {
+	return l.list.VisibleItems()
+}
+
 func (l SessionsList) IsFiltering() bool {
 	return l.list.SettingFilter()
 }
@@ -99,6 +109,21 @@ func (l SessionsList) GetWidth() int {
 
 func (l SessionsList) Update(msg tea.Msg) (SessionsList, tea.Cmd) {
 	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+
+	case tea.MouseMsg:
+		if msg.Button == tea.MouseButtonWheelUp {
+			l.list.CursorUp()
+			return l, nil
+		}
+
+		if msg.Button == tea.MouseButtonWheelDown {
+			l.list.CursorDown()
+			return l, nil
+		}
+	}
+
 	l.list, cmd = l.list.Update(msg)
 	return l, cmd
 }
