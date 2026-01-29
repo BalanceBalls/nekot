@@ -466,7 +466,7 @@ func (p ChatPane) View() string {
 	}
 
 	if len(p.sessionContent) == 0 {
-		return p.chatContainer.BorderForeground(borderColor).Render(viewportContent)
+		return zone.Mark("chat_pane", p.chatContainer.BorderForeground(borderColor).Render(viewportContent))
 	}
 
 	infoRow := p.renderInfoRow()

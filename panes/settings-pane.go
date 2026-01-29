@@ -229,6 +229,12 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	if p.changeMode != inactive {
+		if !p.isFocused {
+			p.viewMode = defaultView
+			p.changeMode = inactive
+			return p, nil
+		}
+
 		beforeChange := p.textInput.Value()
 		p.textInput, cmd = p.textInput.Update(msg)
 		if p.textInput.Err != nil {
@@ -311,7 +317,8 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 				cmd = p.handleViewModeMouse(msg)
 				cmds = append(cmds, cmd)
 			case modelsView:
-				return p, nil
+				cmd = p.handleModelModeMouse(msg)
+				cmds = append(cmds, cmd)
 			case presetsView:
 				cmd = p.handlePresetModeMouse(msg)
 				cmds = append(cmds, cmd)
@@ -376,12 +383,12 @@ func (p SettingsPane) View() string {
 		zone.Mark("set_p_presets_tab", inactiveHeader.Render("Presets")),
 	)
 	if p.viewMode == modelsView {
-		return p.container.Width(w).Render(
+		return zone.Mark("settings_pane", p.container.Width(w).Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				defaultHeader,
 				p.modelPicker.View(),
 			),
-		)
+		))
 	}
 
 	if p.viewMode == presetsView {

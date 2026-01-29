@@ -67,6 +67,14 @@ func (p *SettingsPane) handlePresetMode(msg tea.KeyMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+func (p *SettingsPane) handleModelModeMouse(msg tea.MouseMsg) tea.Cmd {
+	if zone.Get("set_p_presets_tab").InBounds(msg) && p.viewMode == modelsView {
+		return p.switchToPresets()
+	}
+
+	return nil
+}
+
 func (p *SettingsPane) handleModelMode(msg tea.KeyMsg) tea.Cmd {
 	var (
 		cmd  tea.Cmd
