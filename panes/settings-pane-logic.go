@@ -13,9 +13,18 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 const floatPrescision = 32
+
+func (p *SettingsPane) handlePresetModeMouse(msg tea.MouseMsg) tea.Cmd {
+	if zone.Get("set_p_settings_tab").InBounds(msg) && p.viewMode == presetsView {
+		p.viewMode = defaultView
+	}
+
+	return nil
+}
 
 func (p *SettingsPane) handlePresetMode(msg tea.KeyMsg) tea.Cmd {
 	var (
@@ -93,17 +102,43 @@ func (p *SettingsPane) handleModelMode(msg tea.KeyMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+func (p *SettingsPane) handleViewModeMouse(msg tea.MouseMsg) tea.Cmd {
+	if zone.Get("set_p_presets_tab").InBounds(msg) && p.viewMode == defaultView {
+		return p.switchToPresets()
+	}
+
+	if zone.Get("models_list").InBounds(msg) {
+		p.loading = true
+		return tea.Batch(
+			func() tea.Msg { return p.loadModels(p.config.Provider, p.config.ProviderBaseUrl) },
+			p.spinner.Tick)
+	}
+
+	if zone.Get("max_tokens").InBounds(msg) {
+		return p.configureInput("Enter Max Tokens", util.MaxTokensValidator, maxTokensChange)
+	}
+
+	if zone.Get("temperature").InBounds(msg) {
+		return p.configureInput("Enter Temperature "+util.TemperatureRange, util.TemperatureValidator, tempChange)
+	}
+
+	if zone.Get("frequency").InBounds(msg) {
+		return p.configureInput("Enter Frequency "+util.FrequencyRange, util.FrequencyValidator, frequencyChange)
+	}
+
+	if zone.Get("top_p").InBounds(msg) {
+		return p.configureInput("Enter TopP "+util.TopPRange, util.TopPValidator, topPChange)
+	}
+
+	return nil
+}
+
 func (p *SettingsPane) handleViewMode(msg tea.KeyMsg) tea.Cmd {
 	var cmd tea.Cmd
 
 	switch {
 	case key.Matches(msg, p.keyMap.presetsMenu):
-		p.viewMode = presetsView
-		presets, err := p.loadPresets()
-		if err != nil {
-			return util.MakeErrorMsg(err.Error())
-		}
-		p.updatePresetsList(presets)
+		cmd = p.switchToPresets()
 
 	case key.Matches(msg, p.keyMap.savePreset):
 		cmd = p.configureInput(
@@ -143,6 +178,16 @@ func (p *SettingsPane) handleViewMode(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	return cmd
+}
+
+func (p *SettingsPane) switchToPresets() tea.Cmd {
+	p.viewMode = presetsView
+	presets, err := p.loadPresets()
+	if err != nil {
+		return util.MakeErrorMsg(err.Error())
+	}
+	p.updatePresetsList(presets)
+	return nil
 }
 
 func (p *SettingsPane) configureInput(title string, validator func(str string) error, mode settingsChangeMode) tea.Cmd {
