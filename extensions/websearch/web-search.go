@@ -78,6 +78,7 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 		wg            sync.WaitGroup
 	)
 
+	// TODO: add google
 	wg.Add(2)
 
 	go func() {
@@ -120,6 +121,8 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 		}
 	}
 
+	// TODO: add LLM reranking
+	// TODO: parse urls from tools and fetch them instead of going to search engines
 	bm25 := NewBM25(snippetChunks)
 	rankedResults := bm25.Search(query)
 

@@ -359,10 +359,10 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewMode = util.NormalMode
 
 		m.setProcessingContext()
-		return m, tea.Batch(
+		return m, tea.Sequence(
 			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
-			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator),
-			util.SendViewModeChangedMsg(m.viewMode))
+			util.SendViewModeChangedMsg(m.viewMode),
+			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator))
 
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keys.quit) {
