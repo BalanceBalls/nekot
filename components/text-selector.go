@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 const (
@@ -60,15 +61,17 @@ type selection struct {
 }
 
 type TextSelector struct {
-	Selection    selection
-	lines        []string
-	cursor       cursor
-	scrollOffset int
-	paneHeight   int
-	paneWidth    int
-	keys         keyMap
-	renderedText string
-	colors       util.SchemeColors
+	Selection      selection
+	lines          []string
+	cursor         cursor
+	scrollOffset   int
+	paneHeight     int
+	paneWidth      int
+	keys           keyMap
+	renderedText   string
+	colors         util.SchemeColors
+	mouseSelecting bool
+	mouseTopOffset int
 
 	numberLines int
 }
@@ -88,6 +91,8 @@ func (s TextSelector) Update(msg tea.Msg) (TextSelector, tea.Cmd) {
 		s.paneHeight = paneHeight
 		s.paneWidth = paneWidth
 		s.AdjustScroll()
+	case tea.MouseMsg:
+		s = s.handleMouseSelection(msg)
 	case tea.KeyMsg:
 
 		keypress := msg.String()
@@ -262,6 +267,69 @@ func (s TextSelector) handleKeyDown() TextSelector {
 	return s
 }
 
+func (s TextSelector) handleMouseSelection(msg tea.MouseMsg) TextSelector {
+	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
+		s.mouseSelecting = false
+		return s
+	}
+
+	if !zone.Get("chat_pane").InBounds(msg) {
+		return s
+	}
+
+	switch {
+
+	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
+		line, scrollOffset := s.lineFromMouse(msg)
+		s.scrollOffset = scrollOffset
+		s.cursor.line = line
+		s.Selection.Active = true
+		s.Selection.anchor = s.cursor
+		s.mouseSelecting = true
+
+	case msg.Action == tea.MouseActionMotion && s.mouseSelecting:
+		line, scrollOffset := s.lineFromMouse(msg)
+		s.scrollOffset = scrollOffset
+		s.cursor.line = line
+	}
+
+	return s
+}
+
+func (s TextSelector) lineFromMouse(msg tea.MouseMsg) (int, int) {
+	_, mouseY := zone.Get("chat_pane").Pos(msg)
+	if mouseY < 0 || s.paneHeight <= 0 {
+		return s.cursor.line, s.scrollOffset
+	}
+
+	contentY := mouseY - s.mouseTopOffset
+	scrollOffset := s.scrollOffset
+	maxScrollOffset := s.maxScrollOffset()
+
+	if contentY < 0 {
+		scrollOffset = max(scrollOffset-1, 0)
+		contentY = 0
+	} else if contentY >= s.paneHeight {
+		scrollOffset = min(scrollOffset+1, maxScrollOffset)
+		contentY = max(s.paneHeight-1, 0)
+	}
+
+	scrollOffset = min(max(scrollOffset, 0), maxScrollOffset)
+	line := scrollOffset + contentY
+	line = max(line, s.firstLinePosition())
+	line = min(line, s.lastLinePosition())
+
+	return line, scrollOffset
+}
+
+func (s TextSelector) maxScrollOffset() int {
+	maxOffset := s.lastLinePosition() - s.paneHeight + 1
+	if maxOffset < 0 {
+		return 0
+	}
+	return maxOffset
+}
+
 func (s TextSelector) handleLineJumps(keypress string, parsedNumber int) TextSelector {
 	if s.numberLines > 0 {
 		prevNumber := strconv.Itoa(s.numberLines)
@@ -320,6 +388,7 @@ func filterLine(line string) string {
 
 func (s *TextSelector) Reset() {
 	s.Selection.Active = false
+	s.mouseSelecting = false
 }
 
 func (s TextSelector) IsSelecting() bool {
@@ -329,6 +398,7 @@ func (s TextSelector) IsSelecting() bool {
 func NewTextSelector(
 	w, h int,
 	scrollPos int,
+	mouseTopOffset int,
 	sessionData string,
 	colors util.SchemeColors,
 ) TextSelector {
@@ -344,16 +414,18 @@ func NewTextSelector(
 	}
 
 	state := TextSelector{
-		lines:        lines,
-		cursor:       cursor{line: pos},
-		Selection:    selection{Active: false},
-		scrollOffset: scrollPos,
-		paneHeight:   viewHeight,
-		paneWidth:    viewWidth,
-		keys:         defaultKeyMap,
-		renderedText: sessionData,
-		numberLines:  0,
-		colors:       colors,
+		lines:          lines,
+		cursor:         cursor{line: pos},
+		Selection:      selection{Active: false},
+		scrollOffset:   scrollPos,
+		paneHeight:     viewHeight,
+		paneWidth:      viewWidth,
+		keys:           defaultKeyMap,
+		renderedText:   sessionData,
+		numberLines:    0,
+		colors:         colors,
+		mouseTopOffset: mouseTopOffset,
+		mouseSelecting: false,
 	}
 
 	return state

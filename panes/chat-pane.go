@@ -321,8 +321,18 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			break
 		}
 
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft && !p.isChatContainerFocused {
-			return p, util.SwitchToPane(util.ChatPane)
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if !p.isChatContainerFocused {
+				return p, util.SwitchToPane(util.ChatPane)
+			}
+
+			if !p.IsSelectionMode() && len(p.sessionContent) > 0 {
+				p.enterSelectionMode()
+				enableUpdateOfViewport = false
+				p.selectionView, cmd = p.selectionView.Update(msg)
+				return p, tea.Batch(cmds...)
+			}
+
 		}
 
 	case tea.KeyMsg:
@@ -358,21 +368,8 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			if !p.isChatContainerFocused || len(p.sessionContent) == 0 {
 				break
 			}
-			p.displayMode = selectionMode
+			p.enterSelectionMode()
 			enableUpdateOfViewport = false
-			p.chatContainer.BorderForeground(p.colors.AccentColor)
-			renderedContent := util.GetVisualModeView(
-				p.sessionContent,
-				p.chatView.Width,
-				p.colors,
-				p.currentSettings)
-			p.selectionView = components.NewTextSelector(
-				p.terminalWidth,
-				p.terminalHeight,
-				p.chatView.YOffset,
-				renderedContent,
-				p.colors)
-			p.selectionView.AdjustScroll()
 
 		case key.Matches(msg, p.keyMap.copyLast):
 			if p.isChatContainerFocused {
@@ -412,6 +409,29 @@ func getStringsDiff(oldStr, newStr string) string {
 
 func (p ChatPane) IsSelectionMode() bool {
 	return p.displayMode == selectionMode
+}
+
+func (p *ChatPane) enterSelectionMode() {
+	if len(p.sessionContent) == 0 {
+		return
+	}
+
+	p.displayMode = selectionMode
+	p.chatContainer.BorderForeground(p.colors.AccentColor)
+	renderedContent := util.GetVisualModeView(
+		p.sessionContent,
+		p.chatView.Width,
+		p.colors,
+		p.currentSettings)
+	mouseTopOffset := p.chatContainer.GetMarginTop() + p.chatContainer.GetBorderTopSize() + p.chatContainer.GetPaddingTop()
+	p.selectionView = components.NewTextSelector(
+		p.terminalWidth,
+		p.terminalHeight,
+		p.chatView.YOffset,
+		mouseTopOffset,
+		renderedContent,
+		p.colors)
+	p.selectionView.AdjustScroll()
 }
 
 func (p ChatPane) AllowFocusChange() bool {
@@ -456,7 +476,7 @@ func (p *ChatPane) ResumeCompletion(
 
 func (p ChatPane) View() string {
 	if p.IsSelectionMode() {
-		return p.chatContainer.Render(p.selectionView.View())
+		return zone.Mark("chat_pane", p.chatContainer.Render(p.selectionView.View()))
 	}
 
 	viewportContent := p.chatView.View()
