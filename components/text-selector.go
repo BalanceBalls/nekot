@@ -277,6 +277,31 @@ func (s TextSelector) handleMouseSelection(msg tea.MouseMsg) TextSelector {
 		return s
 	}
 
+	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+		delta := 3
+		if msg.Button == tea.MouseButtonWheelUp {
+			delta = -3
+		}
+
+		s.scrollOffset = min(max(s.scrollOffset+delta, 0), s.maxScrollOffset())
+		if !s.Selection.Active && !s.mouseSelecting {
+			visibleStart := s.scrollOffset
+			visibleEnd := s.scrollOffset + s.paneHeight - 1
+			if s.cursor.line < visibleStart {
+				s.cursor.line = visibleStart
+			} else if s.cursor.line > visibleEnd {
+				s.cursor.line = visibleEnd
+			}
+			if s.cursor.line < s.firstLinePosition() {
+				s.cursor.line = s.firstLinePosition()
+			} else if s.cursor.line > s.lastLinePosition() {
+				s.cursor.line = s.lastLinePosition()
+			}
+		}
+
+		return s
+	}
+
 	switch {
 
 	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
@@ -348,17 +373,7 @@ func (s TextSelector) copySelectedLinesToClipboard(isRawCopy bool) {
 		return
 	}
 
-	var selectedLines []string
-	startLine := s.Selection.anchor.line
-	endLine := s.cursor.line
-	if startLine > endLine {
-		startLine, endLine = endLine, startLine
-	}
-	for i := startLine; i <= endLine; i++ {
-		filteredLine := filterLine(s.lines[i])
-		selectedLines = append(selectedLines, filteredLine)
-	}
-
+	selectedLines := s.GetSelectedLines()
 	ansiFreeText := util.StripAnsiCodes(strings.Join(selectedLines, "\n"))
 
 	ansiFreeLines := strings.Split(ansiFreeText, "\n")
@@ -380,6 +395,20 @@ func (s TextSelector) copySelectedLinesToClipboard(isRawCopy bool) {
 	clipboard.WriteAll(strings.Join(linesToCopy, joinSeparator))
 }
 
+func (s TextSelector) GetSelectedLines() []string {
+	var selectedLines []string
+	startLine := s.Selection.anchor.line
+	endLine := s.cursor.line
+	if startLine > endLine {
+		startLine, endLine = endLine, startLine
+	}
+	for i := startLine; i <= endLine; i++ {
+		filteredLine := filterLine(s.lines[i])
+		selectedLines = append(selectedLines, filteredLine)
+	}
+	return selectedLines
+}
+
 func filterLine(line string) string {
 	line = strings.ReplaceAll(line, "🤖", "")
 	line = strings.ReplaceAll(line, "💁", "")
@@ -395,6 +424,10 @@ func (s TextSelector) IsSelecting() bool {
 	return s.Selection.Active
 }
 
+func (s TextSelector) LinesSelected() int {
+	return len(s.GetSelectedLines())
+}
+
 func NewTextSelector(
 	w, h int,
 	scrollPos int,
@@ -406,6 +439,8 @@ func NewTextSelector(
 	lines := strings.Split(sessionData, "\n")
 
 	viewWidth, viewHeight := util.CalcVisualModeViewSize(w, h)
+
+	viewHeight = viewHeight - 1
 	pos := scrollPos + viewHeight/2
 	pos = max(pos, 1)
 

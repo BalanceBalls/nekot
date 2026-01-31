@@ -476,7 +476,9 @@ func (p *ChatPane) ResumeCompletion(
 
 func (p ChatPane) View() string {
 	if p.IsSelectionMode() {
-		return zone.Mark("chat_pane", p.chatContainer.Render(p.selectionView.View()))
+		infoRow := p.renderSelectionViewInfoRow()
+		content := lipgloss.JoinVertical(lipgloss.Left, p.selectionView.View(), infoRow)
+		return zone.Mark("chat_pane", p.chatContainer.Render(content))
 	}
 
 	viewportContent := p.chatView.View()
@@ -533,6 +535,27 @@ func (p ChatPane) renderInfoRow() string {
 
 	if p.currentSettings.HideReasoning {
 		info += " | [Reasoning hidden]"
+	}
+
+	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
+	return infoBar
+}
+
+func (p ChatPane) renderSelectionViewInfoRow() string {
+
+	info := ""
+	if p.selectionView.IsSelecting() {
+		linesSelected := p.selectionView.GetSelectedLines()
+		linesWord := "lines"
+		if len(linesSelected) == 1 {
+			linesWord = "line"
+		}
+
+		info += fmt.Sprintf("▐ Selected [%d %s]", len(linesSelected), linesWord)
+		info += "  | `r` to copy raw • `y` to copy with formatting"
+
+	} else {
+		info += "▐ [Press 'space' to start selecting]"
 	}
 
 	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
