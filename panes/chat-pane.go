@@ -555,7 +555,7 @@ func (p ChatPane) renderSelectionViewInfoRow() string {
 		info += "  | `r` to copy raw • `y` to copy with formatting"
 
 	} else {
-		info += "▐ [Press 'space' to start selecting]"
+		info += "▐ Press 'space' to start selecting"
 	}
 
 	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
