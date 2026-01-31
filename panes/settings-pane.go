@@ -463,7 +463,7 @@ func (p SettingsPane) View() string {
 			defaultHeader,
 			lipgloss.NewStyle().Height(listItemsHeight).Render(
 				lipgloss.JoinVertical(lipgloss.Left,
-					p.presetItemRenderer(p.settings.PresetName),
+					zone.Mark("set_p_preset_item", p.presetItemRenderer(p.settings.PresetName)),
 					zone.Mark("models_list", modelRowContent),
 					zone.Mark("max_tokens", p.listItemRenderer("(t) max_tokens", fmt.Sprint(p.settings.MaxTokens))),
 					zone.Mark("temperature", p.listItemRenderer("(e) temperature", temp)),

@@ -142,6 +142,10 @@ func (p *SettingsPane) handleViewModeMouse(msg tea.MouseMsg) tea.Cmd {
 		return p.switchToPresets()
 	}
 
+	if zone.Get("set_p_preset_item").InBounds(msg) && p.viewMode == defaultView {
+		return p.switchToPresets()
+	}
+
 	if zone.Get("models_list").InBounds(msg) {
 		return p.switchToModelsList()
 	}
