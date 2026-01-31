@@ -2,6 +2,7 @@ package panes
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -13,9 +14,27 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 const floatPrescision = 32
+
+func (p *SettingsPane) handlePresetModeMouse(msg tea.MouseMsg) tea.Cmd {
+	if zone.Get("set_p_settings_tab").InBounds(msg) && p.viewMode == presetsView {
+		p.viewMode = defaultView
+	}
+
+	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft && p.viewMode == presetsView {
+		for _, listItem := range p.presetPicker.VisibleItems() {
+			v, _ := listItem.(components.PresetsListItem)
+			if zone.Get(v.Id).InBounds(msg) {
+				return p.selectPreset(v.PresetId)
+			}
+		}
+	}
+
+	return nil
+}
 
 func (p *SettingsPane) handlePresetMode(msg tea.KeyMsg) tea.Cmd {
 	var (
@@ -39,23 +58,44 @@ func (p *SettingsPane) handlePresetMode(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, p.keyMap.choose):
 		i, ok := p.presetPicker.GetSelectedItem()
 		if ok {
-			presetId := int(i.Id)
-			preset, err := p.settingsService.GetPreset(presetId)
-
-			if err != nil {
-				return util.MakeErrorMsg(err.Error())
-			}
-
-			preset.Model = p.settings.Model
-			p.viewMode = defaultView
-			p.settings = preset
-
-			cmd = settings.MakeSettingsUpdateMsg(p.settings, nil)
+			presetId := int(i.PresetId)
+			cmd = p.selectPreset(presetId)
 			cmds = append(cmds, cmd)
 		}
 	}
 
 	return tea.Batch(cmds...)
+}
+
+func (p *SettingsPane) selectPreset(presetId int) tea.Cmd {
+	preset, err := p.settingsService.GetPreset(presetId)
+
+	if err != nil {
+		return util.MakeErrorMsg(err.Error())
+	}
+
+	preset.Model = p.settings.Model
+	p.viewMode = defaultView
+	p.settings = preset
+
+	return settings.MakeSettingsUpdateMsg(p.settings, nil)
+}
+
+func (p *SettingsPane) handleModelModeMouse(msg tea.MouseMsg) tea.Cmd {
+	if zone.Get("set_p_presets_tab").InBounds(msg) && p.viewMode == modelsView {
+		return p.switchToPresets()
+	}
+
+	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft && p.viewMode == modelsView {
+		for _, listItem := range p.modelPicker.VisibleItems() {
+			v, _ := listItem.(components.ModelsListItem)
+			if zone.Get(v.Id).InBounds(msg) {
+				return p.selectModel(string(v.Text))
+			}
+		}
+	}
+
+	return nil
 }
 
 func (p *SettingsPane) handleModelMode(msg tea.KeyMsg) tea.Cmd {
@@ -76,16 +116,7 @@ func (p *SettingsPane) handleModelMode(msg tea.KeyMsg) tea.Cmd {
 	case tea.KeyEnter:
 		i, ok := p.modelPicker.GetSelectedItem()
 		if ok {
-			p.settings.Model = string(i.Text)
-			p.viewMode = defaultView
-
-			var updateError error
-			p.settings, updateError = settingsService.UpdateSettings(p.settings)
-			if updateError != nil {
-				return util.MakeErrorMsg(updateError.Error())
-			}
-
-			cmd = settings.MakeSettingsUpdateMsg(p.settings, nil)
+			cmd = p.selectModel(string(i.Text))
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -93,29 +124,66 @@ func (p *SettingsPane) handleModelMode(msg tea.KeyMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+func (p *SettingsPane) selectModel(model string) tea.Cmd {
+	p.settings.Model = string(model)
+	p.viewMode = defaultView
+
+	var updateError error
+	p.settings, updateError = settingsService.UpdateSettings(p.settings)
+	if updateError != nil {
+		return util.MakeErrorMsg(updateError.Error())
+	}
+
+	return settings.MakeSettingsUpdateMsg(p.settings, nil)
+}
+
+func (p *SettingsPane) handleViewModeMouse(msg tea.MouseMsg) tea.Cmd {
+	if zone.Get("set_p_presets_tab").InBounds(msg) && p.viewMode == defaultView {
+		return p.switchToPresets()
+	}
+
+	if zone.Get("set_p_preset_item").InBounds(msg) && p.viewMode == defaultView {
+		return p.switchToPresets()
+	}
+
+	if zone.Get("models_list").InBounds(msg) {
+		return p.switchToModelsList()
+	}
+
+	if zone.Get("max_tokens").InBounds(msg) {
+		return p.configureInput("Enter Max Tokens", util.MaxTokensValidator, maxTokensChange)
+	}
+
+	if zone.Get("temperature").InBounds(msg) {
+		return p.configureInput("Enter Temperature "+util.TemperatureRange, util.TemperatureValidator, tempChange)
+	}
+
+	if zone.Get("frequency").InBounds(msg) {
+		return p.configureInput("Enter Frequency "+util.FrequencyRange, util.FrequencyValidator, frequencyChange)
+	}
+
+	if zone.Get("top_p").InBounds(msg) {
+		return p.configureInput("Enter TopP "+util.TopPRange, util.TopPValidator, topPChange)
+	}
+
+	return nil
+}
+
 func (p *SettingsPane) handleViewMode(msg tea.KeyMsg) tea.Cmd {
 	var cmd tea.Cmd
 
 	switch {
 	case key.Matches(msg, p.keyMap.presetsMenu):
-		p.viewMode = presetsView
-		presets, err := p.loadPresets()
-		if err != nil {
-			return util.MakeErrorMsg(err.Error())
-		}
-		p.updatePresetsList(presets)
+		return p.switchToPresets()
+
+	case key.Matches(msg, p.keyMap.changeModel):
+		return p.switchToModelsList()
 
 	case key.Matches(msg, p.keyMap.savePreset):
 		cmd = p.configureInput(
 			"Enter name for a preset",
 			util.EmptyValidator,
 			presetChange)
-
-	case key.Matches(msg, p.keyMap.changeModel):
-		p.loading = true
-		return tea.Batch(
-			func() tea.Msg { return p.loadModels(p.config.Provider, p.config.ProviderBaseUrl) },
-			p.spinner.Tick)
 
 	case key.Matches(msg, p.keyMap.reset):
 		var updErr error
@@ -143,6 +211,24 @@ func (p *SettingsPane) handleViewMode(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	return cmd
+}
+
+func (p *SettingsPane) switchToPresets() tea.Cmd {
+	p.viewMode = presetsView
+	presets, err := p.loadPresets()
+	if err != nil {
+		return util.MakeErrorMsg(err.Error())
+	}
+	p.updatePresetsList(presets)
+	return nil
+}
+
+func (p *SettingsPane) switchToModelsList() tea.Cmd {
+	p.loading = true
+	p.changeMode = inactive
+	return tea.Batch(
+		func() tea.Msg { return p.loadModels(p.config.Provider, p.config.ProviderBaseUrl) },
+		p.spinner.Tick)
 }
 
 func (p *SettingsPane) configureInput(title string, validator func(str string) error, mode settingsChangeMode) tea.Cmd {
@@ -250,8 +336,11 @@ func (p SettingsPane) loadPresets() ([]util.Settings, error) {
 
 func (p *SettingsPane) updateModelsList(models []string) {
 	var modelsList []list.Item
-	for _, model := range models {
-		modelsList = append(modelsList, components.ModelsListItem{Text: model})
+	for i, model := range models {
+		modelsList = append(modelsList, components.ModelsListItem{
+			Id:   "model_list_" + fmt.Sprint(i),
+			Text: model,
+		})
 	}
 
 	w, h := util.CalcModelsListSize(p.terminalWidth, p.terminalHeight)
@@ -260,8 +349,12 @@ func (p *SettingsPane) updateModelsList(models []string) {
 
 func (p *SettingsPane) updatePresetsList(presets []util.Settings) {
 	var presetsList []list.Item
-	for _, preset := range presets {
-		presetsList = append(presetsList, components.PresetsListItem{Id: preset.ID, Text: preset.PresetName})
+	for i, preset := range presets {
+		presetsList = append(presetsList, components.PresetsListItem{
+			Id:       "presets_list_" + fmt.Sprint(i),
+			PresetId: preset.ID,
+			Text:     preset.PresetName,
+		})
 	}
 
 	w, h := util.CalcModelsListSize(p.terminalWidth, p.terminalHeight)

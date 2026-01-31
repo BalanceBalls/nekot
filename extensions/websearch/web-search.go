@@ -78,6 +78,7 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 		wg            sync.WaitGroup
 	)
 
+	// TODO: add google
 	wg.Add(2)
 
 	go func() {
@@ -92,18 +93,18 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 
 	wg.Wait()
 
-	if ddgErr != nil && braveErr != nil {
-		return []PageChunk{}, fmt.Errorf(
-			"could not get response from search engines. Reasons: \n %w \n %w",
-			ddgErr,
-			braveErr)
-	}
-
 	if ddgErr != nil {
 		util.Slog.Warn("DuckDuckGo search failed", "error", ddgErr)
 	}
 	if braveErr != nil {
 		util.Slog.Warn("Brave search failed", "error", braveErr)
+	}
+
+	if ddgErr != nil && braveErr != nil {
+		return []PageChunk{}, fmt.Errorf(
+			"could not get response from search engines. \n DuckDuckGo: \n %w \n Brave: \n %w",
+			ddgErr,
+			braveErr)
 	}
 
 	allResults := append(ddgResponse, braveResponse...)
@@ -120,6 +121,8 @@ func getDataChunksFromQuery(ctx context.Context, query string) ([]PageChunk, err
 		}
 	}
 
+	// TODO: add LLM reranking
+	// TODO: parse urls from tools and fetch them instead of going to search engines
 	bm25 := NewBM25(snippetChunks)
 	rankedResults := bm25.Search(query)
 

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 type ModelsList struct {
@@ -23,10 +24,11 @@ var listItemSpanSelected = lipgloss.NewStyle().
 	PaddingLeft(util.ListItemPaddingLeft)
 
 type ModelsListItem struct {
+	Id   string
 	Text string
 }
 
-func (i ModelsListItem) FilterValue() string { return i.Text }
+func (i ModelsListItem) FilterValue() string { return zone.Mark(i.Id, i.Text) }
 
 type modelItemDelegate struct{}
 
@@ -41,6 +43,7 @@ func (d modelItemDelegate) Render(w io.Writer, m list.Model, index int, listItem
 
 	str := fmt.Sprintf("%d. %s", index+1, i.Text)
 	str = util.TrimListItem(str, m.Width())
+	str = zone.Mark(i.Id, str)
 
 	fn := listItemSpan.Render
 	if index == m.Index() {
@@ -70,12 +73,30 @@ func (l *ModelsList) GetSelectedItem() (ModelsListItem, bool) {
 	return item, ok
 }
 
+func (l ModelsList) VisibleItems() []list.Item {
+	return l.list.VisibleItems()
+}
+
 func (l ModelsList) IsFiltering() bool {
 	return l.list.SettingFilter()
 }
 
 func (l ModelsList) Update(msg tea.Msg) (ModelsList, tea.Cmd) {
 	var cmd tea.Cmd
+	switch msg := msg.(type) {
+
+	case tea.MouseMsg:
+		if msg.Button == tea.MouseButtonWheelUp {
+			l.list.CursorUp()
+			return l, nil
+		}
+
+		if msg.Button == tea.MouseButtonWheelDown {
+			l.list.CursorDown()
+			return l, nil
+		}
+	}
+
 	l.list, cmd = l.list.Update(msg)
 	return l, cmd
 }

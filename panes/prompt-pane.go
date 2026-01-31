@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 const ResponseWaitingMsg = "> Please wait ..."
@@ -184,6 +185,17 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		p.handleWindowSizeMsg(msg)
 
+	case tea.MouseMsg:
+		if !zone.Get("prompt_pane").InBounds(msg) {
+			break
+		}
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if !p.isFocused {
+				return p, util.SwitchToPane(util.PromptPane)
+			}
+			cmds = append(cmds, p.keyInsert())
+		}
+
 	case tea.KeyMsg:
 		if !p.ready {
 			break
@@ -310,9 +322,7 @@ func (p *PromptPane) keyEnter() tea.Cmd {
 			return tea.Batch(
 				util.UpdateSystemPrompt(promptText),
 				util.SendViewModeChangedMsg(util.NormalMode),
-				func() tea.Msg {
-					return util.SwitchToPaneMsg{Target: util.SettingsPane}
-				},
+				util.SwitchToPane(util.SettingsPane),
 			)
 		}
 
@@ -684,11 +694,11 @@ func (p PromptPane) View() string {
 			infoBlockContent = infoLabel.Render("Editing system prompt")
 		}
 
-		return lipgloss.JoinVertical(lipgloss.Left,
+		return zone.Mark("prompt_pane", lipgloss.JoinVertical(lipgloss.Left,
 			p.inputContainer.Render(content),
 			infoBlockStyle.Render(infoBlockContent),
-		)
+		))
 	}
 
-	return p.inputContainer.Render(ResponseWaitingMsg)
+	return zone.Mark("prompt_pane", p.inputContainer.Render(ResponseWaitingMsg))
 }
