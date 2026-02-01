@@ -477,7 +477,10 @@ func (p *ChatPane) ResumeCompletion(
 func (p ChatPane) View() string {
 	if p.IsSelectionMode() {
 		infoRow := p.renderSelectionViewInfoRow()
-		content := lipgloss.JoinVertical(lipgloss.Left, p.selectionView.View(), infoRow)
+		selectionView := p.selectionView.View()
+
+		infoRowStyle := lipgloss.NewStyle().MarginTop(p.chatContainer.GetHeight() - lipgloss.Height(selectionView) - 2)
+		content := lipgloss.JoinVertical(lipgloss.Left, selectionView, infoRowStyle.Render(infoRow))
 		return zone.Mark("chat_pane", p.chatContainer.Render(content))
 	}
 
