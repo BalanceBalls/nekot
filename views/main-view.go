@@ -409,7 +409,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
 
 		case key.Matches(msg, m.keys.editorMode):
-			if m.focused != util.PromptPane {
+			if m.focused != util.PromptPane || !m.promptPane.AllowFocusChange() {
 				break
 			}
 

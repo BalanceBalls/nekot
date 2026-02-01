@@ -501,7 +501,7 @@ func (p *PromptPane) handleViewModeChange(msg util.ViewModeChanged) tea.Cmd {
 
 	switch p.viewMode {
 	case util.TextEditMode:
-		cmd = p.openTextEditor(currentInput, util.NoOperaton, false)
+		cmd = p.openTextEditor(currentInput, p.operation, false)
 
 	case util.FilePickerMode:
 		cmd = p.openFilePicker(prevMode, currentInput)
