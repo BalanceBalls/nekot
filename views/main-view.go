@@ -364,6 +364,25 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			util.SendViewModeChangedMsg(m.viewMode),
 			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator))
 
+	case tea.MouseMsg:
+		targetPane := m.focused
+
+		switch {
+		case zone.Get("chat_pane").InBounds(msg):
+			targetPane = util.ChatPane
+		case zone.Get("prompt_pane").InBounds(msg):
+			targetPane = util.PromptPane
+		case zone.Get("settings_pane").InBounds(msg):
+			targetPane = util.SettingsPane
+		case zone.Get("sessions_pane").InBounds(msg):
+			targetPane = util.SessionsPane
+		}
+
+		if targetPane != m.focused {
+			m.handleFocusChange(targetPane, true)
+			return m, nil
+		}
+
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keys.quit) {
 			return m, tea.Quit
@@ -409,7 +428,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
 
 		case key.Matches(msg, m.keys.editorMode):
-			if m.focused != util.PromptPane || !m.promptPane.AllowFocusChange() {
+			if m.focused != util.PromptPane || !m.promptPane.AllowFocusChange(false) {
 				break
 			}
 
@@ -424,10 +443,6 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
 
 		case key.Matches(msg, m.keys.jumpToPane):
-			if !m.isFocusChangeAllowed() {
-				break
-			}
-
 			var targetPane util.Pane
 			switch msg.String() {
 			case "1":
@@ -439,14 +454,10 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "4":
 				targetPane = util.SessionsPane
 			}
-
-			if util.IsFocusAllowed(m.viewMode, targetPane, m.terminalWidth) {
-				m.focused = targetPane
-				m.resetFocus()
-			}
+			m.handleFocusChange(targetPane, false)
 
 		case key.Matches(msg, m.keys.nextPane):
-			if !m.isFocusChangeAllowed() {
+			if !m.isFocusChangeAllowed(false) {
 				break
 			}
 
@@ -454,7 +465,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetFocus()
 
 		case key.Matches(msg, m.keys.previousPane):
-			if !m.isFocusChangeAllowed() {
+			if !m.isFocusChangeAllowed(false) {
 				break
 			}
 
@@ -477,6 +488,17 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.chatPane, cmd = m.chatPane.Update(msg)
 	cmds = append(cmds, cmd)
 	return m, tea.Batch(cmds...)
+}
+
+func (m *MainView) handleFocusChange(targetPane util.Pane, isMouseEvent bool) {
+	if !m.isFocusChangeAllowed(isMouseEvent) {
+		return
+	}
+
+	if util.IsFocusAllowed(m.viewMode, targetPane, m.terminalWidth) {
+		m.focused = targetPane
+		m.resetFocus()
+	}
 }
 
 func (m MainView) View() string {
@@ -565,11 +587,11 @@ func mapAttachmentType(attachmentType string) string {
 }
 
 // TODO: use event to lock/unlock allowFocusChange flag
-func (m MainView) isFocusChangeAllowed() bool {
-	if !m.promptPane.AllowFocusChange() ||
-		!m.chatPane.AllowFocusChange() ||
-		!m.settingsPane.AllowFocusChange() ||
-		!m.sessionsPane.AllowFocusChange() ||
+func (m MainView) isFocusChangeAllowed(isMouseEvent bool) bool {
+	if !m.promptPane.AllowFocusChange(isMouseEvent) ||
+		!m.chatPane.AllowFocusChange(isMouseEvent) ||
+		!m.settingsPane.AllowFocusChange(isMouseEvent) ||
+		!m.sessionsPane.AllowFocusChange(isMouseEvent) ||
 		!m.viewReady ||
 		m.sessionOrchestrator.IsProcessing() {
 		util.Slog.Warn(

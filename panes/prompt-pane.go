@@ -186,13 +186,10 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		p.handleWindowSizeMsg(msg)
 
 	case tea.MouseMsg:
-		if !zone.Get("prompt_pane").InBounds(msg) {
+		if !zone.Get("prompt_pane").InBounds(msg) || !p.isFocused {
 			break
 		}
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-			if !p.isFocused {
-				return p, util.SwitchToPane(util.PromptPane)
-			}
 			cmds = append(cmds, p.keyInsert())
 		}
 
@@ -649,16 +646,20 @@ func (p *PromptPane) insertBufferContentAsCodeBlock() {
 	p.textEditor.SetCursor(0)
 }
 
-func (p PromptPane) AllowFocusChange() bool {
+func (p PromptPane) AllowFocusChange(isMouseEvent bool) bool {
+	if p.operation == util.SystemMessageEditing {
+		return false
+	}
+
+	if isMouseEvent {
+		return true
+	}
+
 	if p.isFocused && p.inputMode == util.PromptInsertMode {
 		return false
 	}
 
 	if p.isFocused && p.viewMode == util.FilePickerMode {
-		return false
-	}
-
-	if p.operation == util.SystemMessageEditing {
 		return false
 	}
 

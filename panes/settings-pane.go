@@ -301,17 +301,14 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		p.loading = false
 		p.viewMode = modelsView
 		p.updateModelsList(msg.Models)
+		return p, nil
 
 	case tea.MouseMsg:
-		if !zone.Get("settings_pane").InBounds(msg) {
+		if !p.isFocused {
 			break
 		}
 
-		if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft && !p.isFocused {
-			return p, util.SwitchToPane(util.SettingsPane)
-		}
-
-		if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft && p.isFocused {
+		if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
 			switch p.viewMode {
 			case defaultView:
 				cmd = p.handleViewModeMouse(msg)
@@ -478,6 +475,9 @@ func (p SettingsPane) View() string {
 	return zone.Mark("settings_pane", rendered)
 }
 
-func (p SettingsPane) AllowFocusChange() bool {
+func (p SettingsPane) AllowFocusChange(isMouseEvent bool) bool {
+	if isMouseEvent {
+		return p.changeMode == inactive
+	}
 	return p.viewMode == defaultView && p.changeMode == inactive
 }

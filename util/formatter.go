@@ -357,6 +357,7 @@ func cleanContent(content string) string {
 }
 
 func filterEmojis(content string) string {
+	// TODO: maybe use some kind of regexp for this
 	content = strings.ReplaceAll(content, "0️⃣", "0")
 	content = strings.ReplaceAll(content, "1️⃣", "1")
 	content = strings.ReplaceAll(content, "2️⃣", "2")
@@ -368,12 +369,11 @@ func filterEmojis(content string) string {
 	content = strings.ReplaceAll(content, "8️⃣", "8")
 	content = strings.ReplaceAll(content, "9️⃣", "9")
 	content = strings.ReplaceAll(content, "🔟", "10")
-	content = strings.ReplaceAll(content, "🔟", "10")
+	content = strings.ReplaceAll(content, "#️⃣", "#")
+	content = strings.ReplaceAll(content, "*️⃣", "*")
 	content = strings.ReplaceAll(content, "✍️", "�")
 	content = strings.ReplaceAll(content, "🧘‍♂", "�")
 	content = strings.ReplaceAll(content, "🧘‍♀", "�")
 
 	return content
 }
-
-//│ that are easy to deploy. │ libraries, language │                          │ feature evolution, and │                          │ platform/​device │                          │ diversity. Runtime               │ Native static binaries,  │ Managed runtime

@@ -185,15 +185,11 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
-		if !zone.Get("sessions_pane").InBounds(msg) {
+		if !zone.Get("sessions_pane").InBounds(msg) || !p.isFocused {
 			break
 		}
 
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft && !p.isFocused {
-			return p, util.SwitchToPane(util.SessionsPane)
-		}
-
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft && p.isFocused {
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
 			for idx, listItem := range p.sessionsList.VisibleItems() {
 				v, _ := listItem.(components.SessionListItem)
 				if zone.Get(v.Id).InBounds(msg) {
@@ -498,7 +494,10 @@ func (p SessionsPane) normalListView() string {
 		Render(strings.Join(sessionListItems, "\n"))
 }
 
-func (p SessionsPane) AllowFocusChange() bool {
+func (p SessionsPane) AllowFocusChange(isMouseEvent bool) bool {
+	if isMouseEvent {
+		return true
+	}
 	return p.operationMode == defaultMode
 }
 

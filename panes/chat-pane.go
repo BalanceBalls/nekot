@@ -317,22 +317,17 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			return p, nil
 		}
 
-		if !zone.Get("chat_pane").InBounds(msg) {
+		if !p.isChatContainerFocused {
 			break
 		}
 
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-			if !p.isChatContainerFocused {
-				return p, util.SwitchToPane(util.ChatPane)
-			}
-
 			if !p.IsSelectionMode() && len(p.sessionContent) > 0 {
 				p.enterSelectionMode()
 				enableUpdateOfViewport = false
 				p.selectionView, cmd = p.selectionView.Update(msg)
 				return p, tea.Batch(cmds...)
 			}
-
 		}
 
 	case tea.KeyMsg:
@@ -434,8 +429,11 @@ func (p *ChatPane) enterSelectionMode() {
 	p.selectionView.AdjustScroll()
 }
 
-func (p ChatPane) AllowFocusChange() bool {
-	return !p.selectionView.IsSelecting()
+func (p ChatPane) AllowFocusChange(isMouseEvent bool) bool {
+	if isMouseEvent {
+		return !p.selectionView.IsSelecting()
+	}
+	return true
 }
 
 func (p *ChatPane) DisplayCompletion(
