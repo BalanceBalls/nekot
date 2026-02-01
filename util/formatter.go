@@ -184,7 +184,7 @@ func RenderBotMessage(
 		modelName = "**[" + msg.Model + "]**\n"
 	}
 
-	content = CleanContent(content)
+	content = cleanContent(content)
 
 	if isVisualMode {
 		content = icon + content
@@ -265,7 +265,7 @@ func RenderToolCall(
 		content += toolData
 	}
 
-	content = CleanContent(content)
+	content = cleanContent(content)
 
 	if isVisualMode {
 		userMsg, _ := renderer.Render(content)
@@ -332,7 +332,8 @@ func StripAnsiCodes(str string) string {
 	return ansiRegex.ReplaceAllString(str, "")
 }
 
-func CleanContent(content string) string {
+func cleanContent(content string) string {
+	content = filterEmojis(content)
 	byWords := strings.Split(content, " ")
 
 	cleanedUpWords := []string{}
@@ -347,4 +348,20 @@ func CleanContent(content string) string {
 	}
 
 	return strings.Join(cleanedUpWords, " ")
+}
+
+func filterEmojis(content string) string {
+	content = strings.ReplaceAll(content, "0️⃣", "0")
+	content = strings.ReplaceAll(content, "1️⃣", "1")
+	content = strings.ReplaceAll(content, "2️⃣", "2")
+	content = strings.ReplaceAll(content, "3️⃣", "3")
+	content = strings.ReplaceAll(content, "4️⃣", "4")
+	content = strings.ReplaceAll(content, "5️⃣", "5")
+	content = strings.ReplaceAll(content, "6️⃣", "6")
+	content = strings.ReplaceAll(content, "7️⃣", "7")
+	content = strings.ReplaceAll(content, "8️⃣", "8")
+	content = strings.ReplaceAll(content, "9️⃣", "9")
+	content = strings.ReplaceAll(content, "🔟", "10")
+
+	return content
 }
