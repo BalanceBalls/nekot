@@ -81,6 +81,7 @@ var defaultKeyMap = keyMap{
 
 type MainView struct {
 	viewReady        bool
+	controlsLocked   bool
 	focused          util.Pane
 	viewMode         util.ViewMode
 	error            util.ErrorEvent
@@ -205,6 +206,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sessionOrchestrator.ResponseProcessingState = util.Idle
 		m.error = msg
 		m.viewReady = true
+		m.controlsLocked = false
 		cmds = append(cmds, util.SendProcessingStateChangedMsg(util.Idle))
 
 	case checkDimensionsMsg:
@@ -229,6 +231,11 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.initialPrompt != "" && m.flags.StartNewSession {
 			cmds = append(cmds, util.SendPromptReadyMsg(m.initialPrompt, []util.Attachment{}))
 			m.initialPrompt = ""
+		}
+
+	case util.ProcessingStateChanged:
+		if msg.State == util.Idle {
+			m.controlsLocked = false
 		}
 
 	case util.AsyncDependencyReady:
@@ -357,6 +364,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Attachments: loadedAttachments,
 			})
 		m.viewMode = util.NormalMode
+		m.controlsLocked = true
 
 		m.setProcessingContext()
 		return m, tea.Sequence(
@@ -367,20 +375,26 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		targetPane := m.focused
 
-		switch {
-		case zone.Get("chat_pane").InBounds(msg):
-			targetPane = util.ChatPane
-		case zone.Get("prompt_pane").InBounds(msg):
-			targetPane = util.PromptPane
-		case zone.Get("settings_pane").InBounds(msg):
-			targetPane = util.SettingsPane
-		case zone.Get("sessions_pane").InBounds(msg):
-			targetPane = util.SessionsPane
+		if m.controlsLocked {
+			break
 		}
 
-		if targetPane != m.focused {
-			m.handleFocusChange(targetPane, true)
-			return m, nil
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			switch {
+			case zone.Get("chat_pane").InBounds(msg):
+				targetPane = util.ChatPane
+			case zone.Get("prompt_pane").InBounds(msg):
+				targetPane = util.PromptPane
+			case zone.Get("settings_pane").InBounds(msg):
+				targetPane = util.SettingsPane
+			case zone.Get("sessions_pane").InBounds(msg):
+				targetPane = util.SessionsPane
+			}
+
+			if targetPane != m.focused {
+				m.handleFocusChange(targetPane, true)
+				return m, nil
+			}
 		}
 
 	case tea.KeyMsg:
@@ -586,7 +600,7 @@ func mapAttachmentType(attachmentType string) string {
 	return ""
 }
 
-// TODO: use event to lock/unlock allowFocusChange flag
+// TODO: use event to lock/unlock allowFocusChange flag?
 func (m MainView) isFocusChangeAllowed(isMouseEvent bool) bool {
 	if !m.promptPane.AllowFocusChange(isMouseEvent) ||
 		!m.chatPane.AllowFocusChange(isMouseEvent) ||
