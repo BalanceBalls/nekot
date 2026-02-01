@@ -477,7 +477,7 @@ func (p SettingsPane) View() string {
 
 func (p SettingsPane) AllowFocusChange(isMouseEvent bool) bool {
 	if isMouseEvent {
-		return p.changeMode == inactive
+		return p.changeMode != systemPromptChange
 	}
 	return p.viewMode == defaultView && p.changeMode == inactive
 }

@@ -180,7 +180,7 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		p.isSessionIdle = !util.IsProcessingActive(msg.State)
 
 	case util.FocusEvent:
-		return p, p.handleFocusEvent(msg)
+		p.handleFocusEvent(msg)
 
 	case tea.WindowSizeMsg:
 		p.handleWindowSizeMsg(msg)
@@ -421,6 +421,10 @@ func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
 			p.filePicker, cmd = p.filePicker.Update(msg)
 			cmds = append(cmds, cmd)
 		}
+
+	}
+	if !p.isFocused && p.viewMode == util.FilePickerMode {
+		cmds = append(cmds, util.SendViewModeChangedMsg(util.NormalMode))
 	}
 
 	return tea.Batch(cmds...)
@@ -431,6 +435,8 @@ func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 	var cmds []tea.Cmd
 	if p.isFocused && p.inputMode == util.PromptInsertMode && p.isSessionIdle {
 		switch p.viewMode {
+		case util.FilePickerMode:
+			break
 		case util.TextEditMode:
 			p.textEditor, cmd = p.textEditor.Update(msg)
 		default:
@@ -453,21 +459,20 @@ func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (p *PromptPane) handleFocusEvent(msg util.FocusEvent) tea.Cmd {
+func (p *PromptPane) handleFocusEvent(msg util.FocusEvent) {
 	p.isFocused = msg.IsFocused
 
 	if p.isFocused {
 		p.inputMode = util.PromptNormalMode
 		p.inputContainer = p.inputContainer.BorderForeground(p.colors.ActiveTabBorderColor)
 		p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.ActiveTabBorderColor)
-	} else {
-		p.inputMode = util.PromptNormalMode
-		p.inputContainer = p.inputContainer.BorderForeground(p.colors.NormalTabBorderColor)
-		p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.NormalTabBorderColor)
-		p.input.Blur()
+		return
 	}
 
-	return nil
+	p.inputMode = util.PromptNormalMode
+	p.inputContainer = p.inputContainer.BorderForeground(p.colors.NormalTabBorderColor)
+	p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.NormalTabBorderColor)
+	p.input.Blur()
 }
 
 func (p *PromptPane) handleWindowSizeMsg(msg tea.WindowSizeMsg) tea.Cmd {
