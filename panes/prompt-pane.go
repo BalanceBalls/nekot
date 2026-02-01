@@ -273,7 +273,12 @@ func (p *PromptPane) keyExit() tea.Cmd {
 	switch p.viewMode {
 	case util.TextEditMode:
 		if !p.textEditor.Focused() {
+			if p.operation == util.SystemMessageEditing {
+				p.textEditor.SetValue("")
+			}
+
 			p.operation = util.NoOperaton
+
 			return util.SendViewModeChangedMsg(util.NormalMode)
 		}
 

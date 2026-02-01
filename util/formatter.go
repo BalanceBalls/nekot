@@ -337,11 +337,17 @@ func cleanContent(content string) string {
 	byWords := strings.Split(content, " ")
 
 	cleanedUpWords := []string{}
+	c1 := regexp.MustCompile("(?i)\ufe0f")
+	c2 := regexp.MustCompile("(?i)\ufe0e")
 
 	for _, word := range byWords {
-		word = strings.ReplaceAll(word, "\uFE0F", "\uFE0E")
-		if len(word) > 5 && strings.Contains(word, "\u00ad") {
-			cleanedUpWords = append(cleanedUpWords, strings.ReplaceAll(word, "\u00ad", ""))
+		word = c1.ReplaceAllString(word, "")
+		word = c2.ReplaceAllString(word, "")
+
+		if len(word) > 5 && (strings.Contains(word, "\u00ad") || strings.Contains(word, "\u200b")) {
+			word = strings.ReplaceAll(word, "\u00ad", "")
+			word = strings.ReplaceAll(word, "\u200b", "")
+			cleanedUpWords = append(cleanedUpWords, word)
 			continue
 		}
 		cleanedUpWords = append(cleanedUpWords, word)
@@ -362,6 +368,12 @@ func filterEmojis(content string) string {
 	content = strings.ReplaceAll(content, "8️⃣", "8")
 	content = strings.ReplaceAll(content, "9️⃣", "9")
 	content = strings.ReplaceAll(content, "🔟", "10")
+	content = strings.ReplaceAll(content, "🔟", "10")
+	content = strings.ReplaceAll(content, "✍️", "�")
+	content = strings.ReplaceAll(content, "🧘‍♂", "�")
+	content = strings.ReplaceAll(content, "🧘‍♀", "�")
 
 	return content
 }
+
+//│ that are easy to deploy. │ libraries, language │                          │ feature evolution, and │                          │ platform/​device │                          │ diversity. Runtime               │ Native static binaries,  │ Managed runtime
