@@ -431,9 +431,9 @@ func (p *ChatPane) enterSelectionMode() {
 
 func (p ChatPane) AllowFocusChange(isMouseEvent bool) bool {
 	if isMouseEvent {
-		return !p.selectionView.IsSelecting()
+		return true
 	}
-	return true
+	return !p.selectionView.IsSelecting()
 }
 
 func (p *ChatPane) DisplayCompletion(
