@@ -339,6 +339,7 @@ func cleanContent(content string) string {
 	cleanedUpWords := []string{}
 
 	for _, word := range byWords {
+		word = strings.ReplaceAll(word, "\uFE0F", "\uFE0E")
 		if len(word) > 5 && strings.Contains(word, "\u00ad") {
 			cleanedUpWords = append(cleanedUpWords, strings.ReplaceAll(word, "\u00ad", ""))
 			Slog.Debug("found non breaking space", "word", word, "fixed", strings.ReplaceAll(word, "\u00ad", ""))
