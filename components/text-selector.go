@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	HighlightPrefix = " +"
-	CursorSymbol    = "~"
+	HighlightPrefix     = " +"
+	CharHighlightPrefix = "ch"
+	CursorSymbol        = "~"
 )
 
 type keyMap struct {
@@ -60,18 +61,28 @@ type selection struct {
 	anchor cursor
 }
 
+type charSelection struct {
+	Active    bool
+	line      int
+	anchorCol int
+	cursorCol int
+}
+
 type TextSelector struct {
-	Selection      selection
-	lines          []string
-	cursor         cursor
-	scrollOffset   int
-	paneHeight     int
-	paneWidth      int
-	keys           keyMap
-	renderedText   string
-	colors         util.SchemeColors
-	mouseSelecting bool
-	mouseTopOffset int
+	Selection          selection
+	CharSelection      charSelection
+	lines              []string
+	cursor             cursor
+	scrollOffset       int
+	paneHeight         int
+	paneWidth          int
+	keys               keyMap
+	renderedText       string
+	colors             util.SchemeColors
+	mouseSelecting     bool
+	mouseSelectingChar bool
+	mouseTopOffset     int
+	mouseLeftOffset    int
 
 	numberLines int
 }
@@ -133,18 +144,34 @@ func (s TextSelector) Update(msg tea.Msg) (TextSelector, tea.Cmd) {
 				s.Selection.Active = true
 				s.Selection.anchor = s.cursor
 			}
+			s.CharSelection.Active = false
+			s.mouseSelectingChar = false
 
 		case key.Matches(msg, s.keys.copy):
-			if s.Selection.Active {
-				s.copySelectedLinesToClipboard(false)
+			if s.IsSelecting() {
+				if s.CharSelection.Active {
+					s.copySelectedCharsToClipboard(false)
+				} else {
+					s.copySelectedLinesToClipboard(false)
+				}
 				s.Selection.Active = false
+				s.CharSelection.Active = false
+				s.mouseSelecting = false
+				s.mouseSelectingChar = false
 				cmds = append(cmds, util.SendNotificationMsg(util.CopiedNotification))
 			}
 
 		case key.Matches(msg, s.keys.copyRaw):
-			if s.Selection.Active {
-				s.copySelectedLinesToClipboard(true)
+			if s.IsSelecting() {
+				if s.CharSelection.Active {
+					s.copySelectedCharsToClipboard(true)
+				} else {
+					s.copySelectedLinesToClipboard(true)
+				}
 				s.Selection.Active = false
+				s.CharSelection.Active = false
+				s.mouseSelecting = false
+				s.mouseSelectingChar = false
 				cmds = append(cmds, util.SendNotificationMsg(util.CopiedNotification))
 			}
 		}
@@ -185,6 +212,16 @@ func (s TextSelector) renderLines() string {
 		}
 	}
 
+	var charLine, charStartCol, charEndCol int
+	if s.CharSelection.Active {
+		charLine = s.CharSelection.line
+		charStartCol = s.CharSelection.anchorCol
+		charEndCol = s.CharSelection.cursorCol
+		if charStartCol > charEndCol {
+			charStartCol, charEndCol = charEndCol, charStartCol
+		}
+	}
+
 	// Use string builder for better performance
 	// Might need to look into this for other functions as well
 	var sb strings.Builder
@@ -206,12 +243,17 @@ func (s TextSelector) renderLines() string {
 		line := s.lines[i]
 
 		switch {
+		case s.CharSelection.Active && i == charLine:
+			sb.WriteString(highlightStyle.Render(CharHighlightPrefix))
+			sb.WriteString(s.highlightLineSegment(line, charStartCol, charEndCol, highlightStyle))
+			sb.WriteString("\n")
+
 		case s.Selection.Active && i >= startLine && i <= endLine:
 			sb.WriteString(highlightStyle.Render(HighlightPrefix))
 			sb.WriteString(line)
 			sb.WriteString("\n")
 
-		case !s.Selection.Active && i == s.cursor.line:
+		case !s.Selection.Active && !s.CharSelection.Active && i == s.cursor.line:
 			sb.WriteString(cursorStyle.Render(CursorSymbol))
 			sb.WriteString(line)
 			sb.WriteString("\n")
@@ -273,6 +315,11 @@ func (s TextSelector) handleMouseSelection(msg tea.MouseMsg) TextSelector {
 		return s
 	}
 
+	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonRight {
+		s.mouseSelectingChar = false
+		return s
+	}
+
 	if !zone.Get("chat_pane").InBounds(msg) {
 		return s
 	}
@@ -284,7 +331,7 @@ func (s TextSelector) handleMouseSelection(msg tea.MouseMsg) TextSelector {
 		}
 
 		s.scrollOffset = min(max(s.scrollOffset+delta, 0), s.maxScrollOffset())
-		if !s.Selection.Active && !s.mouseSelecting {
+		if !s.Selection.Active && !s.CharSelection.Active && !s.mouseSelecting && !s.mouseSelectingChar {
 			visibleStart := s.scrollOffset
 			visibleEnd := s.scrollOffset + s.paneHeight - 1
 			if s.cursor.line < visibleStart {
@@ -310,12 +357,31 @@ func (s TextSelector) handleMouseSelection(msg tea.MouseMsg) TextSelector {
 		s.cursor.line = line
 		s.Selection.Active = true
 		s.Selection.anchor = s.cursor
+		s.CharSelection.Active = false
 		s.mouseSelecting = true
+		s.mouseSelectingChar = false
+
+	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonRight:
+		line, scrollOffset := s.lineFromMouse(msg)
+		s.scrollOffset = scrollOffset
+		s.cursor.line = line
+		s.Selection.Active = false
+		s.mouseSelecting = false
+		s.CharSelection.Active = true
+		s.CharSelection.line = line
+		prefixWidth := lipgloss.Width(CharHighlightPrefix)
+		s.CharSelection.anchorCol = s.columnFromMouse(msg, s.lines[line], prefixWidth)
+		s.CharSelection.cursorCol = s.CharSelection.anchorCol
+		s.mouseSelectingChar = true
 
 	case msg.Action == tea.MouseActionMotion && s.mouseSelecting:
 		line, scrollOffset := s.lineFromMouse(msg)
 		s.scrollOffset = scrollOffset
 		s.cursor.line = line
+
+	case msg.Action == tea.MouseActionMotion && s.mouseSelectingChar:
+		prefixWidth := lipgloss.Width(CharHighlightPrefix)
+		s.CharSelection.cursorCol = s.columnFromMouse(msg, s.lines[s.CharSelection.line], prefixWidth)
 	}
 
 	return s
@@ -347,12 +413,52 @@ func (s TextSelector) lineFromMouse(msg tea.MouseMsg) (int, int) {
 	return line, scrollOffset
 }
 
+func (s TextSelector) columnFromMouse(msg tea.MouseMsg, line string, prefixWidth int) int {
+	mouseX, _ := zone.Get("chat_pane").Pos(msg)
+	contentX := max(mouseX-s.mouseLeftOffset-prefixWidth, 0)
+
+	visibleLine := util.StripAnsiCodes(line)
+	lineRunes := []rune(visibleLine)
+	if len(lineRunes) == 0 {
+		return 0
+	}
+
+	if contentX >= len(lineRunes) {
+		return len(lineRunes) - 1
+	}
+
+	return contentX
+}
+
 func (s TextSelector) maxScrollOffset() int {
 	maxOffset := s.lastLinePosition() - s.paneHeight + 1
 	if maxOffset < 0 {
 		return 0
 	}
 	return maxOffset
+}
+
+func (s TextSelector) highlightLineSegment(line string, startCol int, endCol int, highlightStyle lipgloss.Style) string {
+	visibleLine := util.StripAnsiCodes(line)
+	lineRunes := []rune(visibleLine)
+	if len(lineRunes) == 0 {
+		return visibleLine
+	}
+
+	if startCol > endCol {
+		startCol, endCol = endCol, startCol
+	}
+
+	startCol = max(startCol, 0)
+	endCol = max(endCol, 0)
+	startCol = min(startCol, len(lineRunes)-1)
+	endCol = min(endCol, len(lineRunes)-1)
+
+	before := string(lineRunes[:startCol])
+	selected := string(lineRunes[startCol : endCol+1])
+	after := string(lineRunes[endCol+1:])
+
+	return before + highlightStyle.Render(selected) + after
 }
 
 func (s TextSelector) handleLineJumps(keypress string, parsedNumber int) TextSelector {
@@ -395,6 +501,21 @@ func (s TextSelector) copySelectedLinesToClipboard(isRawCopy bool) {
 	clipboard.WriteAll(strings.Join(linesToCopy, joinSeparator))
 }
 
+func (s TextSelector) copySelectedCharsToClipboard(isRawCopy bool) {
+	if !s.CharSelection.Active {
+		return
+	}
+
+	selectedText := s.GetSelectedChars()
+	if isRawCopy {
+		selectedText = strings.TrimRightFunc(strings.TrimLeftFunc(selectedText, unicode.IsSpace), unicode.IsSpace)
+	} else {
+		selectedText = strings.TrimRight(selectedText, " ")
+	}
+
+	clipboard.WriteAll(selectedText)
+}
+
 func (s TextSelector) GetSelectedLines() []string {
 	var selectedLines []string
 	startLine := s.Selection.anchor.line
@@ -409,6 +530,46 @@ func (s TextSelector) GetSelectedLines() []string {
 	return selectedLines
 }
 
+func (s TextSelector) GetSelectedChars() string {
+	if !s.CharSelection.Active {
+		return ""
+	}
+
+	if s.CharSelection.line < 0 || s.CharSelection.line >= len(s.lines) {
+		return ""
+	}
+
+	visibleLine := util.StripAnsiCodes(s.lines[s.CharSelection.line])
+	lineRunes := []rune(visibleLine)
+	if len(lineRunes) == 0 {
+		return ""
+	}
+
+	startCol, endCol := s.charSelectionRange(len(lineRunes))
+	selected := string(lineRunes[startCol:endCol])
+
+	return filterLine(selected)
+}
+
+func (s TextSelector) charSelectionRange(lineLength int) (int, int) {
+	if lineLength <= 0 {
+		return 0, 0
+	}
+
+	startCol := s.CharSelection.anchorCol
+	endCol := s.CharSelection.cursorCol
+	if startCol > endCol {
+		startCol, endCol = endCol, startCol
+	}
+
+	startCol = max(startCol, 0)
+	endCol = max(endCol, 0)
+	startCol = min(startCol, lineLength-1)
+	endCol = min(endCol, lineLength-1)
+
+	return startCol, endCol + 1
+}
+
 func filterLine(line string) string {
 	line = strings.ReplaceAll(line, "🤖", "")
 	line = strings.ReplaceAll(line, "💁", "")
@@ -417,21 +578,39 @@ func filterLine(line string) string {
 
 func (s *TextSelector) Reset() {
 	s.Selection.Active = false
+	s.CharSelection.Active = false
 	s.mouseSelecting = false
+	s.mouseSelectingChar = false
 }
 
 func (s TextSelector) IsSelecting() bool {
-	return s.Selection.Active
+	return s.Selection.Active || s.CharSelection.Active
+}
+
+func (s TextSelector) IsCharSelecting() bool {
+	return s.CharSelection.Active
 }
 
 func (s TextSelector) LinesSelected() int {
+	if s.CharSelection.Active {
+		return 1
+	}
 	return len(s.GetSelectedLines())
+}
+
+func (s TextSelector) SelectedCharCount() int {
+	if !s.CharSelection.Active {
+		return 0
+	}
+
+	return len([]rune(s.GetSelectedChars()))
 }
 
 func NewTextSelector(
 	w, h int,
 	scrollPos int,
 	mouseTopOffset int,
+	mouseLeftOffset int,
 	sessionData string,
 	colors util.SchemeColors,
 ) TextSelector {
@@ -449,18 +628,21 @@ func NewTextSelector(
 	}
 
 	state := TextSelector{
-		lines:          lines,
-		cursor:         cursor{line: pos},
-		Selection:      selection{Active: false},
-		scrollOffset:   scrollPos,
-		paneHeight:     viewHeight,
-		paneWidth:      viewWidth,
-		keys:           defaultKeyMap,
-		renderedText:   sessionData,
-		numberLines:    0,
-		colors:         colors,
-		mouseTopOffset: mouseTopOffset,
-		mouseSelecting: false,
+		lines:              lines,
+		cursor:             cursor{line: pos},
+		Selection:          selection{Active: false},
+		CharSelection:      charSelection{Active: false},
+		scrollOffset:       scrollPos,
+		paneHeight:         viewHeight,
+		paneWidth:          viewWidth,
+		keys:               defaultKeyMap,
+		renderedText:       sessionData,
+		numberLines:        0,
+		colors:             colors,
+		mouseTopOffset:     mouseTopOffset,
+		mouseLeftOffset:    mouseLeftOffset,
+		mouseSelecting:     false,
+		mouseSelectingChar: false,
 	}
 
 	return state

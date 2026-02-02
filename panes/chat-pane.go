@@ -307,6 +307,12 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		p = p.handleWindowResize(msg.Width, msg.Height)
 
 	case tea.MouseMsg:
+		if p.IsSelectionMode() && p.selectionView.IsCharSelecting() {
+			if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+				return p, nil
+			}
+		}
+
 		if msg.Button == tea.MouseButtonWheelUp && p.isChatContainerFocused {
 			p.chatView.ScrollUp(3)
 			return p, nil
@@ -322,6 +328,15 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 		}
 
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if !p.IsSelectionMode() && len(p.sessionContent) > 0 {
+				p.enterSelectionMode()
+				enableUpdateOfViewport = false
+				p.selectionView, cmd = p.selectionView.Update(msg)
+				return p, tea.Batch(cmds...)
+			}
+		}
+
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonRight {
 			if !p.IsSelectionMode() && len(p.sessionContent) > 0 {
 				p.enterSelectionMode()
 				enableUpdateOfViewport = false
@@ -419,11 +434,13 @@ func (p *ChatPane) enterSelectionMode() {
 		p.colors,
 		p.currentSettings)
 	mouseTopOffset := p.chatContainer.GetMarginTop() + p.chatContainer.GetBorderTopSize() + p.chatContainer.GetPaddingTop()
+	mouseLeftOffset := p.chatContainer.GetMarginLeft() + p.chatContainer.GetBorderLeftSize() + p.chatContainer.GetPaddingLeft()
 	p.selectionView = components.NewTextSelector(
 		p.terminalWidth,
 		p.terminalHeight,
 		p.chatView.YOffset,
 		mouseTopOffset,
+		mouseLeftOffset,
 		renderedContent,
 		p.colors)
 	p.selectionView.AdjustScroll()
@@ -543,9 +560,18 @@ func (p ChatPane) renderInfoRow() string {
 }
 
 func (p ChatPane) renderSelectionViewInfoRow() string {
-
 	info := ""
-	if p.selectionView.IsSelecting() {
+	if p.selectionView.IsCharSelecting() {
+		charsSelected := p.selectionView.SelectedCharCount()
+		charsWord := "chars"
+		if charsSelected == 1 {
+			charsWord = "char"
+		}
+
+		info += fmt.Sprintf("▐ Selected [%d %s]", charsSelected, charsWord)
+		info += "  | `r` to copy raw • `y` to copy with formatting"
+
+	} else if p.selectionView.IsSelecting() {
 		linesSelected := p.selectionView.GetSelectedLines()
 		linesWord := "lines"
 		if len(linesSelected) == 1 {
