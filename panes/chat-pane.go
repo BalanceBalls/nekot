@@ -332,6 +332,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 				p.enterSelectionMode()
 				enableUpdateOfViewport = false
 				p.selectionView, cmd = p.selectionView.Update(msg)
+				cmds = append(cmds, cmd)
 				return p, tea.Batch(cmds...)
 			}
 		}
@@ -341,6 +342,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 				p.enterSelectionMode()
 				enableUpdateOfViewport = false
 				p.selectionView, cmd = p.selectionView.Update(msg)
+				cmds = append(cmds, cmd)
 				return p, tea.Batch(cmds...)
 			}
 		}

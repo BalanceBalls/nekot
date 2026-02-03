@@ -141,17 +141,20 @@ func (l PresetsList) Update(msg tea.Msg) (PresetsList, tea.Cmd) {
 			if preset.PresetId != l.currentPresetId && preset.PresetId != util.DefaultSettingsId {
 				l.showConfirmation()
 			}
+			return l, cmd
 		case "y":
 			if !l.confirmationActive {
 				break
 			}
 			l.removePreset()
 			l.hideConfirmation()
+			return l, cmd
 		case "n":
 			if !l.confirmationActive {
 				break
 			}
 			l.hideConfirmation()
+			return l, cmd
 		default:
 			if l.confirmationActive {
 				return l, cmd
