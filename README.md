@@ -6,7 +6,7 @@
 
 **A powerful and intuitive terminal utility for interacting with both local and cloud LLMs.**
 
-A tool for those who appreciate keyboard driven apps and terminal workflows
+A tool for those who appreciate keyboard driven apps and terminal workflows (*mouse works too btw*)
 
 </p>
 
@@ -30,6 +30,8 @@ A tool for those who appreciate keyboard driven apps and terminal workflows
 ## App installation
 
 **Ensure API keys are set before proceeding to installtion**
+
+> A good terminal with GPU acceleration is recommended (the app is mostly tested on [Ghostty](https://ghostty.org/))
 
 ### Homebrew (MacOS, Linux)
 
@@ -260,6 +262,12 @@ nekot -n
 
 ### Selection mode
 
+#### Mouse controls
+ * `Left mouse button` to enter line selection mode. Click `left` mouse button to enter selection mode, then hold `left` mouse button to select lines
+
+ * `Right mouse button` to enter character selection mode (within a line). Click `right` mouse button to enter selection mode, then hold `right` mouse button to select text
+
+#### Keyboard controls
 Selection mode allows to navigate the chat pane and select lines to copy. Supports basic vim-motions.
 
 <b>Navigation</b>

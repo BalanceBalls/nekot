@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rivo/uniseg"
 )
 
 func GetMessagesAsPrettyString(
@@ -357,7 +359,6 @@ func cleanContent(content string) string {
 }
 
 func filterEmojis(content string) string {
-	// TODO: maybe use some kind of regexp for this
 	content = strings.ReplaceAll(content, "0️⃣", "0")
 	content = strings.ReplaceAll(content, "1️⃣", "1")
 	content = strings.ReplaceAll(content, "2️⃣", "2")
@@ -372,8 +373,26 @@ func filterEmojis(content string) string {
 	content = strings.ReplaceAll(content, "#️⃣", "#")
 	content = strings.ReplaceAll(content, "*️⃣", "*")
 	content = strings.ReplaceAll(content, "✍️", "�")
-	content = strings.ReplaceAll(content, "🧘‍♂", "�")
-	content = strings.ReplaceAll(content, "🧘‍♀", "�")
+
+	content = removeZWJEmojis(content)
 
 	return content
+}
+
+func removeZWJEmojis(input string) string {
+	var sb strings.Builder
+	gr := uniseg.NewGraphemes(input)
+
+	for gr.Next() {
+		runes := gr.Runes()
+		hasZWJ := slices.Contains(runes, '\u200D')
+
+		if !hasZWJ {
+			sb.WriteString(gr.Str())
+		} else {
+			sb.WriteString("�")
+		}
+	}
+
+	return sb.String()
 }
