@@ -429,7 +429,7 @@ func (p *ChatPane) enterSelectionMode() {
 	}
 
 	p.displayMode = selectionMode
-	p.chatContainer.BorderForeground(p.colors.AccentColor)
+	p.chatContainer = p.chatContainer.BorderForeground(p.colors.AccentColor)
 	renderedContent := util.GetVisualModeView(
 		p.sessionContent,
 		p.chatView.Width,
