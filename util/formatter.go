@@ -375,8 +375,18 @@ func filterEmojis(content string) string {
 	content = strings.ReplaceAll(content, "✍️", "�")
 
 	content = removeZWJEmojis(content)
+	content = removeSkinTones(content)
 
 	return content
+}
+
+func removeSkinTones(input string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 0x1F3FB && r <= 0x1F3FF {
+			return -1
+		}
+		return r
+	}, input)
 }
 
 func removeZWJEmojis(input string) string {
