@@ -49,6 +49,10 @@ __`2` to focus on the manual (pane)__
 `Shift+G` Scroll to bottom
  <!------->
 `space` Enter line navigation mode
+ <!------->
+`Mouse left` select lines to copy
+ <!------->
+`Mouse right` select chars to copy
 
 # Navigation mode keybindings
 

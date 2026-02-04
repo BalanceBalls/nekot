@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rivo/uniseg"
 )
 
 func GetMessagesAsPrettyString(
@@ -184,7 +186,7 @@ func RenderBotMessage(
 		modelName = "**[" + msg.Model + "]**\n"
 	}
 
-	content = CleanContent(content)
+	content = cleanContent(content)
 
 	if isVisualMode {
 		content = icon + content
@@ -265,7 +267,7 @@ func RenderToolCall(
 		content += toolData
 	}
 
-	content = CleanContent(content)
+	content = cleanContent(content)
 
 	if isVisualMode {
 		userMsg, _ := renderer.Render(content)
@@ -332,19 +334,75 @@ func StripAnsiCodes(str string) string {
 	return ansiRegex.ReplaceAllString(str, "")
 }
 
-func CleanContent(content string) string {
+func cleanContent(content string) string {
+	content = filterEmojis(content)
 	byWords := strings.Split(content, " ")
 
 	cleanedUpWords := []string{}
+	c1 := regexp.MustCompile("(?i)\ufe0f")
+	c2 := regexp.MustCompile("(?i)\ufe0e")
 
 	for _, word := range byWords {
-		if len(word) > 5 && strings.Contains(word, "\u00ad") {
-			cleanedUpWords = append(cleanedUpWords, strings.ReplaceAll(word, "\u00ad", ""))
-			Slog.Debug("found non breaking space", "word", word, "fixed", strings.ReplaceAll(word, "\u00ad", ""))
+		word = c1.ReplaceAllString(word, "")
+		word = c2.ReplaceAllString(word, "")
+
+		if len(word) > 5 && (strings.Contains(word, "\u00ad") || strings.Contains(word, "\u200b")) {
+			word = strings.ReplaceAll(word, "\u00ad", "")
+			word = strings.ReplaceAll(word, "\u200b", "")
+			cleanedUpWords = append(cleanedUpWords, word)
 			continue
 		}
 		cleanedUpWords = append(cleanedUpWords, word)
 	}
 
 	return strings.Join(cleanedUpWords, " ")
+}
+
+func filterEmojis(content string) string {
+	content = strings.ReplaceAll(content, "0️⃣", "0")
+	content = strings.ReplaceAll(content, "1️⃣", "1")
+	content = strings.ReplaceAll(content, "2️⃣", "2")
+	content = strings.ReplaceAll(content, "3️⃣", "3")
+	content = strings.ReplaceAll(content, "4️⃣", "4")
+	content = strings.ReplaceAll(content, "5️⃣", "5")
+	content = strings.ReplaceAll(content, "6️⃣", "6")
+	content = strings.ReplaceAll(content, "7️⃣", "7")
+	content = strings.ReplaceAll(content, "8️⃣", "8")
+	content = strings.ReplaceAll(content, "9️⃣", "9")
+	content = strings.ReplaceAll(content, "🔟", "10")
+	content = strings.ReplaceAll(content, "#️⃣", "#")
+	content = strings.ReplaceAll(content, "*️⃣", "*")
+	content = strings.ReplaceAll(content, "✍️", "�")
+
+	content = removeZWJEmojis(content)
+	content = removeSkinTones(content)
+
+	return content
+}
+
+func removeSkinTones(input string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 0x1F3FB && r <= 0x1F3FF {
+			return -1
+		}
+		return r
+	}, input)
+}
+
+func removeZWJEmojis(input string) string {
+	var sb strings.Builder
+	gr := uniseg.NewGraphemes(input)
+
+	for gr.Next() {
+		runes := gr.Runes()
+		hasZWJ := slices.Contains(runes, '\u200D')
+
+		if !hasZWJ {
+			sb.WriteString(gr.Str())
+		} else {
+			sb.WriteString("�")
+		}
+	}
+
+	return sb.String()
 }

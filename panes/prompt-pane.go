@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 const ResponseWaitingMsg = "> Please wait ..."
@@ -179,10 +180,18 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		p.isSessionIdle = !util.IsProcessingActive(msg.State)
 
 	case util.FocusEvent:
-		return p, p.handleFocusEvent(msg)
+		p.handleFocusEvent(msg)
 
 	case tea.WindowSizeMsg:
 		p.handleWindowSizeMsg(msg)
+
+	case tea.MouseMsg:
+		if !zone.Get("prompt_pane").InBounds(msg) || !p.isFocused {
+			break
+		}
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			cmds = append(cmds, p.keyInsert())
+		}
 
 	case tea.KeyMsg:
 		if !p.ready {
@@ -261,7 +270,12 @@ func (p *PromptPane) keyExit() tea.Cmd {
 	switch p.viewMode {
 	case util.TextEditMode:
 		if !p.textEditor.Focused() {
+			if p.operation == util.SystemMessageEditing {
+				p.textEditor.SetValue("")
+			}
+
 			p.operation = util.NoOperaton
+
 			return util.SendViewModeChangedMsg(util.NormalMode)
 		}
 
@@ -310,9 +324,7 @@ func (p *PromptPane) keyEnter() tea.Cmd {
 			return tea.Batch(
 				util.UpdateSystemPrompt(promptText),
 				util.SendViewModeChangedMsg(util.NormalMode),
-				func() tea.Msg {
-					return util.SwitchToPaneMsg{Target: util.SettingsPane}
-				},
+				util.SwitchToPane(util.SettingsPane),
 			)
 		}
 
@@ -409,6 +421,10 @@ func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
 			p.filePicker, cmd = p.filePicker.Update(msg)
 			cmds = append(cmds, cmd)
 		}
+
+	}
+	if !p.isFocused && p.viewMode == util.FilePickerMode {
+		cmds = append(cmds, util.SendViewModeChangedMsg(util.NormalMode))
 	}
 
 	return tea.Batch(cmds...)
@@ -419,6 +435,8 @@ func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 	var cmds []tea.Cmd
 	if p.isFocused && p.inputMode == util.PromptInsertMode && p.isSessionIdle {
 		switch p.viewMode {
+		case util.FilePickerMode:
+			break
 		case util.TextEditMode:
 			p.textEditor, cmd = p.textEditor.Update(msg)
 		default:
@@ -441,21 +459,20 @@ func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (p *PromptPane) handleFocusEvent(msg util.FocusEvent) tea.Cmd {
+func (p *PromptPane) handleFocusEvent(msg util.FocusEvent) {
 	p.isFocused = msg.IsFocused
 
 	if p.isFocused {
 		p.inputMode = util.PromptNormalMode
 		p.inputContainer = p.inputContainer.BorderForeground(p.colors.ActiveTabBorderColor)
 		p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.ActiveTabBorderColor)
-	} else {
-		p.inputMode = util.PromptNormalMode
-		p.inputContainer = p.inputContainer.BorderForeground(p.colors.NormalTabBorderColor)
-		p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.NormalTabBorderColor)
-		p.input.Blur()
+		return
 	}
 
-	return nil
+	p.inputMode = util.PromptNormalMode
+	p.inputContainer = p.inputContainer.BorderForeground(p.colors.NormalTabBorderColor)
+	p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.NormalTabBorderColor)
+	p.input.Blur()
 }
 
 func (p *PromptPane) handleWindowSizeMsg(msg tea.WindowSizeMsg) tea.Cmd {
@@ -491,7 +508,7 @@ func (p *PromptPane) handleViewModeChange(msg util.ViewModeChanged) tea.Cmd {
 
 	switch p.viewMode {
 	case util.TextEditMode:
-		cmd = p.openTextEditor(currentInput, util.NoOperaton, false)
+		cmd = p.openTextEditor(currentInput, p.operation, false)
 
 	case util.FilePickerMode:
 		cmd = p.openFilePicker(prevMode, currentInput)
@@ -634,16 +651,20 @@ func (p *PromptPane) insertBufferContentAsCodeBlock() {
 	p.textEditor.SetCursor(0)
 }
 
-func (p PromptPane) AllowFocusChange() bool {
+func (p PromptPane) AllowFocusChange(isMouseEvent bool) bool {
+	if p.operation == util.SystemMessageEditing {
+		return false
+	}
+
+	if isMouseEvent {
+		return true
+	}
+
 	if p.isFocused && p.inputMode == util.PromptInsertMode {
 		return false
 	}
 
 	if p.isFocused && p.viewMode == util.FilePickerMode {
-		return false
-	}
-
-	if p.operation == util.SystemMessageEditing {
 		return false
 	}
 
@@ -684,11 +705,11 @@ func (p PromptPane) View() string {
 			infoBlockContent = infoLabel.Render("Editing system prompt")
 		}
 
-		return lipgloss.JoinVertical(lipgloss.Left,
+		return zone.Mark("prompt_pane", lipgloss.JoinVertical(lipgloss.Left,
 			p.inputContainer.Render(content),
 			infoBlockStyle.Render(infoBlockContent),
-		)
+		))
 	}
 
-	return p.inputContainer.Render(ResponseWaitingMsg)
+	return zone.Mark("prompt_pane", p.inputContainer.Render(ResponseWaitingMsg))
 }

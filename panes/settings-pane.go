@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 type settingsViewMode int
@@ -89,6 +90,14 @@ var defaultSettingsKeyMap = settingsKeyMap{
 	),
 }
 
+var headingToChangeMode = map[string]settingsChangeMode{
+	"(m) model":       inactive,
+	"(t) max_tokens":  maxTokensChange,
+	"(e) temperature": tempChange,
+	"(f) frequency":   frequencyChange,
+	"(p) top_p":       topPChange,
+}
+
 type SettingsPane struct {
 	terminalWidth   int
 	terminalHeight  int
@@ -131,6 +140,9 @@ var commandTips = lipgloss.NewStyle()
 var listItemHeading = lipgloss.NewStyle().
 	PaddingLeft(util.ListItemPaddingLeft)
 
+var listItemHeadingActive = lipgloss.NewStyle().
+	PaddingLeft(util.ListItemPaddingLeft)
+
 var presetItemHeading = lipgloss.NewStyle().
 	PaddingLeft(util.ListItemPaddingLeft).
 	Bold(true)
@@ -140,6 +152,9 @@ var spinnerStyle = lipgloss.NewStyle()
 
 func (p SettingsPane) listItemRenderer(heading string, value string) string {
 	headingEl := listItemHeading.Render
+	if val, ok := headingToChangeMode[heading]; ok && val != inactive && p.changeMode == val {
+		headingEl = listItemHeadingActive.Render
+	}
 	spanEl := listItemSpan.Foreground(p.colors.DefaultTextColor).Render
 
 	return headingEl(util.ListHeadingDot+" "+heading, spanEl(value))
@@ -177,6 +192,7 @@ func NewSettingsPane(db *sql.DB, ctx context.Context) SettingsPane {
 	colors := config.ColorScheme.GetColors()
 	listItemSpan = listItemSpan.Foreground(colors.DefaultTextColor)
 	listItemHeading = listItemHeading.Foreground(colors.MainColor)
+	listItemHeadingActive = listItemHeading.Foreground(colors.HighlightColor)
 	presetItemHeading = presetItemHeading.Foreground(colors.AccentColor)
 	activeHeader = activeHeader.Foreground(colors.DefaultTextColor).
 		BorderForeground(colors.DefaultTextColor)
@@ -213,6 +229,12 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	if p.changeMode != inactive {
+		if !p.isFocused {
+			p.viewMode = defaultView
+			p.changeMode = inactive
+			return p, nil
+		}
+
 		beforeChange := p.textInput.Value()
 		p.textInput, cmd = p.textInput.Update(msg)
 		if p.textInput.Err != nil {
@@ -279,6 +301,26 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		p.loading = false
 		p.viewMode = modelsView
 		p.updateModelsList(msg.Models)
+		return p, nil
+
+	case tea.MouseMsg:
+		if !p.isFocused {
+			break
+		}
+
+		if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
+			switch p.viewMode {
+			case defaultView:
+				cmd = p.handleViewModeMouse(msg)
+				cmds = append(cmds, cmd)
+			case modelsView:
+				cmd = p.handleModelModeMouse(msg)
+				cmds = append(cmds, cmd)
+			case presetsView:
+				cmd = p.handlePresetModeMouse(msg)
+				cmds = append(cmds, cmd)
+			}
+		}
 
 	case tea.KeyMsg:
 		if p.initMode {
@@ -334,29 +376,29 @@ func (p SettingsPane) View() string {
 	w, h := util.CalcSettingsPaneSize(p.terminalWidth, p.terminalHeight)
 	defaultHeader := lipgloss.JoinHorizontal(
 		lipgloss.Left,
-		activeHeader.Render("[Settings]"),
-		inactiveHeader.Render("Presets"),
+		zone.Mark("set_p_settings_tab", activeHeader.Render("[Settings]")),
+		zone.Mark("set_p_presets_tab", inactiveHeader.Render("Presets")),
 	)
 	if p.viewMode == modelsView {
-		return p.container.Width(w).Render(
+		return zone.Mark("settings_pane", p.container.Width(w).Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				defaultHeader,
 				p.modelPicker.View(),
 			),
-		)
+		))
 	}
 
 	if p.viewMode == presetsView {
-		return p.container.Width(w).Render(
+		return zone.Mark("settings_pane", p.container.Width(w).Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				lipgloss.JoinHorizontal(
 					lipgloss.Left,
-					inactiveHeader.Render("Settings"),
-					activeHeader.Render("[Presets]"),
+					zone.Mark("set_p_settings_tab", inactiveHeader.Render("Settings")),
+					zone.Mark("set_p_presets_tab", activeHeader.Render("[Presets]")),
 				),
 				p.presetPicker.View(),
 			),
-		)
+		))
 	}
 
 	editForm := ""
@@ -413,24 +455,29 @@ func (p SettingsPane) View() string {
 		borderColor = p.colors.ActiveTabBorderColor
 	}
 
-	return p.container.Width(w).BorderForeground(borderColor).Render(
+	rendered := p.container.Width(w).BorderForeground(borderColor).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
 			defaultHeader,
 			lipgloss.NewStyle().Height(listItemsHeight).Render(
 				lipgloss.JoinVertical(lipgloss.Left,
-					p.presetItemRenderer(p.settings.PresetName),
-					modelRowContent,
-					p.listItemRenderer("(t) max_tokens", fmt.Sprint(p.settings.MaxTokens)),
-					p.listItemRenderer("(e) temperature", temp),
-					p.listItemRenderer("(f) frequency", frequency),
-					p.listItemRenderer("(p) top_p", top_p),
+					zone.Mark("set_p_preset_item", p.presetItemRenderer(p.settings.PresetName)),
+					zone.Mark("models_list", modelRowContent),
+					zone.Mark("max_tokens", p.listItemRenderer("(t) max_tokens", fmt.Sprint(p.settings.MaxTokens))),
+					zone.Mark("temperature", p.listItemRenderer("(e) temperature", temp)),
+					zone.Mark("frequency", p.listItemRenderer("(f) frequency", frequency)),
+					zone.Mark("top_p", p.listItemRenderer("(p) top_p", top_p)),
 				),
 			),
 			lowerRows,
 		),
 	)
+
+	return zone.Mark("settings_pane", rendered)
 }
 
-func (p SettingsPane) AllowFocusChange() bool {
+func (p SettingsPane) AllowFocusChange(isMouseEvent bool) bool {
+	if isMouseEvent {
+		return p.changeMode != systemPromptChange
+	}
 	return p.viewMode == defaultView && p.changeMode == inactive
 }

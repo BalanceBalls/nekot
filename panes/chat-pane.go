@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 type displayMode int
@@ -111,7 +112,6 @@ var infoBarStyle = lipgloss.NewStyle().
 
 func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	chatView := viewport.New(w, h)
-	chatView.HighPerformanceRendering = true
 	msgChan := make(chan util.ProcessApiCompletionResponse)
 
 	config, ok := config.FromContext(ctx)
@@ -306,6 +306,47 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		p = p.handleWindowResize(msg.Width, msg.Height)
 
+	case tea.MouseMsg:
+		if p.IsSelectionMode() && p.selectionView.IsCharSelecting() {
+			if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+				return p, nil
+			}
+		}
+
+		if msg.Button == tea.MouseButtonWheelUp && p.isChatContainerFocused {
+			p.chatView.ScrollUp(3)
+			return p, nil
+		}
+
+		if msg.Button == tea.MouseButtonWheelDown && p.isChatContainerFocused {
+			p.chatView.ScrollDown(3)
+			return p, nil
+		}
+
+		if !p.isChatContainerFocused {
+			break
+		}
+
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if !p.IsSelectionMode() && len(p.sessionContent) > 0 {
+				p.enterSelectionMode()
+				enableUpdateOfViewport = false
+				p.selectionView, cmd = p.selectionView.Update(msg)
+				cmds = append(cmds, cmd)
+				return p, tea.Batch(cmds...)
+			}
+		}
+
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonRight {
+			if !p.IsSelectionMode() && len(p.sessionContent) > 0 {
+				p.enterSelectionMode()
+				enableUpdateOfViewport = false
+				p.selectionView, cmd = p.selectionView.Update(msg)
+				cmds = append(cmds, cmd)
+				return p, tea.Batch(cmds...)
+			}
+		}
+
 	case tea.KeyMsg:
 		if !p.isChatContainerFocused {
 			enableUpdateOfViewport = false
@@ -339,21 +380,8 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			if !p.isChatContainerFocused || len(p.sessionContent) == 0 {
 				break
 			}
-			p.displayMode = selectionMode
+			p.enterSelectionMode()
 			enableUpdateOfViewport = false
-			p.chatContainer.BorderForeground(p.colors.AccentColor)
-			renderedContent := util.GetVisualModeView(
-				p.sessionContent,
-				p.chatView.Width,
-				p.colors,
-				p.currentSettings)
-			p.selectionView = components.NewTextSelector(
-				p.terminalWidth,
-				p.terminalHeight,
-				p.chatView.YOffset,
-				renderedContent,
-				p.colors)
-			p.selectionView.AdjustScroll()
 
 		case key.Matches(msg, p.keyMap.copyLast):
 			if p.isChatContainerFocused {
@@ -395,7 +423,35 @@ func (p ChatPane) IsSelectionMode() bool {
 	return p.displayMode == selectionMode
 }
 
-func (p ChatPane) AllowFocusChange() bool {
+func (p *ChatPane) enterSelectionMode() {
+	if len(p.sessionContent) == 0 {
+		return
+	}
+
+	p.displayMode = selectionMode
+	p.chatContainer = p.chatContainer.BorderForeground(p.colors.AccentColor)
+	renderedContent := util.GetVisualModeView(
+		p.sessionContent,
+		p.chatView.Width,
+		p.colors,
+		p.currentSettings)
+	mouseTopOffset := p.chatContainer.GetMarginTop() + p.chatContainer.GetBorderTopSize() + p.chatContainer.GetPaddingTop()
+	mouseLeftOffset := p.chatContainer.GetMarginLeft() + p.chatContainer.GetBorderLeftSize() + p.chatContainer.GetPaddingLeft()
+	p.selectionView = components.NewTextSelector(
+		p.terminalWidth,
+		p.terminalHeight,
+		p.chatView.YOffset,
+		mouseTopOffset,
+		mouseLeftOffset,
+		renderedContent,
+		p.colors)
+	p.selectionView.AdjustScroll()
+}
+
+func (p ChatPane) AllowFocusChange(isMouseEvent bool) bool {
+	if isMouseEvent {
+		return true
+	}
 	return !p.selectionView.IsSelecting()
 }
 
@@ -437,7 +493,12 @@ func (p *ChatPane) ResumeCompletion(
 
 func (p ChatPane) View() string {
 	if p.IsSelectionMode() {
-		return p.chatContainer.Render(p.selectionView.View())
+		infoRow := p.renderSelectionViewInfoRow()
+		selectionView := p.selectionView.View()
+
+		infoRowStyle := lipgloss.NewStyle().MarginTop(p.chatContainer.GetHeight() - lipgloss.Height(selectionView) - 2)
+		content := lipgloss.JoinVertical(lipgloss.Left, selectionView, infoRowStyle.Render(infoRow))
+		return zone.Mark("chat_pane", p.chatContainer.Render(content))
 	}
 
 	viewportContent := p.chatView.View()
@@ -447,12 +508,12 @@ func (p ChatPane) View() string {
 	}
 
 	if len(p.sessionContent) == 0 {
-		return p.chatContainer.BorderForeground(borderColor).Render(viewportContent)
+		return zone.Mark("chat_pane", p.chatContainer.BorderForeground(borderColor).Render(viewportContent))
 	}
 
 	infoRow := p.renderInfoRow()
 	content := lipgloss.JoinVertical(lipgloss.Left, viewportContent, infoRow)
-	return p.chatContainer.BorderForeground(borderColor).Render(content)
+	return zone.Mark("chat_pane", p.chatContainer.BorderForeground(borderColor).Render(content))
 }
 
 func (p ChatPane) DisplayError(error string) string {
@@ -500,10 +561,42 @@ func (p ChatPane) renderInfoRow() string {
 	return infoBar
 }
 
+func (p ChatPane) renderSelectionViewInfoRow() string {
+	info := ""
+	if p.selectionView.IsCharSelecting() {
+		charsSelected := p.selectionView.SelectedCharCount()
+		charsWord := "chars"
+		if charsSelected == 1 {
+			charsWord = "char"
+		}
+
+		info += fmt.Sprintf("▐ Selected [%d %s]", charsSelected, charsWord)
+		info += "  | `r` to copy raw • `y` to copy with formatting"
+
+	} else if p.selectionView.IsSelecting() {
+		linesSelected := p.selectionView.GetSelectedLines()
+		linesWord := "lines"
+		if len(linesSelected) == 1 {
+			linesWord = "line"
+		}
+
+		info += fmt.Sprintf("▐ Selected [%d %s]", len(linesSelected), linesWord)
+		info += "  | `r` to copy raw • `y` to copy with formatting"
+
+	} else {
+		info += "▐ Press 'space' to start selecting"
+	}
+
+	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
+	return infoBar
+}
+
 func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 	paneWidth, paneHeight := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 	if !p.isChatPaneReady {
 		p.chatView = viewport.New(paneWidth, paneHeight-2)
+		p.chatView.MouseWheelEnabled = false
+
 		p.isChatPaneReady = true
 	}
 

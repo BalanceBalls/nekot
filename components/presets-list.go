@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 type PresetsList struct {
@@ -26,11 +27,12 @@ var presetItemSpanSelected = lipgloss.NewStyle().
 	PaddingLeft(util.ListItemPaddingLeft)
 
 type PresetsListItem struct {
-	Id   int
-	Text string
+	Id       string
+	PresetId int
+	Text     string
 }
 
-func (i PresetsListItem) FilterValue() string { return i.Text }
+func (i PresetsListItem) FilterValue() string { return zone.Mark(i.Id, i.Text) }
 
 type presetsItemDelegate struct{}
 
@@ -45,6 +47,7 @@ func (d presetsItemDelegate) Render(w io.Writer, m list.Model, index int, listIt
 
 	str := fmt.Sprintf("%d. %s", index+1, i.Text)
 	str = util.TrimListItem(str, m.Width())
+	str = zone.Mark(i.Id, str)
 
 	fn := listItemSpan.Render
 	if index == m.Index() {
@@ -77,6 +80,10 @@ func (l *PresetsList) GetSelectedItem() (PresetsListItem, bool) {
 	return item, ok
 }
 
+func (l PresetsList) VisibleItems() []list.Item {
+	return l.list.VisibleItems()
+}
+
 func (l PresetsList) IsFiltering() bool {
 	return l.list.SettingFilter()
 }
@@ -102,7 +109,7 @@ func (l *PresetsList) showConfirmation() {
 
 func (l *PresetsList) removePreset() {
 	preset, idx := l.getCurrentPreset()
-	err := l.service.RemovePreset(preset.Id)
+	err := l.service.RemovePreset(preset.PresetId)
 	if err != nil {
 		util.Slog.Error("failed to remove a preset", "error", err.Error())
 		return
@@ -114,25 +121,40 @@ func (l PresetsList) Update(msg tea.Msg) (PresetsList, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+
+	case tea.MouseMsg:
+		if msg.Button == tea.MouseButtonWheelUp {
+			l.list.CursorUp()
+			return l, nil
+		}
+
+		if msg.Button == tea.MouseButtonWheelDown {
+			l.list.CursorDown()
+			return l, nil
+		}
+
 	case tea.KeyMsg:
 		key := msg.String()
 		switch key {
 		case "d":
 			preset, _ := l.getCurrentPreset()
-			if preset.Id != l.currentPresetId && preset.Id != util.DefaultSettingsId {
+			if preset.PresetId != l.currentPresetId && preset.PresetId != util.DefaultSettingsId {
 				l.showConfirmation()
 			}
+			return l, cmd
 		case "y":
 			if !l.confirmationActive {
 				break
 			}
 			l.removePreset()
 			l.hideConfirmation()
+			return l, cmd
 		case "n":
 			if !l.confirmationActive {
 				break
 			}
 			l.hideConfirmation()
+			return l, cmd
 		default:
 			if l.confirmationActive {
 				return l, cmd

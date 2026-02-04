@@ -199,6 +199,12 @@ type SwitchToPaneMsg struct {
 	Target Pane
 }
 
+func SwitchToPane(target Pane) tea.Cmd {
+	return func() tea.Msg {
+		return SwitchToPaneMsg{Target: target}
+	}
+}
+
 type OpenTextEditorMsg struct {
 	Content   string
 	Operation Operation
