@@ -37,6 +37,7 @@ type keyMap struct {
 	quickChat     key.Binding
 	saveQuickChat key.Binding
 	quit          key.Binding
+	help          key.Binding
 }
 
 var defaultKeyMap = keyMap{
@@ -77,6 +78,10 @@ var defaultKeyMap = keyMap{
 		key.WithKeys("ctrl+n"),
 		key.WithHelp("ctrl+n", "add new session"),
 	),
+	help: key.NewBinding(
+		key.WithKeys("?"),
+		key.WithHelp("?", "show help"),
+	),
 }
 
 type MainView struct {
@@ -84,6 +89,7 @@ type MainView struct {
 	controlsLocked   bool
 	focused          util.Pane
 	viewMode         util.ViewMode
+	previousViewMode util.ViewMode
 	error            util.ErrorEvent
 	currentSessionID string
 	keys             keyMap
@@ -485,6 +491,27 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.focused = util.GetNewFocusMode(m.viewMode, m.focused, m.terminalWidth, true)
 			m.resetFocus()
+
+		case key.Matches(msg, m.keys.help):
+			if !m.isFocusChangeAllowed(false) {
+				break
+			}
+
+			if m.viewMode == util.HelpMode {
+				m.viewMode = m.previousViewMode
+			} else {
+				m.previousViewMode = m.viewMode
+				m.viewMode = util.HelpMode
+			}
+			cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+		}
+
+		if m.viewMode == util.HelpMode {
+			switch msg.String() {
+			case "esc":
+				m.viewMode = m.previousViewMode
+				cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -516,6 +543,10 @@ func (m *MainView) handleFocusChange(targetPane util.Pane, isMouseEvent bool) {
 }
 
 func (m MainView) View() string {
+	if m.viewMode == util.HelpMode {
+		return m.renderHelpView()
+	}
+
 	var windowViews string
 
 	settingsAndSessionPanes := lipgloss.JoinVertical(
@@ -602,6 +633,10 @@ func mapAttachmentType(attachmentType string) string {
 
 // TODO: use event to lock/unlock allowFocusChange flag?
 func (m MainView) isFocusChangeAllowed(isMouseEvent bool) bool {
+	if m.viewMode == util.HelpMode {
+		return false
+	}
+
 	if !m.promptPane.AllowFocusChange(isMouseEvent) ||
 		!m.chatPane.AllowFocusChange(isMouseEvent) ||
 		!m.settingsPane.AllowFocusChange(isMouseEvent) ||
@@ -649,4 +684,132 @@ func (m *MainView) CancelProcessing() tea.Cmd {
 
 	cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
 	return tea.Batch(cmds...)
+}
+
+func (m MainView) renderHelpView() string {
+	colors := m.config.ColorScheme.GetColors()
+
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(colors.ActiveTabBorderColor).
+		MarginBottom(1).
+		Align(lipgloss.Center)
+
+	sectionStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(colors.MainColor).
+		MarginTop(1).
+		MarginBottom(0)
+
+	keyStyle := lipgloss.NewStyle().
+		Foreground(colors.AccentColor).
+		Bold(true)
+
+	descStyle := lipgloss.NewStyle().
+		Foreground(colors.DefaultTextColor)
+
+	helpContainer := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colors.NormalTabBorderColor).
+		Padding(2).
+		Width(m.terminalWidth - 4).
+		Height(m.terminalHeight - 2)
+
+	binding := func(key, desc string) string {
+		return lipgloss.JoinHorizontal(lipgloss.Left,
+			keyStyle.Render(key),
+			" ",
+			descStyle.Render(desc),
+		)
+	}
+
+	section := func(name string, bindings ...string) string {
+		content := lipgloss.JoinVertical(lipgloss.Left, bindings...)
+		return lipgloss.JoinVertical(lipgloss.Left,
+			sectionStyle.Render(name),
+			content,
+		)
+	}
+
+	globalSection := section("Global",
+		binding("ctrl+c", "quit"),
+		binding("ctrl+o", "toggle zen mode"),
+		binding("ctrl+e", "toggle editor mode"),
+		binding("ctrl+n", "new session"),
+		binding("ctrl+q", "quick chat"),
+		binding("ctrl+x", "save quick chat"),
+		binding("ctrl+b/s", "stop inference"),
+		binding("tab/shift+tab", "navigate panes"),
+		binding("1/2/3/4", "jump to pane"),
+		binding("?", "show/hide this help"),
+	)
+
+	promptSection := section("Prompt",
+		binding("i", "enter insert mode"),
+		binding("esc", "exit insert/editor mode"),
+		binding("ctrl+r", "clear prompt"),
+		binding("ctrl+v", "paste from clipboard"),
+		binding("ctrl+s", "paste code block"),
+		binding("ctrl+a", "attach image/file"),
+		binding("enter", "send message"),
+	)
+
+	chatSection := section("Chat",
+		binding("space/v/V", "enter selection mode"),
+		binding("y", "copy last message"),
+		binding("Y", "copy all messages"),
+		binding("g", "scroll to top"),
+		binding("G", "scroll to bottom"),
+		binding("esc", "exit selection mode"),
+	)
+
+	sessionsSection := section("Sessions",
+		binding("d", "delete session"),
+		binding("e", "rename session"),
+		binding("X", "export session"),
+		binding("/", "filter sessions"),
+		binding("esc", "cancel action"),
+	)
+
+	settingsSection := section("Settings",
+		binding("e", "change temperature"),
+		binding("f", "change frequency"),
+		binding("p", "change top_p"),
+		binding("t", "change max_tokens"),
+		binding("s", "edit system prompt"),
+		binding("m", "change model"),
+		binding("]/[", "switch tabs"),
+		binding("ctrl+p", "save preset"),
+		binding("ctrl+r", "reset preset"),
+		binding("ctrl+w", "toggle web search"),
+		binding("ctrl+h", "hide/show reasoning"),
+	)
+
+	exitHint := lipgloss.NewStyle().
+		Foreground(colors.HighlightColor).
+		MarginTop(1).
+		Align(lipgloss.Center).
+		Render("Press ESC to close help")
+
+	leftColumn := lipgloss.JoinVertical(lipgloss.Left,
+		globalSection,
+		promptSection,
+		chatSection,
+	)
+
+	rightColumn := lipgloss.JoinVertical(lipgloss.Left,
+		sessionsSection,
+		settingsSection,
+	)
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		titleStyle.Render("NEKOT Help"),
+		lipgloss.JoinHorizontal(lipgloss.Top, leftColumn, "    ", rightColumn),
+		exitHint,
+	)
+
+	return lipgloss.Place(m.terminalWidth, m.terminalHeight,
+		lipgloss.Center, lipgloss.Center,
+		helpContainer.Render(content),
+	)
 }

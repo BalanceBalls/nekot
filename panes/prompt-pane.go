@@ -553,10 +553,10 @@ func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput
 	}
 
 	inputLength := len(p.input.Value())
-	p.input.Focus()
+	//p.input.Focus()
 	p.input.SetCursor(inputLength)
-	p.inputMode = util.PromptInsertMode
-	return p.input.Cursor.BlinkCmd()
+	p.inputMode = util.PromptNormalMode
+	return nil //p.input.Cursor.BlinkCmd()
 }
 
 func (p *PromptPane) openFilePicker(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
