@@ -175,7 +175,10 @@ func NewContextPicker(prevView util.ViewMode, prevInput string, colors util.Sche
 func (l *ContextPicker) scanDirectory(dir string, currentDepth, maxDepth int) []list.Item {
 	var items []list.Item
 
+	util.Slog.Debug("scanDirectory called", "dir", dir, "currentDepth", currentDepth, "maxDepth", maxDepth)
+
 	if currentDepth > maxDepth {
+		util.Slog.Debug("scanDirectory: maxDepth reached, returning", "dir", dir, "currentDepth", currentDepth)
 		return items
 	}
 
@@ -184,6 +187,8 @@ func (l *ContextPicker) scanDirectory(dir string, currentDepth, maxDepth int) []
 		util.Slog.Error("failed to read directory", "path", dir, "error", err.Error())
 		return items
 	}
+
+	util.Slog.Debug("scanDirectory: reading entries", "dir", dir, "entryCount", len(entries))
 
 	for _, entry := range entries {
 		name := entry.Name()
@@ -201,6 +206,7 @@ func (l *ContextPicker) scanDirectory(dir string, currentDepth, maxDepth int) []
 		}
 
 		if entry.IsDir() {
+			util.Slog.Debug("scanDirectory: adding folder", "path", fullPath, "name", name)
 			items = append(items, ContextPickerItem{
 				Path:     fullPath,
 				Name:     name,
@@ -208,13 +214,18 @@ func (l *ContextPicker) scanDirectory(dir string, currentDepth, maxDepth int) []
 				Size:     0,
 				Icon:     "📁",
 			})
+			// Recursively scan subdirectories to add files from them
+			subItems := l.scanDirectory(fullPath, currentDepth+1, maxDepth)
+			items = append(items, subItems...)
 		} else {
 			// Check if it's a media file
 			ext := strings.ToLower(filepath.Ext(name))
 			if slices.Contains(util.MediaExtensions, ext) {
+				util.Slog.Debug("scanDirectory: skipping media file", "path", fullPath, "ext", ext)
 				continue
 			}
 
+			util.Slog.Debug("scanDirectory: adding file", "path", fullPath, "name", name)
 			items = append(items, ContextPickerItem{
 				Path:     fullPath,
 				Name:     name,
@@ -225,6 +236,7 @@ func (l *ContextPicker) scanDirectory(dir string, currentDepth, maxDepth int) []
 		}
 	}
 
+	util.Slog.Debug("scanDirectory: returning items", "dir", dir, "itemCount", len(items))
 	return items
 }
 

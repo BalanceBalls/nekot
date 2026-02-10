@@ -391,8 +391,10 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			util.Slog.Debug("MainView.MouseMsg: checking zones", "viewMode", m.viewMode, "currentFocused", m.focused)
 			switch {
 			case zone.Get("chat_pane").InBounds(msg):
+				util.Slog.Debug("MainView.MouseMsg: chat_pane clicked", "viewMode", m.viewMode)
 				targetPane = util.ChatPane
 			case zone.Get("prompt_pane").InBounds(msg):
 				targetPane = util.PromptPane
@@ -403,6 +405,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if targetPane != m.focused {
+				util.Slog.Debug("MainView.MouseMsg: focus change requested", "from", m.focused, "to", targetPane, "viewMode", m.viewMode)
 				m.handleFocusChange(targetPane, true)
 				return m, nil
 			}
@@ -541,20 +544,31 @@ func (m MainView) View() string {
 		mainView = m.chatPane.DisplayError(m.error.Message)
 	}
 
-	secondaryScreen := ""
+	// Conditionally render windowViews based on view mode
+	// In ContextPickerMode or FilePickerMode, don't render chat pane to avoid phantom pane
 	if m.viewMode == util.NormalMode {
-		secondaryScreen = settingsAndSessionPanes
+		windowViews = lipgloss.NewStyle().
+			Align(lipgloss.Right, lipgloss.Right).
+			Render(
+				lipgloss.JoinHorizontal(
+					lipgloss.Top,
+					mainView,
+					settingsAndSessionPanes,
+				),
+			)
+	} else if m.viewMode == util.ContextPickerMode || m.viewMode == util.FilePickerMode {
+		// In ContextPickerMode or FilePickerMode, render empty windowViews
+		// This prevents the chat pane from being rendered and creating a clickable zone
+		windowViews = ""
+	} else {
+		// In TextEditMode, ZenMode, etc.
+		// Only render mainView without secondary screen
+		windowViews = lipgloss.NewStyle().
+			Align(lipgloss.Right, lipgloss.Right).
+			Render(mainView)
 	}
 
-	windowViews = lipgloss.NewStyle().
-		Align(lipgloss.Right, lipgloss.Right).
-		Render(
-			lipgloss.JoinHorizontal(
-				lipgloss.Top,
-				mainView,
-				secondaryScreen,
-			),
-		)
+	util.Slog.Debug("MainView.View: rendering", "viewMode", m.viewMode)
 
 	promptView := m.promptPane.View()
 

@@ -231,6 +231,11 @@ func (c *Config) setDefaults() {
 	if c.IncludeReasoningTokensInContext == nil {
 		c.IncludeReasoningTokensInContext = &TRUE
 	}
+
+	// Set default context max depth to 2 for recursive file scanning
+	if c.ContextMaxDepth == 0 {
+		c.ContextMaxDepth = 2
+	}
 }
 
 func (c *Config) applyFlags(flags StartupFlags) {
