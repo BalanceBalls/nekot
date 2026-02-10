@@ -46,6 +46,7 @@ const (
 	TextEditMode
 	NormalMode
 	FilePickerMode
+	ContextPickerMode
 )
 
 type Operation int
@@ -121,8 +122,9 @@ func SendProcessingStateChangedMsg(processingState ProcessingState) tea.Cmd {
 }
 
 type PromptReady struct {
-	Prompt      string
-	Attachments []Attachment
+	Prompt       string
+	Attachments  []Attachment
+	ContextChips []FileContextChip
 }
 
 func SendPromptReadyMsg(prompt string, attachments []Attachment) tea.Cmd {
@@ -130,6 +132,16 @@ func SendPromptReadyMsg(prompt string, attachments []Attachment) tea.Cmd {
 		return PromptReady{
 			Prompt:      prompt,
 			Attachments: attachments,
+		}
+	}
+}
+
+func SendPromptReadyWithContextMsg(prompt string, attachments []Attachment, contextChips []FileContextChip) tea.Cmd {
+	return func() tea.Msg {
+		return PromptReady{
+			Prompt:       prompt,
+			Attachments:  attachments,
+			ContextChips: contextChips,
 		}
 	}
 }

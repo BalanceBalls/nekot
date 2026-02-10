@@ -6,5 +6,7 @@
   "provider": "openai",
 	"maxAttachmentSizeMb": 10,
 	"includeReasoningTokensInContext": true,
-	"sessionExportDir": ""
+	"sessionExportDir": "",
+	"contextMaxDepth": 2,
+	"showContextIcons": true
 }

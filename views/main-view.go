@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -356,11 +357,21 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Process context chips
+		contextContent := ""
+		if len(msg.ContextChips) > 0 {
+			util.Slog.Debug("processing context chips", "count", len(msg.ContextChips))
+			contextContent = m.processContextChips(msg.ContextChips)
+			if contextContent != "" {
+				contextContent = "\n\n" + contextContent
+			}
+		}
+
 		m.sessionOrchestrator.ArrayOfMessages = append(
 			m.sessionOrchestrator.ArrayOfMessages,
 			util.LocalStoreMessage{
 				Role:        "user",
-				Content:     msg.Prompt,
+				Content:     msg.Prompt + contextContent,
 				Attachments: loadedAttachments,
 			})
 		m.viewMode = util.NormalMode
@@ -598,6 +609,41 @@ func mapAttachmentType(attachmentType string) string {
 		return "input_file"
 	}
 	return ""
+}
+
+func (m MainView) processContextChips(chips []util.FileContextChip) string {
+	var contextContent strings.Builder
+	maxDepth := m.config.ContextMaxDepth
+
+	for _, chip := range chips {
+		if chip.IsFolder {
+			// Read folder contents
+			util.Slog.Debug("reading folder context", "path", chip.Path)
+			contents, filePaths, err := util.ReadFolderContents(chip.Path, maxDepth)
+			if err != nil {
+				util.Slog.Error("failed to read folder", "path", chip.Path, "error", err.Error())
+				continue
+			}
+
+			// Format folder contents
+			formatted := util.FormatFolderContents(contents, filePaths)
+			contextContent.WriteString(formatted)
+		} else {
+			// Read single file
+			util.Slog.Debug("reading file context", "path", chip.Path)
+			content, err := util.ReadFileContent(chip.Path)
+			if err != nil {
+				util.Slog.Error("failed to read file", "path", chip.Path, "error", err.Error())
+				continue
+			}
+
+			// Format file content
+			formatted := util.FormatFileContent(chip.Path, content)
+			contextContent.WriteString(formatted)
+		}
+	}
+
+	return contextContent.String()
 }
 
 // TODO: use event to lock/unlock allowFocusChange flag?
