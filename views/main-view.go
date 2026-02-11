@@ -389,12 +389,6 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			contextContent = "\n\n" + contextContent
 		}
 
-		// Show notification if there were errors during processing
-		if len(msg.Errors) > 0 {
-			errorMsg := fmt.Sprintf("Some context files failed to load:\n%s", strings.Join(msg.Errors, "\n"))
-			return m, util.MakeErrorMsg(errorMsg)
-		}
-
 		m.sessionOrchestrator.ArrayOfMessages = append(
 			m.sessionOrchestrator.ArrayOfMessages,
 			util.LocalStoreMessage{
@@ -406,10 +400,21 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.controlsLocked = true
 
 		m.setProcessingContext()
-		return m, tea.Sequence(
+		
+		// Build the sequence of commands
+		sequence := []tea.Cmd{
 			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
 			util.SendViewModeChangedMsg(m.viewMode),
-			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator))
+			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator),
+		}
+		
+		// Show notification if there were errors during processing (non-blocking)
+		if len(msg.Errors) > 0 {
+			errorMsg := fmt.Sprintf("Some context files failed to load:\n%s", strings.Join(msg.Errors, "\n"))
+			sequence = append(sequence, util.MakeErrorMsg(errorMsg))
+		}
+		
+		return m, tea.Sequence(sequence...)
 
 	case tea.MouseMsg:
 		targetPane := m.focused

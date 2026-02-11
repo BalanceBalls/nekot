@@ -94,7 +94,23 @@ func (l *ContextPicker) View() string {
 		l.list.SetShowStatusBar(true)
 	}
 
+	// Adjust list height when preview is shown to prevent overflow
+	previewHeight := 0
+	if l.preview != "" {
+		previewHeight = 10 // MaxHeight(10) from previewStyle
+		currentHeight := l.list.Height()
+		if currentHeight > previewHeight {
+			l.list.SetHeight(currentHeight - previewHeight)
+		}
+	}
+
 	content := l.list.View()
+	
+	// Restore original list height after rendering
+	if l.preview != "" {
+		currentHeight := l.list.Height()
+		l.list.SetHeight(currentHeight + previewHeight)
+	}
 	
 	// Add preview section above the list if available
 	if l.preview != "" {
