@@ -411,7 +411,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Show notification if there were errors during processing (non-blocking)
 		if len(msg.Errors) > 0 {
 			errorMsg := fmt.Sprintf("Some context files failed to load:\n%s", strings.Join(msg.Errors, "\n"))
-			sequence = append(sequence, util.MakeErrorMsg(errorMsg))
+			util.Slog.Warn("some context files failed to load", "errors", errorMsg)
 		}
 		
 		return m, tea.Sequence(sequence...)
@@ -702,41 +702,6 @@ func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.A
 			Errors:         errors,
 		}
 	}
-}
-
-func (m MainView) processContextChips(chips []util.FileContextChip) string {
-	var contextContent strings.Builder
-	maxDepth := m.config.GetContextMaxDepth()
-
-	for _, chip := range chips {
-		if chip.IsFolder {
-			// Read folder contents
-			util.Slog.Debug("reading folder context", "path", chip.Path)
-			contents, filePaths, err := util.ReadFolderContents(chip.Path, maxDepth)
-			if err != nil {
-				util.Slog.Error("failed to read folder", "path", chip.Path, "error", err.Error())
-				continue
-			}
-
-			// Format folder contents
-			formatted := util.FormatFolderContents(contents, filePaths)
-			contextContent.WriteString(formatted)
-		} else {
-			// Read single file
-			util.Slog.Debug("reading file context", "path", chip.Path)
-			content, err := util.ReadFileContent(chip.Path)
-			if err != nil {
-				util.Slog.Error("failed to read file", "path", chip.Path, "error", err.Error())
-				continue
-			}
-
-			// Format file content
-			formatted := util.FormatFileContent(chip.Path, content)
-			contextContent.WriteString(formatted)
-		}
-	}
-
-	return contextContent.String()
 }
 
 // TODO: use event to lock/unlock allowFocusChange flag?

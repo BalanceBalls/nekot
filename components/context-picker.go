@@ -222,6 +222,7 @@ func (l *ContextPicker) updatePreview(filePath string, modTime time.Time) {
 		util.Slog.Error("failed to open file for preview", "path", filePath, "error", err.Error())
 		l.preview = ""
 		l.previewPath = ""
+		l.previewModTime = time.Time{}
 		return
 	}
 	defer file.Close()
@@ -233,6 +234,7 @@ func (l *ContextPicker) updatePreview(filePath string, modTime time.Time) {
 		util.Slog.Error("failed to peek at file for preview", "path", filePath, "error", err.Error())
 		l.preview = ""
 		l.previewPath = ""
+		l.previewModTime = time.Time{}
 		return
 	}
 
