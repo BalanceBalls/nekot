@@ -360,7 +360,9 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Process context chips asynchronously
 		if len(msg.ContextChips) > 0 {
 			util.Slog.Debug("dispatching async context chips processing", "count", len(msg.ContextChips))
-			return m, m.makeProcessContextChipsCmd(msg.Prompt, loadedAttachments, msg.ContextChips)
+			// Capture maxDepth at command creation time to avoid race condition
+			maxDepth := m.config.GetContextMaxDepth()
+			return m, m.makeProcessContextChipsCmd(msg.Prompt, loadedAttachments, msg.ContextChips, maxDepth)
 		}
 
 		// No context chips, proceed directly
@@ -385,6 +387,12 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		contextContent := msg.ContextContent
 		if contextContent != "" {
 			contextContent = "\n\n" + contextContent
+		}
+
+		// Show notification if there were errors during processing
+		if len(msg.Errors) > 0 {
+			errorMsg := fmt.Sprintf("Some context files failed to load:\n%s", strings.Join(msg.Errors, "\n"))
+			return m, util.MakeErrorMsg(errorMsg)
 		}
 
 		m.sessionOrchestrator.ArrayOfMessages = append(
@@ -645,10 +653,10 @@ func mapAttachmentType(attachmentType string) string {
 	return ""
 }
 
-func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.Attachment, chips []util.FileContextChip) tea.Cmd {
+func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.Attachment, chips []util.FileContextChip, maxDepth int) tea.Cmd {
 	return func() tea.Msg {
 		var contextContent strings.Builder
-		maxDepth := m.config.GetContextMaxDepth()
+		var errors []string
 
 		for _, chip := range chips {
 			if chip.IsFolder {
@@ -656,7 +664,9 @@ func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.A
 				util.Slog.Debug("reading folder context", "path", chip.Path)
 				contents, filePaths, err := util.ReadFolderContents(chip.Path, maxDepth)
 				if err != nil {
+					errMsg := fmt.Sprintf("Failed to read folder %s: %s", chip.Path, err.Error())
 					util.Slog.Error("failed to read folder", "path", chip.Path, "error", err.Error())
+					errors = append(errors, errMsg)
 					continue
 				}
 
@@ -668,7 +678,9 @@ func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.A
 				util.Slog.Debug("reading file context", "path", chip.Path)
 				content, err := util.ReadFileContent(chip.Path)
 				if err != nil {
+					errMsg := fmt.Sprintf("Failed to read file %s: %s", chip.Path, err.Error())
 					util.Slog.Error("failed to read file", "path", chip.Path, "error", err.Error())
+					errors = append(errors, errMsg)
 					continue
 				}
 
@@ -682,6 +694,7 @@ func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.A
 			Prompt:         prompt,
 			Attachments:    attachments,
 			ContextContent: contextContent.String(),
+			Errors:         errors,
 		}
 	}
 }

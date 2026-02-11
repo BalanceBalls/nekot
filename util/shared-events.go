@@ -147,9 +147,10 @@ func SendPromptReadyWithContextMsg(prompt string, attachments []Attachment, cont
 }
 
 type ContextChipsProcessed struct {
-	Prompt       string
-	Attachments  []Attachment
-	ContextContent string
+	Prompt         string
+	Attachments    []Attachment
+	ContextContent  string
+	Errors         []string // Errors that occurred during processing
 }
 
 type AsyncDependencyReady struct {

@@ -2,13 +2,14 @@ package components
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/charmbracelet/bubbles/list"
@@ -26,8 +27,9 @@ type ContextPicker struct {
 	baseDir      string
 	showIcons    bool
 	maxDepth     int
-	preview      string     // Preview of selected file (first 10 lines)
-	previewPath  string     // Path of currently cached preview
+	preview      string        // Preview of selected file (first 10 lines)
+	previewPath  string        // Path of currently cached preview
+	previewModTime time.Time    // Modification time of cached preview file
 }
 
 var contextPickerTips = "/ filter • enter select • esc cancel"
@@ -133,8 +135,8 @@ func (l *ContextPicker) Update(msg tea.Msg) (ContextPicker, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc", "q":
-			// Only quit if not actively filtering
-			if l.list.FilterState() != list.Filtering {
+			// Only quit if not actively filtering (check both FilterState and filter input focus)
+			if l.list.FilterState() != list.Filtering && !l.list.FilterInput.Focused() {
 				l.quitting = true
 				return *l, util.SendViewModeChangedMsg(l.PrevView)
 			}
@@ -162,26 +164,29 @@ func (l *ContextPicker) Update(msg tea.Msg) (ContextPicker, tea.Cmd) {
 	
 	// Update preview when selection changes (with caching)
 	if item, ok := l.GetSelectedItem(); ok && !item.IsFolder {
-		// Only update preview if the path has changed
-		if item.Path != l.previewPath {
-			l.updatePreview(item.Path)
+		// Only update preview if the path has changed or file was modified
+		info, err := os.Stat(item.Path)
+		if err == nil && (item.Path != l.previewPath || info.ModTime() != l.previewModTime) {
+			l.updatePreview(item.Path, info.ModTime())
 		}
 	} else {
 		// Clear preview when selection is nil or a folder
 		l.preview = ""
 		l.previewPath = ""
+		l.previewModTime = time.Time{}
 	}
 	
 	return *l, cmd
 }
 
-func (l *ContextPicker) updatePreview(filePath string) {
+func (l *ContextPicker) updatePreview(filePath string, modTime time.Time) {
 	// Get file info to check size
 	info, err := os.Stat(filePath)
 	if err != nil {
 		util.Slog.Error("failed to get file info for preview", "path", filePath, "error", err.Error())
 		l.preview = ""
 		l.previewPath = ""
+		l.previewModTime = time.Time{}
 		return
 	}
 
@@ -191,6 +196,7 @@ func (l *ContextPicker) updatePreview(filePath string) {
 		util.Slog.Debug("file too large for preview", "path", filePath, "size", info.Size())
 		l.preview = ""
 		l.previewPath = ""
+		l.previewModTime = time.Time{}
 		return
 	}
 
@@ -214,9 +220,27 @@ func (l *ContextPicker) updatePreview(filePath string) {
 		return
 	}
 
-	// Check for null byte (binary file indicator)
-	if bytes.Contains(peekBuf[:n], []byte{0}) {
-		util.Slog.Debug("file appears to be binary, skipping preview", "path", filePath)
+	// Check for binary content:
+	// 1. Multiple null bytes (more than 1 is strong indicator of binary)
+	// 2. Invalid UTF-8 sequences
+	nullByteCount := 0
+	for i := 0; i < n; i++ {
+		if peekBuf[i] == 0 {
+			nullByteCount++
+		}
+	}
+	
+	// More than 1 null byte in first 512 bytes is likely binary
+	if nullByteCount > 1 {
+		util.Slog.Debug("file appears to be binary (multiple null bytes), skipping preview", "path", filePath, "nullCount", nullByteCount)
+		l.preview = ""
+		l.previewPath = ""
+		return
+	}
+	
+	// Check if content is valid UTF-8
+	if !utf8.Valid(peekBuf[:n]) {
+		util.Slog.Debug("file appears to be binary (invalid UTF-8), skipping preview", "path", filePath)
 		l.preview = ""
 		l.previewPath = ""
 		return
@@ -248,6 +272,7 @@ func (l *ContextPicker) updatePreview(filePath string) {
 
 	l.preview = strings.Join(lines, "\n")
 	l.previewPath = filePath
+	l.previewModTime = modTime
 }
 
 func NewContextPicker(prevView util.ViewMode, prevInput string, colors util.SchemeColors, showIcons bool, maxDepth int) ContextPicker {
