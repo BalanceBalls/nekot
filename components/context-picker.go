@@ -1,6 +1,8 @@
 package components
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -24,7 +26,8 @@ type ContextPicker struct {
 	baseDir      string
 	showIcons    bool
 	maxDepth     int
-	preview      string // Preview of selected file (first 10 lines)
+	preview      string     // Preview of selected file (first 10 lines)
+	previewPath  string     // Path of currently cached preview
 }
 
 var contextPickerTips = "/ filter • enter select • esc cancel"
@@ -43,9 +46,11 @@ type ContextPickerItem struct {
 	Icon     string
 }
 
-func (i ContextPickerItem) FilterValue() string { return zone.Mark(i.Path, i.Name) }
+func (i ContextPickerItem) FilterValue() string { return i.Name }
 
-type contextPickerItemDelegate struct{}
+type contextPickerItemDelegate struct {
+	showIcons bool
+}
 
 func (d contextPickerItemDelegate) Height() int                             { return 1 }
 func (d contextPickerItemDelegate) Spacing() int                            { return 0 }
@@ -57,10 +62,12 @@ func (d contextPickerItemDelegate) Render(w io.Writer, m list.Model, index int, 
 	}
 
 	icon := ""
-	if i.IsFolder {
-		icon = "📁 "
-	} else {
-		icon = "📄 "
+	if d.showIcons {
+		if i.IsFolder {
+			icon = "📁 "
+		} else {
+			icon = "📄 "
+		}
 	}
 
 	str := fmt.Sprintf("%s%s", icon, i.Name)
@@ -126,8 +133,11 @@ func (l *ContextPicker) Update(msg tea.Msg) (ContextPicker, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc", "q":
-			l.quitting = true
-			return *l, util.SendViewModeChangedMsg(l.PrevView)
+			// Only quit if not actively filtering
+			if l.list.FilterState() != list.Filtering {
+				l.quitting = true
+				return *l, util.SendViewModeChangedMsg(l.PrevView)
+			}
 		case "enter":
 			if item, ok := l.GetSelectedItem(); ok {
 				l.SelectedPath = item.Path
@@ -150,11 +160,16 @@ func (l *ContextPicker) Update(msg tea.Msg) (ContextPicker, tea.Cmd) {
 
 	l.list, cmd = l.list.Update(msg)
 	
-	// Update preview when selection changes
+	// Update preview when selection changes (with caching)
 	if item, ok := l.GetSelectedItem(); ok && !item.IsFolder {
-		l.updatePreview(item.Path)
+		// Only update preview if the path has changed
+		if item.Path != l.previewPath {
+			l.updatePreview(item.Path)
+		}
 	} else {
+		// Clear preview when selection is nil or a folder
 		l.preview = ""
+		l.previewPath = ""
 	}
 	
 	return *l, cmd
@@ -166,6 +181,7 @@ func (l *ContextPicker) updatePreview(filePath string) {
 	if err != nil {
 		util.Slog.Error("failed to get file info for preview", "path", filePath, "error", err.Error())
 		l.preview = ""
+		l.previewPath = ""
 		return
 	}
 
@@ -174,22 +190,64 @@ func (l *ContextPicker) updatePreview(filePath string) {
 	if info.Size() > maxPreviewSize {
 		util.Slog.Debug("file too large for preview", "path", filePath, "size", info.Size())
 		l.preview = ""
+		l.previewPath = ""
 		return
 	}
 
-	content, err := os.ReadFile(filePath)
+	// Open file for reading
+	file, err := os.Open(filePath)
 	if err != nil {
-		util.Slog.Error("failed to read file for preview", "path", filePath, "error", err.Error())
+		util.Slog.Error("failed to open file for preview", "path", filePath, "error", err.Error())
 		l.preview = ""
+		l.previewPath = ""
+		return
+	}
+	defer file.Close()
+
+	// Peek at first 512 bytes to check for binary content
+	peekBuf := make([]byte, 512)
+	n, err := file.Read(peekBuf)
+	if err != nil && err != io.EOF {
+		util.Slog.Error("failed to peek at file for preview", "path", filePath, "error", err.Error())
+		l.preview = ""
+		l.previewPath = ""
 		return
 	}
 
-	lines := strings.Split(string(content), "\n")
-	if len(lines) > 10 {
-		lines = lines[:10]
+	// Check for null byte (binary file indicator)
+	if bytes.Contains(peekBuf[:n], []byte{0}) {
+		util.Slog.Debug("file appears to be binary, skipping preview", "path", filePath)
+		l.preview = ""
+		l.previewPath = ""
+		return
 	}
-	
+
+	// Reset file position to beginning
+	if _, err := file.Seek(0, 0); err != nil {
+		util.Slog.Error("failed to seek file for preview", "path", filePath, "error", err.Error())
+		l.preview = ""
+		l.previewPath = ""
+		return
+	}
+
+	// Read up to 10 lines using scanner
+	scanner := bufio.NewScanner(file)
+	var lines []string
+	lineCount := 0
+	for scanner.Scan() && lineCount < 10 {
+		lines = append(lines, scanner.Text())
+		lineCount++
+	}
+
+	if err := scanner.Err(); err != nil {
+		util.Slog.Error("failed to scan file for preview", "path", filePath, "error", err.Error())
+		l.preview = ""
+		l.previewPath = ""
+		return
+	}
+
 	l.preview = strings.Join(lines, "\n")
+	l.previewPath = filePath
 }
 
 func NewContextPicker(prevView util.ViewMode, prevInput string, colors util.SchemeColors, showIcons bool, maxDepth int) ContextPicker {
@@ -204,7 +262,7 @@ func NewContextPicker(prevView util.ViewMode, prevInput string, colors util.Sche
 	items := tempPicker.scanDirectory(baseDir, 0, maxDepth)
 
 	h := 20 // Default height
-	l := list.New(items, contextPickerItemDelegate{}, 80, h)
+	l := list.New(items, contextPickerItemDelegate{showIcons: showIcons}, 80, h)
 
 	l.SetStatusBarItemName("item", "items")
 	l.SetShowTitle(false)

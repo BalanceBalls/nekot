@@ -357,14 +357,34 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Process context chips
-		contextContent := ""
+		// Process context chips asynchronously
 		if len(msg.ContextChips) > 0 {
-			util.Slog.Debug("processing context chips", "count", len(msg.ContextChips))
-			contextContent = m.processContextChips(msg.ContextChips)
-			if contextContent != "" {
-				contextContent = "\n\n" + contextContent
-			}
+			util.Slog.Debug("dispatching async context chips processing", "count", len(msg.ContextChips))
+			return m, m.makeProcessContextChipsCmd(msg.Prompt, loadedAttachments, msg.ContextChips)
+		}
+
+		// No context chips, proceed directly
+		m.sessionOrchestrator.ArrayOfMessages = append(
+			m.sessionOrchestrator.ArrayOfMessages,
+			util.LocalStoreMessage{
+				Role:        "user",
+				Content:     msg.Prompt,
+				Attachments: loadedAttachments,
+			})
+		m.viewMode = util.NormalMode
+		m.controlsLocked = true
+
+		m.setProcessingContext()
+		return m, tea.Sequence(
+			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
+			util.SendViewModeChangedMsg(m.viewMode),
+			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator))
+
+	case util.ContextChipsProcessed:
+		// Context chips have been processed asynchronously
+		contextContent := msg.ContextContent
+		if contextContent != "" {
+			contextContent = "\n\n" + contextContent
 		}
 
 		m.sessionOrchestrator.ArrayOfMessages = append(
@@ -372,7 +392,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			util.LocalStoreMessage{
 				Role:        "user",
 				Content:     msg.Prompt + contextContent,
-				Attachments: loadedAttachments,
+				Attachments: msg.Attachments,
 			})
 		m.viewMode = util.NormalMode
 		m.controlsLocked = true
@@ -625,9 +645,50 @@ func mapAttachmentType(attachmentType string) string {
 	return ""
 }
 
+func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.Attachment, chips []util.FileContextChip) tea.Cmd {
+	return func() tea.Msg {
+		var contextContent strings.Builder
+		maxDepth := m.config.GetContextMaxDepth()
+
+		for _, chip := range chips {
+			if chip.IsFolder {
+				// Read folder contents
+				util.Slog.Debug("reading folder context", "path", chip.Path)
+				contents, filePaths, err := util.ReadFolderContents(chip.Path, maxDepth)
+				if err != nil {
+					util.Slog.Error("failed to read folder", "path", chip.Path, "error", err.Error())
+					continue
+				}
+
+				// Format folder contents
+				formatted := util.FormatFolderContents(contents, filePaths)
+				contextContent.WriteString(formatted)
+			} else {
+				// Read single file
+				util.Slog.Debug("reading file context", "path", chip.Path)
+				content, err := util.ReadFileContent(chip.Path)
+				if err != nil {
+					util.Slog.Error("failed to read file", "path", chip.Path, "error", err.Error())
+					continue
+				}
+
+				// Format file content
+				formatted := util.FormatFileContent(chip.Path, content)
+				contextContent.WriteString(formatted)
+			}
+		}
+
+		return util.ContextChipsProcessed{
+			Prompt:         prompt,
+			Attachments:    attachments,
+			ContextContent: contextContent.String(),
+		}
+	}
+}
+
 func (m MainView) processContextChips(chips []util.FileContextChip) string {
 	var contextContent strings.Builder
-	maxDepth := m.config.ContextMaxDepth
+	maxDepth := m.config.GetContextMaxDepth()
 
 	for _, chip := range chips {
 		if chip.IsFolder {

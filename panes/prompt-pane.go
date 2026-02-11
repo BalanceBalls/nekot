@@ -452,7 +452,9 @@ func (p *PromptPane) processContextPickerUpdates(msg tea.Msg) tea.Cmd {
 
 			// Get file info
 			info, err := os.Stat(selectedPath)
-			if err == nil {
+			if err != nil {
+				util.Slog.Error("os.Stat failed for context chip", "path", selectedPath, "error", err.Error())
+			} else {
 				chip := util.FileContextChip{
 					Path:     selectedPath,
 					Name:     filepath.Base(selectedPath),
@@ -644,8 +646,8 @@ func (p *PromptPane) openContextPicker(previousViewMode util.ViewMode, currentIn
 	showIcons := true
 	maxDepth := 2
 	if ok {
-		showIcons = cfg.ShowContextIcons
-		maxDepth = cfg.ContextMaxDepth
+		showIcons = cfg.GetShowContextIcons()
+		maxDepth = cfg.GetContextMaxDepth()
 	}
 	p.contextPicker = components.NewContextPicker(previousViewMode, currentInput, p.colors, showIcons, maxDepth)
 	p.contextPicker.SetSize(w, h)

@@ -123,14 +123,6 @@ type FileContextChip struct {
 	Type     string // "file" or "folder"
 }
 
-// FileContext represents file metadata for context import
-type FileContext struct {
-	Path     string
-	Name     string
-	IsFolder bool
-	Size     int64
-}
-
 // MediaExtensions contains file extensions to exclude from context import
 var MediaExtensions = []string{
 	".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg",

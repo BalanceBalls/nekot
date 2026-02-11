@@ -1,7 +1,6 @@
 package util
 
 import (
-	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,9 +10,22 @@ import (
 	"unicode/utf8"
 )
 
+const maxReadFileSize = 5 * 1024 * 1024 // 5MB
+
 // ReadFileContent reads the content of a file and returns it as a string
-// Returns an error if the file is binary or cannot be read
+// Returns an error if the file is binary, too large, or cannot be read
 func ReadFileContent(path string) (string, error) {
+	// Check file size before reading
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	// Reject files larger than maxReadFileSize
+	if info.Size() > maxReadFileSize {
+		return "", fmt.Errorf("file too large (%d bytes, max %d bytes)", info.Size(), maxReadFileSize)
+	}
+
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
@@ -113,26 +125,6 @@ func GetFileSize(path string) (int64, error) {
 	return info.Size(), nil
 }
 
-// IsTextFile checks if a file is a text file by reading a small portion
-// and checking if it's valid UTF-8
-func IsTextFile(path string) bool {
-	file, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-
-	// Read first 512 bytes to check
-	buf := make([]byte, 512)
-	n, err := file.Read(buf)
-	if err != nil && err.Error() != "EOF" {
-		return false
-	}
-
-	// Check if the content is valid UTF-8
-	return utf8.Valid(buf[:n])
-}
-
 // FormatFileContent formats file content for inclusion in the message
 // Adds a header with the file path and wraps code files in markdown code blocks
 func FormatFileContent(path, content string) string {
@@ -173,31 +165,6 @@ func FormatFolderContents(contents map[string]string, filePaths []string) string
 	}
 
 	return formatted.String()
-}
-
-// DetectEncoding attempts to detect if a file is text or binary
-// Returns true if the file appears to be text
-func DetectEncoding(path string) bool {
-	file, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-
-	// Read first 8192 bytes to check
-	buf := make([]byte, 8192)
-	n, err := file.Read(buf)
-	if err != nil && err.Error() != "EOF" {
-		return false
-	}
-
-	// Check for null bytes (common in binary files)
-	if bytes.Contains(buf[:n], []byte{0}) {
-		return false
-	}
-
-	// Check if the content is valid UTF-8
-	return utf8.Valid(buf[:n])
 }
 
 // CountFilesInFolder counts the number of non-media files in a folder
