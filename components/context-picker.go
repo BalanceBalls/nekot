@@ -24,6 +24,7 @@ type ContextPicker struct {
 	baseDir      string
 	showIcons    bool
 	maxDepth     int
+	preview      string // Preview of selected file (first 10 lines)
 }
 
 var contextPickerTips = "/ filter • enter select • esc cancel"
@@ -83,9 +84,25 @@ func (l *ContextPicker) View() string {
 	} else {
 		l.list.SetShowStatusBar(true)
 	}
+
+	content := l.list.View()
+	
+	// Add preview section above the list if available
+	if l.preview != "" {
+		previewStyle := lipgloss.NewStyle().
+			PaddingLeft(1).
+			MaxHeight(10) // Display 10 lines
+		
+		content = lipgloss.JoinVertical(
+			lipgloss.Left,
+			previewStyle.Render(l.preview),
+			content,
+		)
+	}
+
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		l.list.View(),
+		content,
 		util.HelpStyle.Render(contextPickerTips))
 }
 
@@ -132,7 +149,47 @@ func (l *ContextPicker) Update(msg tea.Msg) (ContextPicker, tea.Cmd) {
 	}
 
 	l.list, cmd = l.list.Update(msg)
+	
+	// Update preview when selection changes
+	if item, ok := l.GetSelectedItem(); ok && !item.IsFolder {
+		l.updatePreview(item.Path)
+	} else {
+		l.preview = ""
+	}
+	
 	return *l, cmd
+}
+
+func (l *ContextPicker) updatePreview(filePath string) {
+	// Get file info to check size
+	info, err := os.Stat(filePath)
+	if err != nil {
+		util.Slog.Error("failed to get file info for preview", "path", filePath, "error", err.Error())
+		l.preview = ""
+		return
+	}
+
+	// Don't preview files larger than 5MB to save performance
+	const maxPreviewSize = 5 * 1024 * 1024 // 5MB in bytes
+	if info.Size() > maxPreviewSize {
+		util.Slog.Debug("file too large for preview", "path", filePath, "size", info.Size())
+		l.preview = ""
+		return
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		util.Slog.Error("failed to read file for preview", "path", filePath, "error", err.Error())
+		l.preview = ""
+		return
+	}
+
+	lines := strings.Split(string(content), "\n")
+	if len(lines) > 10 {
+		lines = lines[:10]
+	}
+	
+	l.preview = strings.Join(lines, "\n")
 }
 
 func NewContextPicker(prevView util.ViewMode, prevInput string, colors util.SchemeColors, showIcons bool, maxDepth int) ContextPicker {
