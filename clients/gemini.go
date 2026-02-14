@@ -442,13 +442,13 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 			messageContent += singleMessage.Content
 		}
 
-		// FIX: Include ContextContent in the message sent to LLM
 		if singleMessage.ContextContent != "" {
-			util.Slog.Debug("Gemini: Including ContextContent in message (FIXED)",
+			util.Slog.Debug("Gemini: Including ContextContent in message",
 				"contextContentLength", len(singleMessage.ContextContent))
+			if messageContent != "" {
+				messageContent += "\n\n"
+			}
 			messageContent += singleMessage.ContextContent
-		} else {
-			util.Slog.Debug("Gemini: No ContextContent in message")
 		}
 
 		message := genai.Content{

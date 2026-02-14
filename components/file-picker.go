@@ -33,6 +33,9 @@ type FilePicker struct {
 	previewFile string
 	// Preview content
 	previewContent string
+	// Cached directory entries to avoid excessive I/O
+	cachedDirEntries []os.DirEntry
+	cachedDirPath    string
 }
 
 func NewFilePicker(
@@ -118,17 +121,6 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 			return m, nil
 		}
 
-		// Track filter input focus state by monitoring key events
-		// If user types a printable character, they're likely in filter input
-		if len(keyStr) == 1 && keyStr >= " " && keyStr <= "~" {
-			// Printable character typed, user is in filter input
-			m.filterInputFocused = true
-		} else if keyStr == "enter" || keyStr == "tab" {
-			// Enter or tab pressed, blur filter input
-			m.filterInputFocused = false
-			m.filterInput.Blur()
-		}
-
 		switch keyStr {
 		case "esc":
 			// Two-stage Esc behavior:
@@ -146,9 +138,13 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 				return m, util.SendViewModeChangedMsg(m.PrevView)
 			}
 		case "q":
-			// 'q' always closes the picker immediately
-			m.quitting = true
-			return m, util.SendViewModeChangedMsg(m.PrevView)
+			// Only close picker if filter input is not focused
+			if !m.filterInputFocused {
+				m.quitting = true
+				return m, util.SendViewModeChangedMsg(m.PrevView)
+			}
+			// Consume "q" when filter is focused
+			return m, nil
 		}
 
 	case clearErrorMsg:
@@ -170,6 +166,15 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 
 	// Update filepicker
 	m.filepicker, cmd = m.filepicker.Update(msg)
+
+	// Refresh cache if directory changed
+	if m.cachedDirPath != m.filepicker.CurrentDirectory {
+		entries, err := os.ReadDir(m.filepicker.CurrentDirectory)
+		if err == nil {
+			m.cachedDirEntries = entries
+			m.cachedDirPath = m.filepicker.CurrentDirectory
+		}
+	}
 
 	if didSelect, path := m.filepicker.DidSelectFile(msg); didSelect {
 		// In context mode, filter out media files
@@ -225,10 +230,15 @@ func (m FilePicker) filterFilePickerView(filterText string) string {
 	// Get the current directory from the file picker
 	currentDir := m.filepicker.CurrentDirectory
 
-	// Read the directory contents
-	entries, err := os.ReadDir(currentDir)
-	if err != nil {
-		return "Error reading directory: " + err.Error()
+	// Use cached directory entries
+	entries := m.cachedDirEntries
+	if len(entries) == 0 || m.cachedDirPath != currentDir {
+		// Cache miss or directory changed, read directory
+		var err error
+		entries, err = os.ReadDir(currentDir)
+		if err != nil {
+			return "Error reading directory: " + err.Error()
+		}
 	}
 
 	// Filter entries based on the filter text

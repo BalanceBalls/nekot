@@ -117,12 +117,11 @@ func WriteToResponseChannel(ctx context.Context, ch chan<- ProcessApiCompletionR
 
 // FileContextChip represents a selected file/folder context in the prompt
 type FileContextChip struct {
-	Path      string
-	Name      string
-	IsFolder  bool
-	Size      int64
-	FileCount int    // Number of files if folder
-	Type      string // "file" or "folder"
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	IsFolder  bool   `json:"is_folder"`
+	Size      int64  `json:"size"`
+	FileCount int    `json:"file_count"`
 }
 
 // MediaExtensions contains file extensions to exclude from context import

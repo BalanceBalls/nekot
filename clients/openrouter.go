@@ -267,13 +267,13 @@ func setRequestContext(
 			messageContent += singleMessage.Content
 		}
 
-		// FIX: Include ContextContent in the message sent to LLM
 		if singleMessage.ContextContent != "" {
-			util.Slog.Debug("OpenRouter: Including ContextContent in message (FIXED)",
+			util.Slog.Debug("OpenRouter: Including ContextContent in message",
 				"contextContentLength", len(singleMessage.ContextContent))
+			if messageContent != "" {
+				messageContent += "\n\n"
+			}
 			messageContent += singleMessage.ContextContent
-		} else {
-			util.Slog.Debug("OpenRouter: No ContextContent in message")
 		}
 
 		if len(singleMessage.ToolCalls) > 0 {

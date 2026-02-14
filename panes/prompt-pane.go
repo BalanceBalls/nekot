@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
@@ -448,11 +449,9 @@ func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
 							Name:     filepath.Base(selectedPath),
 							IsFolder: info.IsDir(),
 							Size:     info.Size(),
-							Type:     "file",
 						}
 
 						if info.IsDir() {
-							chip.Type = "folder"
 							chip.FileCount = 0
 						}
 
@@ -505,6 +504,22 @@ func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 		case util.FilePickerMode:
 			break
 		case util.TextEditMode:
+			// Check for @ trigger to open context picker
+			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "@" {
+				// Get editor content to check position
+				editorContent := p.textEditor.Value()
+				// Check if @ is at start or after space
+				if len(editorContent) == 0 {
+					p.filePicker.IsContextMode = true
+					return util.SendViewModeChangedWithContextMsg(util.FilePickerMode, true)
+				}
+				// Check if last character is a space (handles UTF-8 properly)
+				lastRune, _ := utf8.DecodeLastRuneInString(editorContent)
+				if lastRune == ' ' {
+					p.filePicker.IsContextMode = true
+					return util.SendViewModeChangedWithContextMsg(util.FilePickerMode, true)
+				}
+			}
 			p.textEditor, cmd = p.textEditor.Update(msg)
 		default:
 			// Check for @ trigger to open context picker
