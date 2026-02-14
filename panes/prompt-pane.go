@@ -81,6 +81,7 @@ type PromptPane struct {
 	inputMode      util.PrompInputMode
 	colors         util.SchemeColors
 	keys           keyMap
+	config         config.Config
 
 	pendingInsert  string
 	attachments    []util.Attachment
@@ -143,6 +144,7 @@ func NewPromptPane(ctx context.Context) PromptPane {
 		keys:           defaultKeyMap,
 		viewMode:       util.NormalMode,
 		colors:         colors,
+		config:         *config,
 		input:          input,
 		textEditor:     textEditor,
 		inputContainer: container,
@@ -654,7 +656,8 @@ func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput
 
 func (p *PromptPane) openFilePicker(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
 	w, h := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-	p.filePicker = components.NewFilePicker(previousViewMode, currentInput, p.colors, p.filePicker.IsContextMode)
+	searchDepth := p.config.GetContextMaxDepth()
+	p.filePicker = components.NewFilePicker(previousViewMode, currentInput, p.colors, p.filePicker.IsContextMode, searchDepth)
 	p.filePicker.SetSize(w, h)
 	return p.filePicker.Init()
 }
@@ -817,6 +820,17 @@ func (p PromptPane) View() string {
 // GetFilePickerView returns the file picker view for rendering in main view
 func (p *PromptPane) GetFilePickerView() string {
 	return p.filePicker.View()
+}
+
+// GetFilePickerViewWithoutFilter returns the file picker view without filter input
+// This is used when the filter input is displayed separately (e.g., below preview)
+func (p *PromptPane) GetFilePickerViewWithoutFilter() string {
+	return p.filePicker.GetFilePickerViewWithoutFilter()
+}
+
+// GetFilePickerFilterInputView returns the filter input view
+func (p *PromptPane) GetFilePickerFilterInputView() string {
+	return p.filePicker.GetFilterInputView()
 }
 
 // GetInputContainerStyle returns the input container style for wrapping the file picker
