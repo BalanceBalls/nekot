@@ -406,9 +406,12 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Role:           "user",
 				Content:        msg.Prompt, // Don't append context content here for display
 				Attachments:    msg.Attachments,
-				ContextChips:   m.pendingContextChips,
-				ContextContent: contextContent, // Store formatted content separately
+				ContextChips:   msg.ContextChips, // Use updated chips with FolderEntries populated
+				ContextContent: contextContent,   // Store formatted content separately
+				FileContents:   msg.FileContents, // Store file contents for display when expanded
 			})
+		// Store FileContents for display when expanded
+		m.pendingContextChips = msg.ContextChips
 		// Clear pending context chips
 		m.pendingContextChips = []util.FileContextChip{}
 		m.viewMode = util.NormalMode
@@ -747,12 +750,14 @@ func mapAttachmentType(attachmentType string) string {
 func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.Attachment, chips []util.FileContextChip, maxDepth int) tea.Cmd {
 	return func() tea.Msg {
 		var contextContent strings.Builder
+		var fileContents strings.Builder // For non-folder chips only
 		var errors []string
+		updatedChips := make([]util.FileContextChip, len(chips))
 
-		for _, chip := range chips {
+		for i, chip := range chips {
+			updatedChips[i] = chip // Copy the chip
 			if chip.IsFolder {
 				// Read folder contents
-				util.Slog.Debug("reading folder context", "path", chip.Path)
 				contents, filePaths, err := util.ReadFolderContents(chip.Path, maxDepth)
 				if err != nil {
 					errMsg := fmt.Sprintf("Failed to read folder %s: %s", chip.Path, err.Error())
@@ -764,6 +769,14 @@ func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.A
 				// Format folder contents
 				formatted := util.FormatFolderContents(contents, filePaths)
 				contextContent.WriteString(formatted)
+
+				// Get non-recursive folder entries list for display
+				folderEntries, err := util.ListFolderEntries(chip.Path)
+				if err != nil {
+					util.Slog.Error("failed to list folder entries", "path", chip.Path, "error", err.Error())
+					folderEntries = ""
+				}
+				updatedChips[i].FolderEntries = folderEntries
 			} else {
 				// Read single file
 				util.Slog.Debug("reading file context", "path", chip.Path)
@@ -778,6 +791,7 @@ func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.A
 				// Format file content
 				formatted := util.FormatFileContent(chip.Path, content)
 				contextContent.WriteString(formatted)
+				fileContents.WriteString(formatted) // Also add to fileContents for display
 			}
 		}
 
@@ -786,6 +800,8 @@ func (m MainView) makeProcessContextChipsCmd(prompt string, attachments []util.A
 			Attachments:    attachments,
 			ContextContent: contextContent.String(),
 			Errors:         errors,
+			ContextChips:   updatedChips,
+			FileContents:   fileContents.String(),
 		}
 	}
 }

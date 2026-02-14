@@ -24,6 +24,7 @@ type LocalStoreMessage struct {
 	ToolCalls      []ToolCall        `json:"tool_calls"`
 	ContextChips   []FileContextChip `json:"context_chips"`
 	ContextContent string            `json:"context_content"`
+	FileContents   string            `json:"file_contents"` // Contents of non-folder chips only (for display when expanded)
 }
 
 type Attachment struct {
@@ -117,11 +118,12 @@ func WriteToResponseChannel(ctx context.Context, ch chan<- ProcessApiCompletionR
 
 // FileContextChip represents a selected file/folder context in the prompt
 type FileContextChip struct {
-	Path      string `json:"path"`
-	Name      string `json:"name"`
-	IsFolder  bool   `json:"is_folder"`
-	Size      int64  `json:"size"`
-	FileCount int    `json:"file_count"`
+	Path          string `json:"path"`
+	Name          string `json:"name"`
+	IsFolder      bool   `json:"is_folder"`
+	Size          int64  `json:"size"`
+	FileCount     int    `json:"file_count"`
+	FolderEntries string `json:"folder_entries"` // Non-recursive list of files/folders in folder
 }
 
 // MediaExtensions contains file extensions to exclude from context import

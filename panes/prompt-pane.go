@@ -454,7 +454,14 @@ func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
 						}
 
 						if info.IsDir() {
-							chip.FileCount = 0
+							// Count files in the folder using the configured max depth
+							searchDepth := p.config.GetContextMaxDepth()
+							fileCount, err := util.CountFilesInFolder(selectedPath, searchDepth)
+							if err != nil {
+								util.Slog.Error("Failed to count files in folder", "path", selectedPath, "error", err.Error())
+								fileCount = 0
+							}
+							chip.FileCount = fileCount
 						}
 
 						p.contextChips = append(p.contextChips, chip)

@@ -225,3 +225,36 @@ func CountFilesInFolder(path string, maxDepth int) (int, error) {
 
 	return count, nil
 }
+
+// ListFolderEntries returns a list of files and folders in a directory (non-recursive)
+// Returns a formatted string with file/folder names and their types
+func ListFolderEntries(path string) (string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("--- Folder: %s ---\n", filepath.Base(path)))
+
+	for _, entry := range entries {
+		// Skip hidden files and directories
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+
+		if entry.IsDir() {
+			result.WriteString(fmt.Sprintf("📁 %s/\n", entry.Name()))
+		} else {
+			// Skip media files
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if slices.Contains(MediaExtensions, ext) {
+				continue
+			}
+			result.WriteString(fmt.Sprintf("📄 %s\n", entry.Name()))
+		}
+	}
+
+	result.WriteString("---\n")
+	return result.String(), nil
+}

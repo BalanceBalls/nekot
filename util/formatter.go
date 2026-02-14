@@ -105,9 +105,23 @@ func RenderUserMessage(userMessage LocalStoreMessage, width int, colors SchemeCo
 	// Render context chips
 	if len(userMessage.ContextChips) != 0 {
 		if showContextContent && userMessage.ContextContent != "" {
-			// Show full context content
+			// Show folder entries for folders, full content for files
 			msg += "\n *Context Content:* \n"
-			msg += userMessage.ContextContent
+			for _, chip := range userMessage.ContextChips {
+				if chip.IsFolder {
+					// Show NON-RECURSIVE folder entries list
+					if chip.FolderEntries != "" {
+						msg += chip.FolderEntries
+					} else {
+						// Fallback to full content if folder entries not available
+						msg += fmt.Sprintf("--- Folder: %s ---\n", chip.Name)
+					}
+				}
+			}
+			// Add file contents (non-folder chips) from FileContents
+			if userMessage.FileContents != "" {
+				msg += userMessage.FileContents
+			}
 		} else {
 			// Show labels only
 			contextLabels := "\n *Context:* \n"

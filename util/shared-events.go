@@ -149,7 +149,9 @@ type ContextChipsProcessed struct {
 	Prompt         string
 	Attachments    []Attachment
 	ContextContent string
-	Errors         []string // Errors that occurred during processing
+	Errors         []string          // Errors that occurred during processing
+	ContextChips   []FileContextChip // Updated chips with FolderEntries populated
+	FileContents   string            // Contents of non-folder chips only (for display when expanded)
 }
 
 type AsyncDependencyReady struct {
