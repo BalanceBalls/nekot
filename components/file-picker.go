@@ -137,14 +137,6 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 				m.quitting = true
 				return m, util.SendViewModeChangedMsg(m.PrevView)
 			}
-		case "q":
-			// Only close picker if filter input is not focused
-			if !m.filterInputFocused {
-				m.quitting = true
-				return m, util.SendViewModeChangedMsg(m.PrevView)
-			}
-			// Consume "q" when filter is focused
-			return m, nil
 		}
 
 	case clearErrorMsg:
