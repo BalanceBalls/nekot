@@ -27,12 +27,13 @@ const (
 )
 
 type chatPaneKeyMap struct {
-	selectionMode key.Binding
-	exit          key.Binding
-	copyLast      key.Binding
-	copyAll       key.Binding
-	goUp          key.Binding
-	goDown        key.Binding
+	selectionMode        key.Binding
+	exit                 key.Binding
+	copyLast             key.Binding
+	copyAll              key.Binding
+	goUp                 key.Binding
+	goDown               key.Binding
+	toggleContextContent key.Binding
 }
 
 var defaultChatPaneKeyMap = chatPaneKeyMap{
@@ -60,6 +61,10 @@ var defaultChatPaneKeyMap = chatPaneKeyMap{
 		key.WithKeys("G"),
 		key.WithHelp("G", "scroll to bottom"),
 	),
+	toggleContextContent: key.NewBinding(
+		key.WithKeys("ctrl+l"),
+		key.WithHelp("ctrl+l", "toggle context content visibility"),
+	),
 }
 
 const pulsarIntervalMs = 100
@@ -86,6 +91,7 @@ type ChatPane struct {
 	idleCyclesCount        int
 	processingState        util.ProcessingState
 	currentSettings        util.Settings
+	showContextContent     bool
 	mu                     *sync.RWMutex
 
 	terminalWidth  int
@@ -196,6 +202,16 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 		return p, nil
 
+	case util.ToggleContextContent:
+		p.showContextContent = !p.showContextContent
+		// Trigger re-render
+		return p, func() tea.Msg {
+			return tea.WindowSizeMsg{
+				Width:  p.terminalWidth,
+				Height: p.terminalHeight,
+			}
+		}
+
 	case util.ProcessingStateChanged:
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -290,7 +306,8 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 				paneWidth,
 				p.colors,
 				p.quickChatActive,
-				p.currentSettings)
+				p.currentSettings,
+				p.showContextContent)
 			p.sessionContent = msg.PreviousMsgArray
 			util.Slog.Debug("len(p.sessionContent) != len(msg.PreviousMsgArray)", "new length", len(msg.PreviousMsgArray))
 		}
@@ -398,6 +415,14 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 				}
 				cmds = append(cmds, copyAll)
 			}
+
+		case key.Matches(msg, p.keyMap.toggleContextContent):
+			if p.isChatContainerFocused {
+				toggleCmd := func() tea.Msg {
+					return util.SendToggleContextContentMsg()
+				}
+				cmds = append(cmds, toggleCmd)
+			}
 		}
 	}
 
@@ -434,7 +459,8 @@ func (p *ChatPane) enterSelectionMode() {
 		p.sessionContent,
 		p.chatView.Width,
 		p.colors,
-		p.currentSettings)
+		p.currentSettings,
+		p.showContextContent)
 	mouseTopOffset := p.chatContainer.GetMarginTop() + p.chatContainer.GetBorderTopSize() + p.chatContainer.GetPaddingTop()
 	mouseLeftOffset := p.chatContainer.GetMarginLeft() + p.chatContainer.GetBorderLeftSize() + p.chatContainer.GetPaddingLeft()
 	p.selectionView = components.NewTextSelector(
@@ -629,7 +655,8 @@ func (p ChatPane) displaySession(
 		paneWidth-1,
 		p.colors,
 		p.quickChatActive,
-		p.currentSettings)
+		p.currentSettings,
+		p.showContextContent)
 	p.chatView.SetContent(oldContent)
 	if useScroll {
 		p.chatView.GotoBottom()

@@ -141,7 +141,9 @@ We provide a `config.json` file within your directory for easy access to essenti
   "provider": "openai", // openai, gemini, openrouter
   "maxAttachmentSizeMb": 3,
   "includeReasoningTokensInContext": true,
-  "sessionExportDir": "/must/be/absolute/path/to/exports"
+  "sessionExportDir": "/must/be/absolute/path/to/exports",
+  "contextMaxDepth": 2,
+  "showContextIcons": true
 }
 ```
 
@@ -152,6 +154,8 @@ We provide a `config.json` file within your directory for easy access to essenti
  - `maxAttachmentSizeMb` field sets maximum allowed image size
  - `includeReasoningTokensInContext` field sets whether to include reasoning tokens in the next request or not.
  - `sessionExportDir` allows to specify directory for session exports. If not set, exports are saved to current directory. **The path must be an absolute path**
+ - `contextMaxDepth`: Sets the maximum depth for recursive file search when using `@` to add file context. Default is `2`. Higher values allow searching deeper into subdirectories but may be slower.
+ - `showContextIcons`: Controls whether to show file type icons in the context picker. Default is `true`.
 
 
 ### Providers
@@ -253,6 +257,12 @@ nekot -n
 - `esc`: Exit insert mode for the prompt
     * When in 'Prompt editor' mode, pressing `esc` second time will close editor
 - `Ctrl+a`: open file picker for attaching images. You can also attach images by typing: [img=/path/to/image]
+- `@`: Open context picker for adding file/folder context (type `@` at the beginning of input or after a space)
+    * Context picker shows a preview pane on the right for text files
+    * Use `Ctrl+/` to focus the filter input for searching files
+    * Filter performs recursive search through subdirectories (depth controlled by `contextMaxDepth` config)
+    * Preview shows line numbers and uses theme colors for better readability
+    * Binary files and directories show appropriate messages instead of preview
 
 ## Chat Messages Pane
 

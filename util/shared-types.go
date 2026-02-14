@@ -16,12 +16,15 @@ type Settings struct {
 }
 
 type LocalStoreMessage struct {
-	Model       string       `json:"model"`
-	Role        string       `json:"role"`
-	Content     string       `json:"content"`
-	Resoning    string       `json:"reasoning"`
-	Attachments []Attachment `json:"attachments"`
-	ToolCalls   []ToolCall   `json:"tool_calls"`
+	Model          string            `json:"model"`
+	Role           string            `json:"role"`
+	Content        string            `json:"content"`
+	Resoning       string            `json:"reasoning"`
+	Attachments    []Attachment      `json:"attachments"`
+	ToolCalls      []ToolCall        `json:"tool_calls"`
+	ContextChips   []FileContextChip `json:"context_chips"`
+	ContextContent string            `json:"context_content"`
+	FileContents   string            `json:"file_contents"` // Contents of non-folder chips only (for display when expanded)
 }
 
 type Attachment struct {
@@ -111,4 +114,31 @@ func WriteToResponseChannel(ctx context.Context, ch chan<- ProcessApiCompletionR
 	case <-ctx.Done():
 		Slog.Debug("Context cancelled, skipping write to channel", "msg_id", msg.ID)
 	}
+}
+
+// FileContextChip represents a selected file/folder context in the prompt
+type FileContextChip struct {
+	Path          string `json:"path"`
+	Name          string `json:"name"`
+	IsFolder      bool   `json:"is_folder"`
+	Size          int64  `json:"size"`
+	FileCount     int    `json:"file_count"`
+	FolderEntries string `json:"folder_entries"` // Non-recursive list of files/folders in folder
+}
+
+// MediaExtensions contains file extensions to exclude from context import
+var MediaExtensions = []string{
+	".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg",
+	".mp4", ".avi", ".mov", ".mkv", ".webm",
+	".mp3", ".wav", ".ogg", ".flac",
+	".pdf", ".zip", ".tar", ".gz", ".7z", ".rar",
+}
+
+// CodeExtensions contains file extensions that should be wrapped in code blocks
+var CodeExtensions = []string{
+	".go", ".js", ".ts", ".py", ".java", ".c", ".cpp", ".h", ".hpp",
+	".rs", ".rb", ".php", ".swift", ".kt", ".scala", ".cs", ".sh",
+	".bash", ".zsh", ".fish", ".ps1", ".bat", ".cmd", ".sql", ".html",
+	".css", ".scss", ".sass", ".less", ".json", ".xml", ".yaml", ".yml",
+	".toml", ".ini", ".cfg", ".conf", ".md", ".markdown", ".txt",
 }

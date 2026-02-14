@@ -18,6 +18,7 @@ func GetMessagesAsPrettyString(
 	colors SchemeColors,
 	isQuickChat bool,
 	settings Settings,
+	showContextContent bool,
 ) string {
 	var messages string
 
@@ -27,7 +28,7 @@ func GetMessagesAsPrettyString(
 
 		switch message.Role {
 		case "user":
-			messageToUse = RenderUserMessage(message, w, colors, false)
+			messageToUse = RenderUserMessage(message, w, colors, false, showContextContent)
 		case "assistant":
 			messageToUse = RenderBotMessage(message, w, colors, false, settings)
 		case "tool":
@@ -50,7 +51,7 @@ func GetMessagesAsPrettyString(
 	return messages
 }
 
-func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeColors, settings Settings) string {
+func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeColors, settings Settings, showContextContent bool) string {
 	var messages string
 	w = w - TextSelectorMaxWidthCorrection
 	for _, message := range msgsToRender {
@@ -59,7 +60,7 @@ func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeCol
 
 		switch message.Role {
 		case "user":
-			messageToUse = RenderUserMessage(message, w, colors, true)
+			messageToUse = RenderUserMessage(message, w, colors, true, showContextContent)
 		case "assistant":
 			messageToUse = RenderBotMessage(message, w, colors, true, settings)
 		case "tool":
@@ -77,7 +78,7 @@ func GetVisualModeView(msgsToRender []LocalStoreMessage, w int, colors SchemeCol
 	return messages
 }
 
-func RenderUserMessage(userMessage LocalStoreMessage, width int, colors SchemeColors, isVisualMode bool) string {
+func RenderUserMessage(userMessage LocalStoreMessage, width int, colors SchemeColors, isVisualMode bool, showContextContent bool) string {
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithPreservedNewLines(),
 		glamour.WithWordWrap(width-WordWrapDelta),
@@ -99,6 +100,40 @@ func RenderUserMessage(userMessage LocalStoreMessage, width int, colors SchemeCo
 			attachments += "# [" + fileName + "] \n"
 		}
 		msg += attachments
+	}
+
+	// Render context chips
+	if len(userMessage.ContextChips) != 0 {
+		if showContextContent && userMessage.ContextContent != "" {
+			// Show folder entries for folders, full content for files
+			msg += "\n *Context Content:* \n"
+			for _, chip := range userMessage.ContextChips {
+				if chip.IsFolder {
+					// Show NON-RECURSIVE folder entries list
+					if chip.FolderEntries != "" {
+						msg += chip.FolderEntries
+					} else {
+						// Fallback to full content if folder entries not available
+						msg += fmt.Sprintf("--- Folder: %s ---\n", chip.Name)
+					}
+				}
+			}
+			// Add file contents (non-folder chips) from FileContents
+			if userMessage.FileContents != "" {
+				msg += userMessage.FileContents
+			}
+		} else {
+			// Show labels only
+			contextLabels := "\n *Context:* \n"
+			for _, chip := range userMessage.ContextChips {
+				if chip.IsFolder {
+					contextLabels += fmt.Sprintf("# [📁 %s] (%d files)\n", chip.Name, chip.FileCount)
+				} else {
+					contextLabels += fmt.Sprintf("# [📄 %s]\n", chip.Name)
+				}
+			}
+			msg += contextLabels
+		}
 	}
 
 	userMsg, _ := renderer.Render(msg)

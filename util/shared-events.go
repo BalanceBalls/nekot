@@ -121,8 +121,9 @@ func SendProcessingStateChangedMsg(processingState ProcessingState) tea.Cmd {
 }
 
 type PromptReady struct {
-	Prompt      string
-	Attachments []Attachment
+	Prompt       string
+	Attachments  []Attachment
+	ContextChips []FileContextChip
 }
 
 func SendPromptReadyMsg(prompt string, attachments []Attachment) tea.Cmd {
@@ -132,6 +133,25 @@ func SendPromptReadyMsg(prompt string, attachments []Attachment) tea.Cmd {
 			Attachments: attachments,
 		}
 	}
+}
+
+func SendPromptReadyWithContextMsg(prompt string, attachments []Attachment, contextChips []FileContextChip) tea.Cmd {
+	return func() tea.Msg {
+		return PromptReady{
+			Prompt:       prompt,
+			Attachments:  attachments,
+			ContextChips: contextChips,
+		}
+	}
+}
+
+type ContextChipsProcessed struct {
+	Prompt         string
+	Attachments    []Attachment
+	ContextContent string
+	Errors         []string          // Errors that occurred during processing
+	ContextChips   []FileContextChip // Updated chips with FolderEntries populated
+	FileContents   string            // Contents of non-folder chips only (for display when expanded)
 }
 
 type AsyncDependencyReady struct {
@@ -186,12 +206,20 @@ func SendCopyAllMsgs() tea.Msg {
 }
 
 type ViewModeChanged struct {
-	Mode ViewMode
+	Mode          ViewMode
+	IsContextMode bool // indicates if file picker is in context mode
 }
 
 func SendViewModeChangedMsg(mode ViewMode) tea.Cmd {
 	return func() tea.Msg {
-		return ViewModeChanged{Mode: mode}
+		return ViewModeChanged{Mode: mode, IsContextMode: false}
+	}
+}
+
+// SendViewModeChangedWithContextMsg sends ViewModeChanged with context mode flag
+func SendViewModeChangedWithContextMsg(mode ViewMode, isContextMode bool) tea.Cmd {
+	return func() tea.Msg {
+		return ViewModeChanged{Mode: mode, IsContextMode: isContextMode}
 	}
 }
 
@@ -248,4 +276,10 @@ func AddNewSession(isTemporary bool) tea.Cmd {
 			IsTemporary: isTemporary,
 		}
 	}
+}
+
+type ToggleContextContent struct{}
+
+func SendToggleContextContentMsg() tea.Msg {
+	return ToggleContextContent{}
 }
