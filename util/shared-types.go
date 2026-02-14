@@ -16,12 +16,14 @@ type Settings struct {
 }
 
 type LocalStoreMessage struct {
-	Model       string       `json:"model"`
-	Role        string       `json:"role"`
-	Content     string       `json:"content"`
-	Resoning    string       `json:"reasoning"`
-	Attachments []Attachment `json:"attachments"`
-	ToolCalls   []ToolCall   `json:"tool_calls"`
+	Model          string            `json:"model"`
+	Role           string            `json:"role"`
+	Content        string            `json:"content"`
+	Resoning       string            `json:"reasoning"`
+	Attachments    []Attachment      `json:"attachments"`
+	ToolCalls      []ToolCall        `json:"tool_calls"`
+	ContextChips   []FileContextChip `json:"context_chips"`
+	ContextContent string            `json:"context_content"`
 }
 
 type Attachment struct {
@@ -115,12 +117,12 @@ func WriteToResponseChannel(ctx context.Context, ch chan<- ProcessApiCompletionR
 
 // FileContextChip represents a selected file/folder context in the prompt
 type FileContextChip struct {
-	Path     string
-	Name     string
-	IsFolder bool
-	Size     int64
-	FileCount int // Number of files if folder
-	Type     string // "file" or "folder"
+	Path      string
+	Name      string
+	IsFolder  bool
+	Size      int64
+	FileCount int    // Number of files if folder
+	Type      string // "file" or "folder"
 }
 
 // MediaExtensions contains file extensions to exclude from context import

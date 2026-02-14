@@ -81,13 +81,16 @@ var defaultKeyMap = keyMap{
 }
 
 type MainView struct {
-	viewReady        bool
-	controlsLocked   bool
-	focused          util.Pane
-	viewMode         util.ViewMode
-	error            util.ErrorEvent
-	currentSessionID string
-	keys             keyMap
+	viewReady           bool
+	controlsLocked      bool
+	focused             util.Pane
+	viewMode            util.ViewMode
+	isContextMode       bool // tracks if file picker is in context mode
+	error               util.ErrorEvent
+	currentSessionID    string
+	keys                keyMap
+	showContextContent  bool
+	pendingContextChips []util.FileContextChip
 
 	chatPane         panes.ChatPane
 	promptPane       panes.PromptPane
@@ -152,6 +155,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 	return MainView{
 		keys:                defaultKeyMap,
 		viewMode:            util.NormalMode,
+		isContextMode:       false, // Default to false
 		focused:             util.PromptPane,
 		currentSessionID:    "",
 		sessionOrchestrator: orchestrator,
@@ -165,6 +169,8 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		flags:               *flags,
 		context:             ctx,
 		initialPrompt:       flags.InitialPrompt,
+		showContextContent:  false,
+		pendingContextChips: []util.FileContextChip{},
 	}
 }
 
@@ -221,6 +227,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case util.ViewModeChanged:
 		m.viewMode = msg.Mode
+		m.isContextMode = msg.IsContextMode
 
 	case util.SwitchToPaneMsg:
 		if util.IsFocusAllowed(m.viewMode, msg.Target, m.terminalWidth) {
@@ -359,6 +366,8 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Process context chips asynchronously
 		if len(msg.ContextChips) > 0 {
+			// Store context chips for later use
+			m.pendingContextChips = msg.ContextChips
 			util.Slog.Debug("dispatching async context chips processing", "count", len(msg.ContextChips))
 			// Capture maxDepth at command creation time to avoid race condition
 			maxDepth := m.config.GetContextMaxDepth()
@@ -369,9 +378,10 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sessionOrchestrator.ArrayOfMessages = append(
 			m.sessionOrchestrator.ArrayOfMessages,
 			util.LocalStoreMessage{
-				Role:        "user",
-				Content:     msg.Prompt,
-				Attachments: loadedAttachments,
+				Role:         "user",
+				Content:      msg.Prompt,
+				Attachments:  loadedAttachments,
+				ContextChips: msg.ContextChips,
 			})
 		m.viewMode = util.NormalMode
 		m.controlsLocked = true
@@ -384,6 +394,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case util.ContextChipsProcessed:
 		// Context chips have been processed asynchronously
+		// Store formatted context content separately for display
 		contextContent := msg.ContextContent
 		if contextContent != "" {
 			contextContent = "\n\n" + contextContent
@@ -392,29 +403,40 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sessionOrchestrator.ArrayOfMessages = append(
 			m.sessionOrchestrator.ArrayOfMessages,
 			util.LocalStoreMessage{
-				Role:        "user",
-				Content:     msg.Prompt + contextContent,
-				Attachments: msg.Attachments,
+				Role:           "user",
+				Content:        msg.Prompt, // Don't append context content here for display
+				Attachments:    msg.Attachments,
+				ContextChips:   m.pendingContextChips,
+				ContextContent: contextContent, // Store formatted content separately
 			})
+		// Clear pending context chips
+		m.pendingContextChips = []util.FileContextChip{}
 		m.viewMode = util.NormalMode
 		m.controlsLocked = true
 
 		m.setProcessingContext()
-		
+
 		// Build the sequence of commands
 		sequence := []tea.Cmd{
 			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
 			util.SendViewModeChangedMsg(m.viewMode),
 			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator),
 		}
-		
+
 		// Show notification if there were errors during processing (non-blocking)
 		if len(msg.Errors) > 0 {
 			errorMsg := fmt.Sprintf("Some context files failed to load:\n%s", strings.Join(msg.Errors, "\n"))
 			util.Slog.Warn("some context files failed to load", "errors", errorMsg)
 		}
-		
+
 		return m, tea.Sequence(sequence...)
+
+	case util.ToggleContextContent:
+		m.showContextContent = !m.showContextContent
+		// Also update chat pane state
+		m.chatPane, cmd = m.chatPane.Update(msg)
+		cmds = append(cmds, cmd)
+		return m, tea.Batch(cmds...)
 
 	case tea.MouseMsg:
 		targetPane := m.focused
@@ -577,8 +599,12 @@ func (m MainView) View() string {
 		mainView = m.chatPane.DisplayError(m.error.Message)
 	}
 
+	// In FilePickerMode, render file picker in place of chat pane
+	if m.viewMode == util.FilePickerMode {
+		mainView = m.promptPane.GetFilePickerView()
+	}
+
 	// Conditionally render windowViews based on view mode
-	// In ContextPickerMode or FilePickerMode, don't render chat pane to avoid phantom pane
 	if m.viewMode == util.NormalMode {
 		windowViews = lipgloss.NewStyle().
 			Align(lipgloss.Right, lipgloss.Right).
@@ -589,10 +615,36 @@ func (m MainView) View() string {
 					settingsAndSessionPanes,
 				),
 			)
-	} else if m.viewMode == util.ContextPickerMode || m.viewMode == util.FilePickerMode {
-		// In ContextPickerMode or FilePickerMode, render empty windowViews
-		// This prevents the chat pane from being rendered and creating a clickable zone
-		windowViews = ""
+	} else if m.viewMode == util.FilePickerMode {
+		// In FilePickerMode, render file picker with optional preview pane
+		if m.promptPane.GetFilePickerIsContextMode() {
+			// For context mode, show file picker with preview pane on the right
+			previewHeight := m.terminalHeight - 10 // Reserve space for borders and reminders
+			previewView := m.promptPane.GetFilePickerPreviewView(previewHeight)
+
+			if previewView != "" {
+				// Show file picker and preview side by side
+				windowViews = lipgloss.NewStyle().
+					Align(lipgloss.Right, lipgloss.Right).
+					Render(
+						lipgloss.JoinHorizontal(
+							lipgloss.Top,
+							mainView,
+							previewView,
+						),
+					)
+			} else {
+				// No preview, show file picker in full width
+				windowViews = lipgloss.NewStyle().
+					Align(lipgloss.Right, lipgloss.Right).
+					Render(mainView)
+			}
+		} else {
+			// For media mode, show file picker in full width
+			windowViews = lipgloss.NewStyle().
+				Align(lipgloss.Right, lipgloss.Right).
+				Render(mainView)
+		}
 	} else {
 		// In TextEditMode, ZenMode, etc.
 		// Only render mainView without secondary screen
@@ -602,6 +654,22 @@ func (m MainView) View() string {
 	}
 
 	util.Slog.Debug("MainView.View: rendering", "viewMode", m.viewMode)
+
+	// Wrap file picker with input container style to restore border
+	if m.viewMode == util.FilePickerMode {
+		inputContainer := m.promptPane.GetInputContainerStyle()
+		infoLabel := m.promptPane.GetInfoLabelStyle()
+		infoBlockStyle := m.promptPane.GetInfoBlockStyle()
+
+		// Add reminder under file picker
+		reminderContent := infoLabel.Render("Use ctrl+a to attach an image • @ to add file context • Ctrl+/ to filter • Enter to select file")
+
+		return zone.Scan(lipgloss.JoinVertical(
+			lipgloss.Left,
+			inputContainer.Render(windowViews),
+			infoBlockStyle.Render(reminderContent),
+		))
+	}
 
 	promptView := m.promptPane.View()
 

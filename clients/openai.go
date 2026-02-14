@@ -270,6 +270,15 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 			messageContent += singleMessage.Content
 		}
 
+		// FIX: Include ContextContent in the message sent to LLM
+		if singleMessage.ContextContent != "" {
+			util.Slog.Debug("OpenAI: Including ContextContent in message (FIXED)",
+				"contextContentLength", len(singleMessage.ContextContent))
+			messageContent += singleMessage.ContextContent
+		} else {
+			util.Slog.Debug("OpenAI: No ContextContent in message")
+		}
+
 		if messageContent != "" {
 			singleMessage.Content = messageContent
 		}

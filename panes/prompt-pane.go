@@ -76,7 +76,6 @@ type PromptPane struct {
 	input          textinput.Model
 	textEditor     textarea.Model
 	filePicker     components.FilePicker
-	contextPicker  components.ContextPicker
 	inputContainer lipgloss.Style
 	inputMode      util.PrompInputMode
 	colors         util.SchemeColors
@@ -166,7 +165,6 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 
 	cmds = append(cmds, p.processTextInputUpdates(msg))
 	cmds = append(cmds, p.processFilePickerUpdates(msg))
-	cmds = append(cmds, p.processContextPickerUpdates(msg))
 
 	p.handlePlaceholder()
 
@@ -231,7 +229,9 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 
 func (p *PromptPane) keyAttach() tea.Cmd {
 	if p.isFocused && p.operation == util.NoOperaton && p.viewMode != util.FilePickerMode {
-		return util.SendViewModeChangedMsg(util.FilePickerMode)
+		// Set IsContextMode to false for image attachment
+		p.filePicker.IsContextMode = false
+		return util.SendViewModeChangedWithContextMsg(util.FilePickerMode, false)
 	} else {
 		return util.SendViewModeChangedMsg(util.NormalMode)
 	}
@@ -303,7 +303,7 @@ func (p *PromptPane) keyEnter() tea.Cmd {
 		return nil
 	}
 
-	if p.viewMode == util.FilePickerMode || p.viewMode == util.ContextPickerMode {
+	if p.viewMode == util.FilePickerMode {
 		return nil
 	}
 
@@ -414,15 +414,73 @@ func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	// Debug: Log when processing file picker updates
+	if p.viewMode == util.FilePickerMode {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			util.Slog.Debug("PromptPane: Processing file picker update", "isFocused", p.isFocused, "keyStr", keyMsg.String())
+		}
+	}
+
 	if p.isFocused && p.viewMode == util.FilePickerMode {
 		if p.filePicker.SelectedFile != "" {
-			attachmentPath := p.filePicker.SelectedFile
-			attachmentPath = filepath.Clean(attachmentPath)
-			attachmentPath = strings.ReplaceAll(attachmentPath, `\ `, " ")
-			p.attachments = append(p.attachments, util.Attachment{
-				Type: "img",
-				Path: attachmentPath,
-			})
+			selectedPath := p.filePicker.SelectedFile
+			selectedPath = filepath.Clean(selectedPath)
+			selectedPath = strings.ReplaceAll(selectedPath, `\ `, " ")
+
+			if p.filePicker.IsContextMode {
+				// Create a context chip from the selected path
+				info, err := os.Stat(selectedPath)
+				if err != nil {
+					util.Slog.Error("os.Stat failed for context chip", "path", selectedPath, "error", err.Error())
+				} else {
+					// Check for duplicates before adding
+					isDuplicate := false
+					for _, existingChip := range p.contextChips {
+						if existingChip.Path == selectedPath {
+							isDuplicate = true
+							break
+						}
+					}
+
+					if !isDuplicate {
+						chip := util.FileContextChip{
+							Path:     selectedPath,
+							Name:     filepath.Base(selectedPath),
+							IsFolder: info.IsDir(),
+							Size:     info.Size(),
+							Type:     "file",
+						}
+
+						if info.IsDir() {
+							chip.Type = "folder"
+							chip.FileCount = 0
+						}
+
+						p.contextChips = append(p.contextChips, chip)
+					} else {
+						util.Slog.Debug("Skipping duplicate context chip", "path", selectedPath)
+					}
+				}
+			} else {
+				// Add as image attachment
+				// Check for duplicates before adding
+				isDuplicate := false
+				for _, existingAttachment := range p.attachments {
+					if existingAttachment.Path == selectedPath {
+						isDuplicate = true
+						break
+					}
+				}
+
+				if !isDuplicate {
+					p.attachments = append(p.attachments, util.Attachment{
+						Type: "img",
+						Path: selectedPath,
+					})
+				} else {
+					util.Slog.Debug("Skipping duplicate image attachment", "path", selectedPath)
+				}
+			}
 
 			cmds = append(cmds, util.SendViewModeChangedMsg(p.filePicker.PrevView))
 			p.filePicker.SelectedFile = ""
@@ -439,62 +497,12 @@ func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (p *PromptPane) processContextPickerUpdates(msg tea.Msg) tea.Cmd {
-	var cmd tea.Cmd
-	var cmds []tea.Cmd
-
-	if p.isFocused && p.viewMode == util.ContextPickerMode {
-		if p.contextPicker.SelectedPath != "" {
-			// Create a context chip from the selected path
-			selectedPath := p.contextPicker.SelectedPath
-			selectedPath = filepath.Clean(selectedPath)
-			selectedPath = strings.ReplaceAll(selectedPath, `\ `, " ")
-
-			// Get file info
-			info, err := os.Stat(selectedPath)
-			if err != nil {
-				util.Slog.Error("os.Stat failed for context chip", "path", selectedPath, "error", err.Error())
-			} else {
-				chip := util.FileContextChip{
-					Path:     selectedPath,
-					Name:     filepath.Base(selectedPath),
-					IsFolder: info.IsDir(),
-					Size:     info.Size(),
-					Type:     "file",
-				}
-
-				if info.IsDir() {
-					chip.Type = "folder"
-					// Count files in folder (will be updated when reading)
-					chip.FileCount = 0
-				}
-
-				p.contextChips = append(p.contextChips, chip)
-			}
-
-			cmds = append(cmds, util.SendViewModeChangedMsg(p.contextPicker.PrevView))
-			p.contextPicker.SelectedPath = ""
-		} else {
-			p.contextPicker, cmd = p.contextPicker.Update(msg)
-			cmds = append(cmds, cmd)
-		}
-	}
-
-	if !p.isFocused && p.viewMode == util.ContextPickerMode {
-		cmds = append(cmds, util.SendViewModeChangedMsg(util.NormalMode))
-	}
-
-	return tea.Batch(cmds...)
-}
-
 func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 	if p.isFocused && p.inputMode == util.PromptInsertMode && p.isSessionIdle {
 		switch p.viewMode {
 		case util.FilePickerMode:
-			break
-		case util.ContextPickerMode:
 			break
 		case util.TextEditMode:
 			p.textEditor, cmd = p.textEditor.Update(msg)
@@ -504,7 +512,9 @@ func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 				// Only trigger if at beginning of input or after space
 				currentValue := p.input.Value()
 				if len(currentValue) == 0 || currentValue[len(currentValue)-1] == ' ' {
-					return util.SendViewModeChangedMsg(util.ContextPickerMode)
+					// Set IsContextMode to true and open file picker
+					p.filePicker.IsContextMode = true
+					return util.SendViewModeChangedWithContextMsg(util.FilePickerMode, true)
 				}
 			}
 
@@ -552,8 +562,6 @@ func (p *PromptPane) handleWindowSizeMsg(msg tea.WindowSizeMsg) tea.Cmd {
 
 	case util.FilePickerMode:
 		p.filePicker.SetSize(w, h)
-	case util.ContextPickerMode:
-		p.contextPicker.SetSize(w, h)
 	case util.TextEditMode:
 		p.textEditor.SetHeight(h)
 		p.textEditor.SetWidth(w)
@@ -582,9 +590,6 @@ func (p *PromptPane) handleViewModeChange(msg util.ViewModeChanged) tea.Cmd {
 
 	case util.FilePickerMode:
 		cmd = p.openFilePicker(prevMode, currentInput)
-
-	case util.ContextPickerMode:
-		cmd = p.openContextPicker(prevMode, currentInput)
 
 	default:
 		cmd = p.openInputField(prevMode, currentInput)
@@ -634,24 +639,9 @@ func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput
 
 func (p *PromptPane) openFilePicker(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
 	w, h := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-	p.filePicker = components.NewFilePicker(previousViewMode, currentInput, p.colors)
+	p.filePicker = components.NewFilePicker(previousViewMode, currentInput, p.colors, p.filePicker.IsContextMode)
 	p.filePicker.SetSize(w, h)
 	return p.filePicker.Init()
-}
-
-func (p *PromptPane) openContextPicker(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
-	w, h := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-	// Get config values for context picker
-	cfg, ok := config.FromContext(p.mainCtx)
-	showIcons := true
-	maxDepth := 2
-	if ok {
-		showIcons = cfg.GetShowContextIcons()
-		maxDepth = cfg.GetContextMaxDepth()
-	}
-	p.contextPicker = components.NewContextPicker(previousViewMode, currentInput, p.colors, showIcons, maxDepth)
-	p.contextPicker.SetSize(w, h)
-	return nil
 }
 
 func (p *PromptPane) openTextEditor(content string, op util.Operation, isFocused bool) tea.Cmd {
@@ -756,10 +746,6 @@ func (p PromptPane) AllowFocusChange(isMouseEvent bool) bool {
 		return false
 	}
 
-	if p.isFocused && p.viewMode == util.ContextPickerMode {
-		return false
-	}
-
 	return true
 }
 
@@ -775,8 +761,6 @@ func (p PromptPane) View() string {
 		switch p.viewMode {
 		case util.FilePickerMode:
 			content = p.filePicker.View()
-		case util.ContextPickerMode:
-			content = p.contextPicker.View()
 		case util.TextEditMode:
 			content = p.textEditor.View()
 		default:
@@ -813,4 +797,34 @@ func (p PromptPane) View() string {
 	}
 
 	return zone.Mark("prompt_pane", p.inputContainer.Render(ResponseWaitingMsg))
+}
+
+// GetFilePickerView returns the file picker view for rendering in main view
+func (p *PromptPane) GetFilePickerView() string {
+	return p.filePicker.View()
+}
+
+// GetInputContainerStyle returns the input container style for wrapping the file picker
+func (p *PromptPane) GetInputContainerStyle() lipgloss.Style {
+	return p.inputContainer
+}
+
+// GetInfoLabelStyle returns the info label style for rendering reminders
+func (p *PromptPane) GetInfoLabelStyle() lipgloss.Style {
+	return infoLabel
+}
+
+// GetInfoBlockStyle returns the info block style for rendering reminders
+func (p *PromptPane) GetInfoBlockStyle() lipgloss.Style {
+	return infoBlockStyle
+}
+
+// GetFilePickerPreviewView returns the file picker preview view for rendering in main view
+func (p *PromptPane) GetFilePickerPreviewView(height int) string {
+	return p.filePicker.GetPreviewView(height)
+}
+
+// GetFilePickerIsContextMode returns whether the file picker is in context mode
+func (p *PromptPane) GetFilePickerIsContextMode() bool {
+	return p.filePicker.IsContextMode
 }

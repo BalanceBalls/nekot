@@ -46,7 +46,6 @@ const (
 	TextEditMode
 	NormalMode
 	FilePickerMode
-	ContextPickerMode
 )
 
 type Operation int
@@ -149,7 +148,7 @@ func SendPromptReadyWithContextMsg(prompt string, attachments []Attachment, cont
 type ContextChipsProcessed struct {
 	Prompt         string
 	Attachments    []Attachment
-	ContextContent  string
+	ContextContent string
 	Errors         []string // Errors that occurred during processing
 }
 
@@ -205,12 +204,20 @@ func SendCopyAllMsgs() tea.Msg {
 }
 
 type ViewModeChanged struct {
-	Mode ViewMode
+	Mode          ViewMode
+	IsContextMode bool // indicates if file picker is in context mode
 }
 
 func SendViewModeChangedMsg(mode ViewMode) tea.Cmd {
 	return func() tea.Msg {
-		return ViewModeChanged{Mode: mode}
+		return ViewModeChanged{Mode: mode, IsContextMode: false}
+	}
+}
+
+// SendViewModeChangedWithContextMsg sends ViewModeChanged with context mode flag
+func SendViewModeChangedWithContextMsg(mode ViewMode, isContextMode bool) tea.Cmd {
+	return func() tea.Msg {
+		return ViewModeChanged{Mode: mode, IsContextMode: isContextMode}
 	}
 }
 
@@ -267,4 +274,10 @@ func AddNewSession(isTemporary bool) tea.Cmd {
 			IsTemporary: isTemporary,
 		}
 	}
+}
+
+type ToggleContextContent struct{}
+
+func SendToggleContextContentMsg() tea.Msg {
+	return ToggleContextContent{}
 }
