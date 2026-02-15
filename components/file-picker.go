@@ -432,49 +432,19 @@ func (m FilePicker) recursiveSearch(filterText string, maxDepth int) []SearchRes
 	var results []SearchResult
 	currentDir := m.filepicker.CurrentDirectory
 
-	_ = filepath.WalkDir(currentDir, func(filePath string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil // Skip files with errors
-		}
-
-		// Skip the root directory itself
-		if filePath == currentDir {
-			return nil
-		}
-
-		// Calculate depth
-		relPath, relErr := filepath.Rel(currentDir, filePath)
-		if relErr != nil {
-			return nil
-		}
-		depth := strings.Count(relPath, string(filepath.Separator))
-
-		if depth > maxDepth {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-
-		// Skip hidden files and directories
-		baseName := filepath.Base(filePath)
-		if strings.HasPrefix(baseName, ".") {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-
+	// Use the new WalkDirectory utility
+	_, err := util.WalkDirectory(currentDir, maxDepth, func(filePath string, d fs.DirEntry, relPath string, depth int) bool {
 		// Skip media files in context mode
 		if m.IsContextMode && util.IsMediaFile(filePath) {
-			return nil
+			return false
 		}
 
 		// Check if the entry name contains the filter text (case-insensitive)
+		baseName := filepath.Base(filePath)
 		if strings.Contains(strings.ToLower(baseName), filterText) {
 			info, err := d.Info()
 			if err != nil {
-				return nil
+				return false
 			}
 
 			results = append(results, SearchResult{
@@ -483,10 +453,16 @@ func (m FilePicker) recursiveSearch(filterText string, maxDepth int) []SearchRes
 				IsDir:   d.IsDir(),
 				Size:    info.Size(),
 			})
+			return true
 		}
 
-		return nil
+		return false
 	})
+
+	if err != nil {
+		// Log error but return what we have
+		fmt.Printf("Error during recursive search: %v\n", err)
+	}
 
 	return results
 }

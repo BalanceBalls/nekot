@@ -12,6 +12,70 @@ import (
 
 const maxReadFileSize = 5 * 1024 * 1024 // 5MB
 
+// WalkDirectoryFunc is a callback function for WalkDirectory
+// Return true to include the file in results, false to skip
+type WalkDirectoryFunc func(path string, info fs.DirEntry, relPath string, depth int) bool
+
+// WalkDirectory recursively walks a directory tree and calls the filter function for each entry
+// maxDepth limits how deep the walk goes (0 = current dir only, 1 = one level deep, etc.)
+// The filterFunc is called for each file/directory with:
+//   - path: absolute file path
+//   - info: the directory entry
+//   - relPath: relative path from root
+//   - depth: depth level (0 = root)
+//
+// Returns all paths where filterFunc returned true, or an error if walking fails
+func WalkDirectory(rootPath string, maxDepth int, filterFunc WalkDirectoryFunc) ([]string, error) {
+	var results []string
+
+	err := filepath.WalkDir(rootPath, func(filePath string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil // Skip files with errors
+		}
+
+		// Skip the root directory itself
+		if filePath == rootPath {
+			return nil
+		}
+
+		// Calculate relative path and depth
+		relPath, relErr := filepath.Rel(rootPath, filePath)
+		if relErr != nil {
+			return nil
+		}
+		depth := strings.Count(relPath, string(filepath.Separator))
+
+		if depth > maxDepth {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		// Skip hidden files and directories
+		baseName := filepath.Base(filePath)
+		if strings.HasPrefix(baseName, ".") {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		// Call the filter function
+		if filterFunc(filePath, d, relPath, depth) {
+			results = append(results, filePath)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to walk directory: %w", err)
+	}
+
+	return results, nil
+}
+
 // ReadFileContent reads the content of a file and returns it as a string
 // Returns an error if the file is binary, too large, or cannot be read
 func ReadFileContent(path string) (string, error) {
@@ -169,61 +233,25 @@ func FormatFolderContents(contents map[string]string, filePaths []string) string
 
 // CountFilesInFolder counts the number of non-media files in a folder
 func CountFilesInFolder(path string, maxDepth int) (int, error) {
-	count := 0
-
-	err := filepath.WalkDir(path, func(filePath string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip the root directory itself
-		if filePath == path {
-			return nil
-		}
-
-		// Calculate depth
-		relPath, err := filepath.Rel(path, filePath)
-		if err != nil {
-			return err
-		}
-		depth := strings.Count(relPath, string(filepath.Separator))
-
-		if depth > maxDepth {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-
-		// Skip hidden files and directories
-		baseName := filepath.Base(filePath)
-		if strings.HasPrefix(baseName, ".") {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-
+	// Use WalkDirectory to count non-media, non-directory files
+	results, err := WalkDirectory(path, maxDepth, func(filePath string, d fs.DirEntry, relPath string, depth int) bool {
 		// Skip directories
 		if d.IsDir() {
-			return nil
+			return false
 		}
-
 		// Skip media files
 		ext := strings.ToLower(filepath.Ext(filePath))
 		if slices.Contains(MediaExtensions, ext) {
-			return nil
+			return false
 		}
-
-		count++
-		return nil
+		return true
 	})
 
 	if err != nil {
 		return 0, fmt.Errorf("failed to count files in folder: %w", err)
 	}
 
-	return count, nil
+	return len(results), nil
 }
 
 // ListFolderEntries returns a list of files and folders in a directory (non-recursive)
