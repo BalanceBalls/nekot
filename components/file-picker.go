@@ -65,13 +65,16 @@ type FilePicker struct {
 	previewFile string
 	// Preview content
 	previewContent string
-	// Cached preview lines to avoid re-splitting on every render
-	previewLines []string
-	// Cached directory entries to avoid excessive I/O
-	cachedDirEntries []os.DirEntry
-	cachedDirPath    string
-	// Last rendered view for tracking selection changes
-	lastRenderedView string
+
+	// Caching
+	cachedPreviewRendered string
+	cachedPreviewFile     string
+	cachedPreviewMtime    time.Time
+	cachedTerminalWidth   int
+	cachedIsText          bool
+	cachedDirEntries      []os.DirEntry
+	cachedDirPath         string
+
 	// Terminal width for line truncation in preview
 	terminalWidth int
 	// Selection index for filtered view (when filter is active)
@@ -336,12 +339,21 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 	// Update filepicker
 	m.filepicker, cmd = m.filepicker.Update(msg)
 
-	// Track selection changes for preview update
-	currentView := m.filepicker.View()
-	if currentView != m.lastRenderedView {
-		m.lastRenderedView = currentView
-		// Try to extract currently selected file from view
-		m.updatePreviewFromView(currentView)
+	// Track selection changes via cursor position for filtered view,
+	// and via view parsing for normal navigation (filepicker doesn't expose cursor)
+	// We track key presses to detect navigation changes
+	if m.filterInputFocused && len(m.searchResults) > 0 {
+		// For filtered view, use tracked filteredSelectionIndex (already maintained)
+		// Preview is updated in the key handler above
+	} else {
+		// For normal navigation, use view parsing (necessary as library doesn't expose cursor)
+		// But only re-parse if the view actually changed
+		currentView := m.filepicker.View()
+		if currentView != m.cachedPreviewRendered {
+			// View changed - this could be navigation or just window resize
+			// Parse to find selected file
+			m.updatePreviewFromView(currentView)
+		}
 	}
 
 	// Refresh cache if directory changed
@@ -659,6 +671,7 @@ func (m FilePicker) getFilePreviewContent(path string) string {
 // GetPreviewView returns the preview pane view for the currently selected file
 // Only shows preview for text files in context mode
 // Adds colored output, line numbers, and better alignment
+// FIX 7: Uses caching to avoid re-rendering on every call
 func (m FilePicker) GetPreviewView(height int) string {
 	if !m.IsContextMode || m.previewFile == "" {
 		return ""
@@ -682,8 +695,25 @@ func (m FilePicker) GetPreviewView(height int) string {
 		return lipgloss.JoinVertical(lipgloss.Left, header, path)
 	}
 
-	// Check if it's a text file - don't show preview for binary files
-	if !isTextFile(m.previewFile) {
+	// FIX 7: Check if we can use cached preview
+	// Cache is valid if: same file, same mtime, same terminal width
+	if m.cachedPreviewRendered != "" &&
+		m.previewFile == m.cachedPreviewFile &&
+		info.ModTime().Equal(m.cachedPreviewMtime) &&
+		m.terminalWidth == m.cachedTerminalWidth {
+		return m.cachedPreviewRendered
+	}
+
+	// FIX 7: Check if it's a text file - use cached result if available
+	// We need to re-check if the file changed
+	isText := m.cachedIsText
+	if m.cachedPreviewFile != m.previewFile {
+		// File changed, re-check text validity
+		isText = isTextFile(m.previewFile)
+		m.cachedIsText = isText
+	}
+
+	if !isText {
 		header := lipgloss.NewStyle().
 			Foreground(m.colors.HighlightColor).
 			Bold(true).
@@ -694,7 +724,7 @@ func (m FilePicker) GetPreviewView(height int) string {
 		return lipgloss.JoinVertical(lipgloss.Left, header, "", message)
 	}
 
-	// Split content into lines
+	// Generate preview (same logic as before)
 	lines := strings.Split(m.previewContent, "\n")
 
 	// Limit to available height (reserve space for header)
@@ -706,15 +736,11 @@ func (m FilePicker) GetPreviewView(height int) string {
 	lineNumWidth := len(fmt.Sprintf("%d", len(lines)))
 
 	// Calculate max line width (50% of terminal width)
-	// We need to account for line numbers and borders
-	// Line format: "NNN │ content" where NNN is line number
-	// Reserve space for line numbers, separator, and padding
-	maxLineWidth := (m.terminalWidth / 2) - lineNumWidth - 5 // 5 for " │ " and padding
+	maxLineWidth := (m.terminalWidth / 2) - lineNumWidth - 5
 
 	// truncate detection
 	hasLongLines := false
 	for _, line := range lines {
-		// Count visible characters (excluding ANSI codes)
 		visibleLen := utf8.RuneCountInString(stripANSI(line))
 		if visibleLen > maxLineWidth {
 			hasLongLines = true
@@ -722,13 +748,10 @@ func (m FilePicker) GetPreviewView(height int) string {
 		}
 	}
 
-	// If any line is too long, truncate all lines to max width
 	if hasLongLines {
 		for i := range lines {
 			visibleLen := utf8.RuneCountInString(stripANSI(lines[i]))
 			if visibleLen > maxLineWidth {
-				// Truncate line and add ellipsis
-				// We need to preserve ANSI codes while truncating
 				truncated := truncateLineWithANSI(lines[i], maxLineWidth)
 				lines[i] = truncated
 			}
@@ -756,7 +779,15 @@ func (m FilePicker) GetPreviewView(height int) string {
 		previewLines = append(previewLines, lineNumStyle.Render(lineNum)+contentStyle.Render(line))
 	}
 
-	return strings.Join(previewLines, "\n")
+	// FIX 7: Cache the rendered preview
+	rendered := strings.Join(previewLines, "\n")
+	m.cachedPreviewRendered = rendered
+	m.cachedPreviewFile = m.previewFile
+	m.cachedPreviewMtime = info.ModTime()
+	m.cachedTerminalWidth = m.terminalWidth
+	m.cachedIsText = true
+
+	return rendered
 }
 
 // truncateLineWithANSI truncates a line to max visible characters while preserving ANSI codes
