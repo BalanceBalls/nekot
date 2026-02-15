@@ -19,6 +19,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Debounce message for delayed search
+type debounceSearchMsg struct {
+	filterText string
+}
+
+// File picker constants
+const (
+	maxPreviewFileSize    = 1024 * 1024     // 1MB - max file size for text preview
+	maxPreviewContentSize = 10000           // Max characters to show in preview
+	utf8CheckBufferSize   = 1024            // Bytes to read for UTF-8 validity check
+	errorDisplayDuration  = 2 * time.Second // Duration to show error messages
+)
+
 // SearchResult represents a file found during recursive search
 type SearchResult struct {
 	Path    string
@@ -52,6 +65,8 @@ type FilePicker struct {
 	previewFile string
 	// Preview content
 	previewContent string
+	// Cached preview lines to avoid re-splitting on every render
+	previewLines []string
 	// Cached directory entries to avoid excessive I/O
 	cachedDirEntries []os.DirEntry
 	cachedDirPath    string
@@ -61,6 +76,11 @@ type FilePicker struct {
 	terminalWidth int
 	// Selection index for filtered view (when filter is active)
 	filteredSelectionIndex int
+	// Debounce timer and channel for recursive search
+	debounceTimer   *time.Timer
+	debounceChannel chan string // Channel to signal when debounce completes
+	// Timestamp of last search for rate limiting
+	lastSearchTime time.Time
 }
 
 func NewFilePicker(
@@ -118,6 +138,7 @@ func NewFilePicker(
 		searchResults:      []SearchResult{},
 		searchDepth:        searchDepth,
 		colors:             colors,
+		debounceChannel:    make(chan string, 1),
 	}
 	return filePicker
 }
@@ -135,7 +156,6 @@ func isTextFile(path string) bool {
 		return false
 	}
 	// Skip files larger than 1MB as they're unlikely to be suitable for quick preview
-	const maxPreviewFileSize = 1024 * 1024 // 1MB
 	if fileInfo.Size() > maxPreviewFileSize {
 		return false
 	}
@@ -149,7 +169,7 @@ func isTextFile(path string) bool {
 	defer file.Close()
 
 	// Read only first 1024 bytes for UTF-8 validity check
-	buf := make([]byte, 1024)
+	buf := make([]byte, utf8CheckBufferSize)
 	n, err := file.Read(buf)
 	if err != nil && err != io.EOF {
 		return false
@@ -173,28 +193,15 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		keyStr := msg.String()
-		keyType := msg.Type
-
-		// Debug: Log all key events when in FilePickerMode
-		util.Slog.Debug("FilePicker: Key event received",
-			"keyStr", keyStr,
-			"keyType", keyType.String(),
-			"isContextMode", m.IsContextMode,
-			"filterInputFocused", m.filterInputFocused,
-			"filterValue", m.filterInput.Value(),
-			"searchResultsCount", len(m.searchResults),
-			"filteredSelectionIndex", m.filteredSelectionIndex)
 
 		// Handle Ctrl+/ (or Ctrl+_ on some keyboards) to focus filter input
 		if keyStr == "ctrl+/" || keyStr == "ctrl+_" {
-			util.Slog.Debug("FilePicker: Ctrl+/ detected, focusing filter input")
 			m.filterInputFocused = true
 			m.filterInput.Focus()
 			// Initialize search results if filter has content
 			filterText := strings.ToLower(m.filterInput.Value())
 			if filterText != "" && m.IsContextMode {
 				m.searchResults = m.recursiveSearch(filterText, m.searchDepth)
-				util.Slog.Debug("FilePicker: Initialized search results on focus", "filterText", filterText, "resultsCount", len(m.searchResults))
 				// Reset selection index
 				if len(m.searchResults) > 0 {
 					m.filteredSelectionIndex = 0
@@ -226,17 +233,9 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 			if m.filterInputFocused && len(m.searchResults) > 0 && m.filteredSelectionIndex >= 0 && m.filteredSelectionIndex < len(m.searchResults) {
 				selectedResult := m.searchResults[m.filteredSelectionIndex]
 				m.SelectedFile = selectedResult.Path
-				util.Slog.Debug("FilePicker: Selected file from filtered view", "path", selectedResult.Path)
 				return m, nil
 			}
 		case "up", "down":
-			// Log arrow key events for debugging navigation issues
-			util.Slog.Debug("FilePicker: Arrow key case HIT",
-				"keyStr", keyStr,
-				"filterInputFocused", m.filterInputFocused,
-				"filterValue", m.filterInput.Value(),
-				"searchResultsCount", len(m.searchResults),
-				"willHandle", m.filterInputFocused && len(m.searchResults) > 0)
 
 			// Handle arrow keys for filtered view when filter is active and there are search results
 			if m.filterInputFocused && len(m.searchResults) > 0 {
@@ -251,7 +250,6 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 						m.filteredSelectionIndex = 0
 					}
 				}
-				util.Slog.Debug("FilePicker: Updated filtered selection", "index", m.filteredSelectionIndex, "total", len(m.searchResults))
 
 				// Update preview for the selected file
 				if m.filteredSelectionIndex >= 0 && m.filteredSelectionIndex < len(m.searchResults) {
@@ -259,15 +257,12 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 					if selectedResult.Path != m.previewFile {
 						m.previewFile = selectedResult.Path
 						m.previewContent = m.getFilePreviewContent(selectedResult.Path)
-						util.Slog.Debug("FilePicker: Updated preview from filtered selection", "path", selectedResult.Path)
 					}
 				}
 
 				// Don't pass arrow keys to filter input when navigating filtered results
-				util.Slog.Debug("FilePicker: Returning early from arrow key handler")
 				return m, nil
 			}
-			util.Slog.Debug("FilePicker: Arrow key not handled, falling through")
 		}
 
 	case clearErrorMsg:
@@ -279,19 +274,50 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 
 	// Update filter input if focused
 	if m.filterInputFocused {
-		util.Slog.Debug("FilePicker: Updating filter input", "msgType", fmt.Sprintf("%T", msg))
 		oldFilterValue := m.filterInput.Value()
 		m.filterInput, filterCmd = m.filterInput.Update(msg)
 		newFilterValue := m.filterInput.Value()
-		util.Slog.Debug("FilePicker: Filter input updated", "oldValue", oldFilterValue, "newValue", newFilterValue, "cursorPos", m.filterInput.Cursor)
 
-		// If filter value changed, update search results
+		// If filter value changed, set up debounced search
 		if oldFilterValue != newFilterValue {
 			filterText := strings.ToLower(newFilterValue)
+
+			// Reset existing timer
+			if m.debounceTimer != nil {
+				m.debounceTimer.Stop()
+			}
+
+			// Ensure channel exists
+			if m.debounceChannel == nil {
+				m.debounceChannel = make(chan string, 1)
+			}
+
+			// Schedule debounced search using AfterFunc
+			// When timer fires, it sends the filter text to the channel
+			m.debounceTimer = time.AfterFunc(util.FilePickerDebounce, func() {
+				// Non-blocking send to channel
+				select {
+				case m.debounceChannel <- filterText:
+				default:
+				}
+			})
+		}
+
+		// Don't pass key messages to filepicker when filter input is focused
+		// This prevents Backspace from being interpreted as "go up one directory"
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return m, filterCmd
+		}
+	}
+
+	// Check if debounce channel has a message (timer fired)
+	// Use non-blocking select to check for channel message
+	if m.debounceChannel != nil {
+		select {
+		case filterText := <-m.debounceChannel:
+			// Timer fired - perform the debounced search
 			if filterText != "" && m.IsContextMode {
 				m.searchResults = m.recursiveSearch(filterText, m.searchDepth)
-				util.Slog.Debug("FilePicker: Updated search results from filter change", "filterText", filterText, "resultsCount", len(m.searchResults))
-				// Reset selection index when filter changes
 				if len(m.searchResults) > 0 {
 					m.filteredSelectionIndex = 0
 				} else {
@@ -301,13 +327,9 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 				m.searchResults = []SearchResult{}
 				m.filteredSelectionIndex = -1
 			}
-		}
-
-		// Don't pass key messages to filepicker when filter input is focused
-		// This prevents Backspace from being interpreted as "go up one directory"
-		if _, ok := msg.(tea.KeyMsg); ok {
-			util.Slog.Debug("FilePicker: Returning early from filter input update (KeyMsg)")
-			return m, filterCmd
+			m.lastSearchTime = time.Now()
+		default:
+			// No message waiting, continue
 		}
 	}
 
@@ -333,10 +355,10 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 
 	if didSelect, path := m.filepicker.DidSelectFile(msg); didSelect {
 		// In context mode, filter out media files
-		if m.IsContextMode && isMediaFile(path) {
+		if m.IsContextMode && util.IsMediaFile(path) {
 			m.err = errors.New(path + " is a media file. Use Ctrl+A to attach media files.")
 			m.SelectedFile = ""
-			return m, tea.Batch(cmd, filterCmd, clearErrorAfter(2*time.Second))
+			return m, tea.Batch(cmd, filterCmd, clearErrorAfter(errorDisplayDuration))
 		}
 		m.SelectedFile = path
 		// Update preview file for context mode
@@ -349,7 +371,7 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 	if didSelect, path := m.filepicker.DidSelectDisabledFile(msg); didSelect {
 		m.err = errors.New(path + " is not valid.")
 		m.SelectedFile = ""
-		return m, tea.Batch(cmd, filterCmd, clearErrorAfter(2*time.Second))
+		return m, tea.Batch(cmd, filterCmd, clearErrorAfter(errorDisplayDuration))
 	}
 
 	return m, tea.Batch(cmd, filterCmd)
@@ -444,7 +466,7 @@ func (m FilePicker) recursiveSearch(filterText string, maxDepth int) []SearchRes
 		}
 
 		// Skip media files in context mode
-		if m.IsContextMode && isMediaFile(filePath) {
+		if m.IsContextMode && util.IsMediaFile(filePath) {
 			return nil
 		}
 
@@ -470,19 +492,16 @@ func (m FilePicker) recursiveSearch(filterText string, maxDepth int) []SearchRes
 }
 
 // filterFilePickerView returns a filtered view of the file picker
-// Uses recursive search when filter is active in context mode
+// Uses cached search results from debounced search in Update
 func (m FilePicker) filterFilePickerView(filterText string) string {
 	// Get the current directory from the file picker
 	currentDir := m.filepicker.CurrentDirectory
 
-	util.Slog.Debug("FilePicker: filterFilePickerView called", "filterText", filterText, "isContextMode", m.IsContextMode, "currentDir", currentDir)
-
-	// In context mode, use recursive search
+	// In context mode, use cached search results (populated by debounced Update)
+	// Don't perform search here - it defeats the debounce mechanism
 	if m.IsContextMode {
-		// Perform recursive search
-		m.searchResults = m.recursiveSearch(filterText, m.searchDepth)
-
-		util.Slog.Debug("FilePicker: Recursive search completed", "filterText", filterText, "resultsCount", len(m.searchResults))
+		// Use already-cached searchResults from Update
+		// (searchResults is populated by debounced search in Update method)
 
 		// Only reset selection index if it's out of bounds or if there are no results
 		// Don't reset if the user has already navigated with arrow keys
@@ -629,15 +648,6 @@ func (m *FilePicker) SetSize(w, h int) {
 	}
 }
 
-func isMediaFile(path string) bool {
-	for _, ext := range util.MediaExtensions {
-		if strings.HasSuffix(strings.ToLower(path), ext) {
-			return true
-		}
-	}
-	return false
-}
-
 // getFilePreviewContent reads and returns the content of a file for preview
 // Only reads content for text files, returns appropriate message for others
 func (m FilePicker) getFilePreviewContent(path string) string {
@@ -663,8 +673,8 @@ func (m FilePicker) getFilePreviewContent(path string) string {
 
 	// Convert to string and limit to reasonable size
 	contentStr := string(content)
-	if len(contentStr) > 10000 {
-		contentStr = contentStr[:10000] + "\n... (truncated)"
+	if len(contentStr) > maxPreviewContentSize {
+		contentStr = contentStr[:maxPreviewContentSize] + "\n... (truncated)"
 	}
 
 	return contentStr
@@ -810,20 +820,14 @@ func (m *FilePicker) updatePreviewFromView(view string) {
 		return
 	}
 
-	util.Slog.Debug("FilePicker: updatePreviewFromView called", "view_length", len(view))
-	util.Slog.Debug("FilePicker: CurrentDirectory", "path", m.filepicker.CurrentDirectory)
-	util.Slog.Debug("FilePicker: searchResults count", "count", len(m.searchResults))
-
 	// Parse the view to find the currently selected file (marked with cursor)
 	lines := strings.Split(view, "\n")
-	for i, line := range lines {
+	for _, line := range lines {
 		// Look for cursor indicator (filepicker uses > for cursor)
 		if strings.Contains(line, ">") {
-			util.Slog.Debug("FilePicker: Found cursor line", "line_index", i, "line_content", line)
 
 			// Strip ANSI escape codes
 			cleanLine := stripANSI(line)
-			util.Slog.Debug("FilePicker: Cleaned line (no ANSI)", "line_content", cleanLine)
 
 			// Extract file path from the line
 			// Format: ">  4.1kB clients" or ">  18kB chat-pane.go"
@@ -831,7 +835,6 @@ func (m *FilePicker) updatePreviewFromView(view string) {
 			parts := strings.Split(cleanLine, ">")
 			if len(parts) > 1 {
 				rest := strings.TrimSpace(parts[1])
-				util.Slog.Debug("FilePicker: Extracted rest after >", "rest", rest)
 
 				// Split by spaces to get size and filename
 				// Format: "4.1kB clients" -> ["4.1kB", "clients"]
@@ -839,31 +842,25 @@ func (m *FilePicker) updatePreviewFromView(view string) {
 				if len(fields) >= 2 {
 					// The filename is the last field
 					fileName := fields[len(fields)-1]
-					util.Slog.Debug("FilePicker: Extracted filename", "filename", fileName)
 
 					// Get full path by combining with current directory
 					if !strings.HasPrefix(fileName, "/") && !strings.HasPrefix(fileName, "~") {
 						// Relative path
 						fullPath := filepath.Join(m.filepicker.CurrentDirectory, fileName)
-						util.Slog.Debug("FilePicker: Constructed full path", "full_path", fullPath)
 
 						// Check if file exists
 						if _, err := os.Stat(fullPath); err != nil {
 							util.Slog.Error("FilePicker: File does not exist", "path", fullPath, "error", err)
 						} else {
-							util.Slog.Debug("FilePicker: File exists", "path", fullPath)
 						}
 
 						// Only update if different from current preview
 						if fullPath != m.previewFile {
-							util.Slog.Debug("FilePicker: Updating preview from navigation", "path", fullPath)
 							m.previewFile = fullPath
 							m.previewContent = m.getFilePreviewContent(fullPath)
 						} else {
-							util.Slog.Debug("FilePicker: Preview file unchanged", "path", fullPath)
 						}
 					} else {
-						util.Slog.Debug("FilePicker: Path is absolute or home, using as-is", "path", fileName)
 						if fileName != m.previewFile {
 							m.previewFile = fileName
 							m.previewContent = m.getFilePreviewContent(fileName)
