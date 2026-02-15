@@ -481,6 +481,7 @@ func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
 				}
 
 				if !isDuplicate {
+					util.Slog.Debug("Adding image attachment", "path", selectedPath, "total_attachments", len(p.attachments)+1)
 					p.attachments = append(p.attachments, util.Attachment{
 						Type: "img",
 						Path: selectedPath,

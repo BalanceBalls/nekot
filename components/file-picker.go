@@ -58,6 +58,8 @@ type FilePicker struct {
 	lastRenderedView string
 	// Terminal width for line truncation in preview
 	terminalWidth int
+	// Selection index for filtered view (when filter is active)
+	filteredSelectionIndex int
 }
 
 func NewFilePicker(
@@ -166,15 +168,35 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		keyStr := msg.String()
+		keyType := msg.Type
 
 		// Debug: Log all key events when in FilePickerMode
-		util.Slog.Debug("FilePicker: Key event received", "keyStr", keyStr, "isContextMode", m.IsContextMode)
+		util.Slog.Debug("FilePicker: Key event received",
+			"keyStr", keyStr,
+			"keyType", keyType.String(),
+			"isContextMode", m.IsContextMode,
+			"filterInputFocused", m.filterInputFocused,
+			"filterValue", m.filterInput.Value(),
+			"searchResultsCount", len(m.searchResults),
+			"filteredSelectionIndex", m.filteredSelectionIndex)
 
 		// Handle Ctrl+/ (or Ctrl+_ on some keyboards) to focus filter input
 		if keyStr == "ctrl+/" || keyStr == "ctrl+_" {
 			util.Slog.Debug("FilePicker: Ctrl+/ detected, focusing filter input")
 			m.filterInputFocused = true
 			m.filterInput.Focus()
+			// Initialize search results if filter has content
+			filterText := strings.ToLower(m.filterInput.Value())
+			if filterText != "" && m.IsContextMode {
+				m.searchResults = m.recursiveSearch(filterText, m.searchDepth)
+				util.Slog.Debug("FilePicker: Initialized search results on focus", "filterText", filterText, "resultsCount", len(m.searchResults))
+				// Reset selection index
+				if len(m.searchResults) > 0 {
+					m.filteredSelectionIndex = 0
+				} else {
+					m.filteredSelectionIndex = -1
+				}
+			}
 			return m, nil
 		}
 
@@ -194,6 +216,53 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 				m.quitting = true
 				return m, util.SendViewModeChangedMsg(m.PrevView)
 			}
+		case "enter":
+			// Handle Enter key to select file when filter is active and there are search results
+			if m.filterInputFocused && len(m.searchResults) > 0 && m.filteredSelectionIndex >= 0 && m.filteredSelectionIndex < len(m.searchResults) {
+				selectedResult := m.searchResults[m.filteredSelectionIndex]
+				m.SelectedFile = selectedResult.Path
+				util.Slog.Debug("FilePicker: Selected file from filtered view", "path", selectedResult.Path)
+				return m, nil
+			}
+		case "up", "down":
+			// Log arrow key events for debugging navigation issues
+			util.Slog.Debug("FilePicker: Arrow key case HIT",
+				"keyStr", keyStr,
+				"filterInputFocused", m.filterInputFocused,
+				"filterValue", m.filterInput.Value(),
+				"searchResultsCount", len(m.searchResults),
+				"willHandle", m.filterInputFocused && len(m.searchResults) > 0)
+
+			// Handle arrow keys for filtered view when filter is active and there are search results
+			if m.filterInputFocused && len(m.searchResults) > 0 {
+				if keyStr == "up" {
+					m.filteredSelectionIndex--
+					if m.filteredSelectionIndex < 0 {
+						m.filteredSelectionIndex = len(m.searchResults) - 1
+					}
+				} else if keyStr == "down" {
+					m.filteredSelectionIndex++
+					if m.filteredSelectionIndex >= len(m.searchResults) {
+						m.filteredSelectionIndex = 0
+					}
+				}
+				util.Slog.Debug("FilePicker: Updated filtered selection", "index", m.filteredSelectionIndex, "total", len(m.searchResults))
+
+				// Update preview for the selected file
+				if m.filteredSelectionIndex >= 0 && m.filteredSelectionIndex < len(m.searchResults) {
+					selectedResult := m.searchResults[m.filteredSelectionIndex]
+					if selectedResult.Path != m.previewFile {
+						m.previewFile = selectedResult.Path
+						m.previewContent = m.getFilePreviewContent(selectedResult.Path)
+						util.Slog.Debug("FilePicker: Updated preview from filtered selection", "path", selectedResult.Path)
+					}
+				}
+
+				// Don't pass arrow keys to filter input when navigating filtered results
+				util.Slog.Debug("FilePicker: Returning early from arrow key handler")
+				return m, nil
+			}
+			util.Slog.Debug("FilePicker: Arrow key not handled, falling through")
 		}
 
 	case clearErrorMsg:
@@ -205,10 +274,34 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 
 	// Update filter input if focused
 	if m.filterInputFocused {
+		util.Slog.Debug("FilePicker: Updating filter input", "msgType", fmt.Sprintf("%T", msg))
+		oldFilterValue := m.filterInput.Value()
 		m.filterInput, filterCmd = m.filterInput.Update(msg)
+		newFilterValue := m.filterInput.Value()
+		util.Slog.Debug("FilePicker: Filter input updated", "oldValue", oldFilterValue, "newValue", newFilterValue, "cursorPos", m.filterInput.Cursor)
+
+		// If filter value changed, update search results
+		if oldFilterValue != newFilterValue {
+			filterText := strings.ToLower(newFilterValue)
+			if filterText != "" && m.IsContextMode {
+				m.searchResults = m.recursiveSearch(filterText, m.searchDepth)
+				util.Slog.Debug("FilePicker: Updated search results from filter change", "filterText", filterText, "resultsCount", len(m.searchResults))
+				// Reset selection index when filter changes
+				if len(m.searchResults) > 0 {
+					m.filteredSelectionIndex = 0
+				} else {
+					m.filteredSelectionIndex = -1
+				}
+			} else {
+				m.searchResults = []SearchResult{}
+				m.filteredSelectionIndex = -1
+			}
+		}
+
 		// Don't pass key messages to filepicker when filter input is focused
 		// This prevents Backspace from being interpreted as "go up one directory"
 		if _, ok := msg.(tea.KeyMsg); ok {
+			util.Slog.Debug("FilePicker: Returning early from filter input update (KeyMsg)")
 			return m, filterCmd
 		}
 	}
@@ -377,10 +470,24 @@ func (m FilePicker) filterFilePickerView(filterText string) string {
 	// Get the current directory from the file picker
 	currentDir := m.filepicker.CurrentDirectory
 
+	util.Slog.Debug("FilePicker: filterFilePickerView called", "filterText", filterText, "isContextMode", m.IsContextMode, "currentDir", currentDir)
+
 	// In context mode, use recursive search
 	if m.IsContextMode {
 		// Perform recursive search
 		m.searchResults = m.recursiveSearch(filterText, m.searchDepth)
+
+		util.Slog.Debug("FilePicker: Recursive search completed", "filterText", filterText, "resultsCount", len(m.searchResults))
+
+		// Only reset selection index if it's out of bounds or if there are no results
+		// Don't reset if the user has already navigated with arrow keys
+		if len(m.searchResults) > 0 {
+			if m.filteredSelectionIndex < 0 || m.filteredSelectionIndex >= len(m.searchResults) {
+				m.filteredSelectionIndex = 0
+			}
+		} else {
+			m.filteredSelectionIndex = -1
+		}
 
 		// If no matches, show a message
 		if len(m.searchResults) == 0 {
@@ -392,7 +499,7 @@ func (m FilePicker) filterFilePickerView(filterText string) string {
 		lines = append(lines, currentDir)
 		lines = append(lines, "")
 
-		for _, result := range m.searchResults {
+		for i, result := range m.searchResults {
 			// Format the entry line with relative path
 			name := result.RelPath
 			if result.IsDir {
@@ -406,7 +513,13 @@ func (m FilePicker) filterFilePickerView(filterText string) string {
 			depth := strings.Count(result.RelPath, string(filepath.Separator))
 			indent := strings.Repeat("  ", depth)
 
-			lines = append(lines, indent+name+"  "+sizeStr)
+			// Add cursor indicator for selected item
+			prefix := "  "
+			if i == m.filteredSelectionIndex {
+				prefix = "> "
+			}
+
+			lines = append(lines, prefix+indent+name+"  "+sizeStr)
 		}
 
 		return strings.Join(lines, "\n")

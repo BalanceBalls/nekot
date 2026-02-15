@@ -346,14 +346,16 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		loadedAttachments := []util.Attachment{}
 		if len(msg.Attachments) != 0 {
 
-			util.Slog.Debug("preparing attachments")
+			util.Slog.Debug("preparing attachments", "count", len(msg.Attachments))
 
-			for _, attachment := range msg.Attachments {
+			for i, attachment := range msg.Attachments {
+				util.Slog.Debug("Converting attachment to base64", "index", i, "path", attachment.Path)
 				b64, err := m.fileToBase64(attachment.Path)
 				if err != nil {
 					util.Slog.Error("failed to convert attachment to base64", "error", err.Error())
 					return m, util.MakeErrorMsg(err.Error())
 				}
+				util.Slog.Debug("Attachment converted to base64", "index", i, "base64_length", len(b64))
 
 				t := util.Attachment{
 					Path:    attachment.Path,
@@ -362,6 +364,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				loadedAttachments = append(loadedAttachments, t)
 			}
+			util.Slog.Debug("All attachments prepared", "total", len(loadedAttachments))
 		}
 
 		// Process context chips asynchronously
