@@ -24,13 +24,7 @@ type debounceSearchMsg struct {
 	filterText string
 }
 
-// File picker constants
-const (
-	maxPreviewFileSize    = 1024 * 1024     // 1MB - max file size for text preview
-	maxPreviewContentSize = 10000           // Max characters to show in preview
-	utf8CheckBufferSize   = 1024            // Bytes to read for UTF-8 validity check
-	errorDisplayDuration  = 2 * time.Second // Duration to show error messages
-)
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 // SearchResult represents a file found during recursive search
 type SearchResult struct {
@@ -74,6 +68,9 @@ type FilePicker struct {
 	cachedIsText          bool
 	cachedDirEntries      []os.DirEntry
 	cachedDirPath         string
+	// Text file validation cache: path -> isText
+	textFileCache      map[string]bool
+	textFileCacheMtime map[string]time.Time
 
 	// Terminal width for line truncation in preview
 	terminalWidth int
@@ -142,14 +139,43 @@ func NewFilePicker(
 		searchDepth:        searchDepth,
 		colors:             colors,
 		debounceChannel:    make(chan string, 1),
+		textFileCache:      make(map[string]bool),
+		textFileCacheMtime: make(map[string]time.Time),
 	}
 	return filePicker
 }
 
-func isTextFile(path string) bool {
+// Stop cleans up resources used by the file picker
+// Should be called when the file picker is no longer needed
+func (m *FilePicker) Stop() {
+	if m.debounceTimer != nil {
+		m.debounceTimer.Stop()
+	}
+	// Clear the channel to prevent goroutine leaks
+	if m.debounceChannel != nil {
+		for {
+			select {
+			case <-m.debounceChannel:
+			default:
+				goto done
+			}
+		}
+	done:
+	}
+}
+
+// isTextFile checks if a file is a text file using cached results
+// Uses a map cache to avoid re-reading file content for the same file
+func (m *FilePicker) isTextFile(path string) bool {
+	// Check cache first
+	if cached, ok := m.textFileCache[path]; ok {
+		return cached
+	}
+
 	// Check extension against known text/code extensions using helper function
 	ext := filepath.Ext(path)
 	if util.IsTextOrCodeExtension(ext) {
+		m.textFileCache[path] = true
 		return true
 	}
 
@@ -159,7 +185,7 @@ func isTextFile(path string) bool {
 		return false
 	}
 	// Skip files larger than 1MB as they're unlikely to be suitable for quick preview
-	if fileInfo.Size() > maxPreviewFileSize {
+	if fileInfo.Size() > util.MaxPreviewFileSize {
 		return false
 	}
 
@@ -172,7 +198,7 @@ func isTextFile(path string) bool {
 	defer file.Close()
 
 	// Read only first 1024 bytes for UTF-8 validity check
-	buf := make([]byte, utf8CheckBufferSize)
+	buf := make([]byte, util.Utf8CheckBufferSize)
 	n, err := file.Read(buf)
 	if err != nil && err != io.EOF {
 		return false
@@ -290,11 +316,6 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 				m.debounceTimer.Stop()
 			}
 
-			// Ensure channel exists
-			if m.debounceChannel == nil {
-				m.debounceChannel = make(chan string, 1)
-			}
-
 			// Schedule debounced search using AfterFunc
 			// When timer fires, it sends the filter text to the channel
 			m.debounceTimer = time.AfterFunc(util.FilePickerDebounce, func() {
@@ -370,7 +391,7 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 		if m.IsContextMode && util.IsMediaFile(path) {
 			m.err = errors.New(path + " is a media file. Use Ctrl+A to attach media files.")
 			m.SelectedFile = ""
-			return m, tea.Batch(cmd, filterCmd, clearErrorAfter(errorDisplayDuration))
+			return m, tea.Batch(cmd, filterCmd, clearErrorAfter(util.ErrorDisplayDuration))
 		}
 		m.SelectedFile = path
 		// Update preview file for context mode
@@ -383,7 +404,7 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 	if didSelect, path := m.filepicker.DidSelectDisabledFile(msg); didSelect {
 		m.err = errors.New(path + " is not valid.")
 		m.SelectedFile = ""
-		return m, tea.Batch(cmd, filterCmd, clearErrorAfter(errorDisplayDuration))
+		return m, tea.Batch(cmd, filterCmd, clearErrorAfter(util.ErrorDisplayDuration))
 	}
 
 	return m, tea.Batch(cmd, filterCmd)
@@ -440,12 +461,18 @@ func (m FilePicker) GetFilterInputView() string {
 
 // recursiveSearch performs a recursive search for files matching the filter text
 // Searches up to maxDepth levels deep from the current directory
+// Returns at most maxSearchResults to prevent memory/performance issues
 func (m FilePicker) recursiveSearch(filterText string, maxDepth int) []SearchResult {
 	var results []SearchResult
 	currentDir := m.filepicker.CurrentDirectory
 
 	// Use the new WalkDirectory utility
 	_, err := util.WalkDirectory(currentDir, maxDepth, func(filePath string, d fs.DirEntry, relPath string, depth int) bool {
+		// Stop collecting results if we've reached the limit
+		if len(results) >= util.MaxSearchResults {
+			return false // Return false to stop walking
+		}
+
 		// Skip media files in context mode
 		if m.IsContextMode && util.IsMediaFile(filePath) {
 			return false
@@ -473,7 +500,7 @@ func (m FilePicker) recursiveSearch(filterText string, maxDepth int) []SearchRes
 
 	if err != nil {
 		// Log error but return what we have
-		fmt.Printf("Error during recursive search: %v\n", err)
+		util.Slog.Warn("FilePicker: Error during recursive search", "error", err)
 	}
 
 	return results
@@ -649,7 +676,7 @@ func (m FilePicker) getFilePreviewContent(path string) string {
 	}
 
 	// Check if it's a text file
-	if !isTextFile(path) {
+	if !m.isTextFile(path) {
 		return "[Binary file - preview not available]"
 	}
 
@@ -661,8 +688,8 @@ func (m FilePicker) getFilePreviewContent(path string) string {
 
 	// Convert to string and limit to reasonable size
 	contentStr := string(content)
-	if len(contentStr) > maxPreviewContentSize {
-		contentStr = contentStr[:maxPreviewContentSize] + "\n... (truncated)"
+	if len(contentStr) > util.MaxPreviewContentSize {
+		contentStr = contentStr[:util.MaxPreviewContentSize] + "\n... (truncated)"
 	}
 
 	return contentStr
@@ -709,7 +736,7 @@ func (m FilePicker) GetPreviewView(height int) string {
 	isText := m.cachedIsText
 	if m.cachedPreviewFile != m.previewFile {
 		// File changed, re-check text validity
-		isText = isTextFile(m.previewFile)
+		isText = m.isTextFile(m.previewFile)
 		m.cachedIsText = isText
 	}
 
@@ -815,8 +842,6 @@ func truncateLineWithANSI(line string, maxLen int) string {
 
 // stripANSI removes ANSI escape codes from a string
 func stripANSI(s string) string {
-	// ANSI escape code pattern: \x1b[...m
-	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	return ansiRegex.ReplaceAllString(s, "")
 }
 
