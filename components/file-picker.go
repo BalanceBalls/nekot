@@ -3,6 +3,7 @@ package components
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -122,33 +123,38 @@ func NewFilePicker(
 }
 
 func isTextFile(path string) bool {
-	// Check extension against known text/code extensions
-	ext := strings.ToLower(filepath.Ext(path))
-	for _, textExt := range util.CodeExtensions {
-		if ext == textExt {
-			return true
-		}
+	// Check extension against known text/code extensions using helper function
+	ext := filepath.Ext(path)
+	if util.IsTextOrCodeExtension(ext) {
+		return true
 	}
 
-	// Additional common text extensions
-	for _, textExt := range util.TextExtensions {
-		if ext == textExt {
-			return true
-		}
-	}
-
-	// Try to read a small portion to check if it's valid UTF-8
-	content, err := os.ReadFile(path)
+	// Check file size first - skip very large files (likely binary or not suitable for preview)
+	fileInfo, err := os.Stat(path)
 	if err != nil {
 		return false
 	}
-
-	// Check first 1024 bytes for UTF-8 validity
-	checkSize := 1024
-	if len(content) < checkSize {
-		checkSize = len(content)
+	// Skip files larger than 1MB as they're unlikely to be suitable for quick preview
+	const maxPreviewFileSize = 1024 * 1024 // 1MB
+	if fileInfo.Size() > maxPreviewFileSize {
+		return false
 	}
-	return utf8.Valid(content[:checkSize])
+
+	// Try to read a small portion to check if it's valid UTF-8
+	// Use os.Open with limited read instead of ReadFile to avoid loading entire file
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	// Read only first 1024 bytes for UTF-8 validity check
+	buf := make([]byte, 1024)
+	n, err := file.Read(buf)
+	if err != nil && err != io.EOF {
+		return false
+	}
+	return utf8.Valid(buf[:n])
 }
 
 type clearErrorMsg struct{}
