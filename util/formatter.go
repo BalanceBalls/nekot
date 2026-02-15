@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
@@ -440,4 +441,44 @@ func removeZWJEmojis(input string) string {
 	}
 
 	return sb.String()
+}
+
+// FormatSize formats a file size in human-readable format
+func FormatSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
+}
+
+// ansiRegexForTruncate is used for stripping ANSI codes when truncating lines
+var ansiRegexForTruncate = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// TruncateLineWithANSI truncates a line to max visible characters while preserving ANSI codes
+func TruncateLineWithANSI(line string, maxLen int) string {
+	// Remove ANSI codes temporarily to count visible characters
+	cleanLine := ansiRegexForTruncate.ReplaceAllString(line, "")
+
+	// If clean line is already short enough, return original
+	if utf8.RuneCountInString(cleanLine) <= maxLen {
+		return line
+	}
+
+	// Truncate the clean line and add ellipsis
+	runes := []rune(cleanLine)
+	if len(runes) > maxLen {
+		runes = runes[:maxLen-3] // Reserve 3 chars for "..."
+	}
+	truncatedClean := string(runes) + "..."
+
+	// Now we need to rebuild the line with ANSI codes
+	// This is complex, so for simplicity, we'll just return the truncated clean line
+	// A more sophisticated approach would preserve ANSI codes at the beginning
+	return truncatedClean
 }

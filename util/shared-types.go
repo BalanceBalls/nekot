@@ -181,3 +181,11 @@ func IsTextOrCodeExtension(ext string) bool {
 	}
 	return false
 }
+
+// SearchResult represents a file found during recursive search in file picker
+type SearchResult struct {
+	Path    string
+	RelPath string // Relative to current directory
+	IsDir   bool
+	Size    int64
+}
