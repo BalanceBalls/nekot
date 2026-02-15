@@ -131,8 +131,7 @@ func isTextFile(path string) bool {
 	}
 
 	// Additional common text extensions
-	textExtensions := []string{".txt", ".md", ".markdown", ".rst", ".log", ".csv", ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf"}
-	for _, textExt := range textExtensions {
+	for _, textExt := range util.TextExtensions {
 		if ext == textExt {
 			return true
 		}

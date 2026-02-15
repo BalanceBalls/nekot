@@ -140,5 +140,24 @@ var CodeExtensions = []string{
 	".rs", ".rb", ".php", ".swift", ".kt", ".scala", ".cs", ".sh",
 	".bash", ".zsh", ".fish", ".ps1", ".bat", ".cmd", ".sql", ".html",
 	".css", ".scss", ".sass", ".less", ".json", ".xml", ".yaml", ".yml",
-	".toml", ".ini", ".cfg", ".conf", ".md", ".markdown", ".txt",
+	".toml", ".ini", ".cfg", ".conf", ".md", ".markdown",
+}
+
+// TextExtensions that have common text file (used along with the text-based file selector for hinting)
+var TextExtensions = []string{
+	".txt", ".text", ".md", ".markdown", ".mdown", ".mkd", ".mkdn",
+	".rst", ".rest", ".adoc", ".asciidoc", ".org", ".tex", ".latex",
+	".log", ".out", ".err",
+	".csv", ".tsv", ".tab", ".psv",
+	".json", ".jsonl", ".ndjson",
+	".xml", ".xsd", ".xsl", ".xslt",
+	".yaml", ".yml",
+	".toml", ".ini", ".cfg", ".conf", ".config",
+	".env", ".properties", ".prop", ".props",
+	".lst", ".list", ".textile",
+	".srt", ".vtt",
+	".ics", ".vcf",
+	".sql", ".psql",
+	".http", ".rest",
+	".diff", ".patch",
 }

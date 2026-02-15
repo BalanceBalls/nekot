@@ -7,6 +7,5 @@
 	"maxAttachmentSizeMb": 10,
 	"includeReasoningTokensInContext": true,
 	"sessionExportDir": "",
-	"contextMaxDepth": 2,
-	"showContextIcons": true
+	"contextMaxDepth": 2
 }

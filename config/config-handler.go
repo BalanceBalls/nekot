@@ -54,7 +54,6 @@ type Config struct {
 	IncludeReasoningTokensInContext *bool            `json:"includeReasoningTokensInContext"`
 	SessionExportDir                string           `json:"sessionExportDir"`
 	ContextMaxDepth                 *int             `json:"contextMaxDepth"`
-	ShowContextIcons                *bool            `json:"showContextIcons"`
 }
 
 type StartupFlags struct {
@@ -237,12 +236,6 @@ func (c *Config) setDefaults() {
 		defaultDepth := 2
 		c.ContextMaxDepth = &defaultDepth
 	}
-
-	// Set default show context icons to true
-	if c.ShowContextIcons == nil {
-		defaultShowIcons := true
-		c.ShowContextIcons = &defaultShowIcons
-	}
 }
 
 // GetContextMaxDepth returns the context max depth, defaulting to 2 if nil
@@ -251,14 +244,6 @@ func (c *Config) GetContextMaxDepth() int {
 		return 2
 	}
 	return *c.ContextMaxDepth
-}
-
-// GetShowContextIcons returns whether to show context icons, defaulting to true if nil
-func (c *Config) GetShowContextIcons() bool {
-	if c.ShowContextIcons == nil {
-		return true
-	}
-	return *c.ShowContextIcons
 }
 
 func (c *Config) applyFlags(flags StartupFlags) {
