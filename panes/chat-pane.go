@@ -62,8 +62,8 @@ var defaultChatPaneKeyMap = chatPaneKeyMap{
 		key.WithHelp("G", "scroll to bottom"),
 	),
 	toggleContextContent: key.NewBinding(
-		key.WithKeys("ctrl+l"),
-		key.WithHelp("ctrl+l", "toggle context content visibility"),
+		key.WithKeys("ctrl+g"),
+		key.WithHelp("ctrl+g", "toggle context content visibility"),
 	),
 }
 
