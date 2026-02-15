@@ -607,7 +607,7 @@ func (m MainView) View() string {
 
 	// In FilePickerMode, render file picker in place of chat pane
 	if m.viewMode == util.FilePickerMode {
-		// In context mode, use view without filter (filter is shown below preview)
+		// In context mode, use view without filter (filter is shown above preview)
 		if m.promptPane.GetFilePickerIsContextMode() {
 			mainView = m.promptPane.GetFilePickerViewWithoutFilter()
 		} else {
@@ -635,12 +635,12 @@ func (m MainView) View() string {
 
 			if previewView != "" {
 				// Show file picker and preview side by side
-				// Filter input is shown below the preview
+				// Filter input is shown above the preview
 				filterInputView := m.promptPane.GetFilePickerFilterInputView()
 				previewWithFilter := lipgloss.JoinVertical(
 					lipgloss.Left,
-					previewView,
 					filterInputView,
+					previewView,
 				)
 				// Create a vertical border between file picker and preview
 				colors := m.config.ColorScheme.GetColors()

@@ -102,7 +102,7 @@ func NewFilePicker(
 	// Initialize filter input
 	filterInput := textinput.New()
 	filterInput.Placeholder = "Filter files..."
-	filterInput.Prompt = "/"
+	filterInput.Prompt = "Filter: "
 	filterInput.PromptStyle = lipgloss.NewStyle().Foreground(colors.ActiveTabBorderColor)
 	filterInput.PlaceholderStyle = lipgloss.NewStyle().Faint(true)
 
@@ -513,13 +513,37 @@ func (m FilePicker) filterFilePickerView(filterText string) string {
 			depth := strings.Count(result.RelPath, string(filepath.Separator))
 			indent := strings.Repeat("  ", depth)
 
+			// Determine if this item is selected
+			isSelected := i == m.filteredSelectionIndex
+
 			// Add cursor indicator for selected item
 			prefix := "  "
-			if i == m.filteredSelectionIndex {
+			if isSelected {
 				prefix = "> "
 			}
 
-			lines = append(lines, prefix+indent+name+"  "+sizeStr)
+			// Apply colors based on selection and file type
+			var styledLine string
+			if isSelected {
+				// Selected item: use ActiveTabBorderColor for both name and cursor
+				cursorStyle := lipgloss.NewStyle().Foreground(m.colors.ActiveTabBorderColor)
+				nameStyle := lipgloss.NewStyle().Foreground(m.colors.ActiveTabBorderColor)
+				sizeStyle := lipgloss.NewStyle().Foreground(m.colors.ActiveTabBorderColor)
+				styledLine = cursorStyle.Render(prefix) + indent + nameStyle.Render(name) + "  " + sizeStyle.Render(sizeStr)
+			} else {
+				// Non-selected item: use different colors for directories vs files
+				var nameStyle lipgloss.Style
+				if result.IsDir {
+					nameStyle = lipgloss.NewStyle().Foreground(m.colors.HighlightColor)
+				} else {
+					nameStyle = lipgloss.NewStyle().Foreground(m.colors.NormalTabBorderColor)
+				}
+				// Use a subdued color for file size
+				sizeStyle := lipgloss.NewStyle().Foreground(m.colors.HighlightColor).Faint(true)
+				styledLine = prefix + indent + nameStyle.Render(name) + "  " + sizeStyle.Render(sizeStr)
+			}
+
+			lines = append(lines, styledLine)
 		}
 
 		return strings.Join(lines, "\n")
