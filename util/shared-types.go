@@ -1,6 +1,9 @@
 package util
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 type Settings struct {
 	ID               int
@@ -135,6 +138,7 @@ var MediaExtensions = []string{
 }
 
 // CodeExtensions contains file extensions that should be wrapped in code blocks
+// when displaying content.
 var CodeExtensions = []string{
 	".go", ".js", ".ts", ".py", ".java", ".c", ".cpp", ".h", ".hpp",
 	".rs", ".rb", ".php", ".swift", ".kt", ".scala", ".cs", ".sh",
@@ -143,7 +147,7 @@ var CodeExtensions = []string{
 	".toml", ".ini", ".cfg", ".conf", ".md", ".markdown",
 }
 
-// TextExtensions that have common text file (used along with the text-based file selector for hinting)
+// TextExtensions contains common text file extensions used for file picker hinting.
 var TextExtensions = []string{
 	".txt", ".text", ".md", ".markdown", ".mdown", ".mkd", ".mkdn",
 	".rst", ".rest", ".adoc", ".asciidoc", ".org", ".tex", ".latex",
@@ -160,4 +164,20 @@ var TextExtensions = []string{
 	".sql", ".psql",
 	".http", ".rest",
 	".diff", ".patch",
+}
+
+// Quick helper to check union between those code and text files.
+func IsTextOrCodeExtension(ext string) bool {
+	extLower := strings.ToLower(ext)
+	for _, codeExt := range CodeExtensions {
+		if extLower == codeExt {
+			return true
+		}
+	}
+	for _, textExt := range TextExtensions {
+		if extLower == textExt {
+			return true
+		}
+	}
+	return false
 }
