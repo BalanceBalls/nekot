@@ -270,6 +270,15 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 			messageContent += singleMessage.Content
 		}
 
+		if singleMessage.ContextContent != "" {
+			util.Slog.Debug("OpenAI: Including ContextContent in message",
+				"contextContentLength", len(singleMessage.ContextContent))
+			if messageContent != "" {
+				messageContent += "\n\n"
+			}
+			messageContent += singleMessage.ContextContent
+		}
+
 		if messageContent != "" {
 			singleMessage.Content = messageContent
 		}

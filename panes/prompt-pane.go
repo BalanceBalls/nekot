@@ -2,9 +2,11 @@ package panes
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
@@ -79,9 +81,11 @@ type PromptPane struct {
 	inputMode      util.PrompInputMode
 	colors         util.SchemeColors
 	keys           keyMap
+	config         config.Config
 
 	pendingInsert  string
 	attachments    []util.Attachment
+	contextChips   []util.FileContextChip
 	operation      util.Operation
 	viewMode       util.ViewMode
 	isSessionIdle  bool
@@ -140,6 +144,7 @@ func NewPromptPane(ctx context.Context) PromptPane {
 		keys:           defaultKeyMap,
 		viewMode:       util.NormalMode,
 		colors:         colors,
+		config:         *config,
 		input:          input,
 		textEditor:     textEditor,
 		inputContainer: container,
@@ -227,7 +232,9 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 
 func (p *PromptPane) keyAttach() tea.Cmd {
 	if p.isFocused && p.operation == util.NoOperaton && p.viewMode != util.FilePickerMode {
-		return util.SendViewModeChangedMsg(util.FilePickerMode)
+		// Set IsContextMode to false for image attachment
+		p.filePicker.IsContextMode = false
+		return util.SendViewModeChangedWithContextMsg(util.FilePickerMode, false)
 	} else {
 		return util.SendViewModeChangedMsg(util.NormalMode)
 	}
@@ -251,6 +258,7 @@ func (p *PromptPane) keyInsert() tea.Cmd {
 
 func (p *PromptPane) keyClear() tea.Cmd {
 	p.attachments = []util.Attachment{}
+	p.contextChips = []util.FileContextChip{}
 	switch p.viewMode {
 	case util.TextEditMode:
 		p.textEditor.Reset()
@@ -329,8 +337,10 @@ func (p *PromptPane) keyEnter() tea.Cmd {
 		}
 
 		p.attachments = []util.Attachment{}
+		contextChips := p.contextChips
+		p.contextChips = []util.FileContextChip{}
 		return tea.Batch(
-			util.SendPromptReadyMsg(promptText, attachments),
+			util.SendPromptReadyWithContextMsg(promptText, attachments, contextChips),
 			util.SendViewModeChangedMsg(util.NormalMode))
 
 	default:
@@ -345,7 +355,9 @@ func (p *PromptPane) keyEnter() tea.Cmd {
 		p.inputMode = util.PromptNormalMode
 
 		p.attachments = []util.Attachment{}
-		return util.SendPromptReadyMsg(promptText, attachments)
+		contextChips := p.contextChips
+		p.contextChips = []util.FileContextChip{}
+		return util.SendPromptReadyWithContextMsg(promptText, attachments, contextChips)
 	}
 
 	return nil
@@ -405,15 +417,79 @@ func (p *PromptPane) processFilePickerUpdates(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	// Debug: Log when processing file picker updates
+	if p.viewMode == util.FilePickerMode {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			util.Slog.Debug("PromptPane: Processing file picker update", "isFocused", p.isFocused, "keyStr", keyMsg.String())
+		}
+	}
+
 	if p.isFocused && p.viewMode == util.FilePickerMode {
 		if p.filePicker.SelectedFile != "" {
-			attachmentPath := p.filePicker.SelectedFile
-			attachmentPath = filepath.Clean(attachmentPath)
-			attachmentPath = strings.ReplaceAll(attachmentPath, `\ `, " ")
-			p.attachments = append(p.attachments, util.Attachment{
-				Type: "img",
-				Path: attachmentPath,
-			})
+			selectedPath := p.filePicker.SelectedFile
+			selectedPath = filepath.Clean(selectedPath)
+			selectedPath = strings.ReplaceAll(selectedPath, `\ `, " ")
+
+			if p.filePicker.IsContextMode {
+				// Create a context chip from the selected path
+				info, err := os.Stat(selectedPath)
+				if err != nil {
+					util.Slog.Error("os.Stat failed for context chip", "path", selectedPath, "error", err.Error())
+				} else {
+					// Check for duplicates before adding
+					isDuplicate := false
+					for _, existingChip := range p.contextChips {
+						if existingChip.Path == selectedPath {
+							isDuplicate = true
+							break
+						}
+					}
+
+					if !isDuplicate {
+						chip := util.FileContextChip{
+							Path:     selectedPath,
+							Name:     filepath.Base(selectedPath),
+							IsFolder: info.IsDir(),
+							Size:     info.Size(),
+						}
+
+						if info.IsDir() {
+							// Count files in the folder using the configured max depth
+							searchDepth := p.config.GetContextMaxDepth()
+							fileCount, err := util.CountFilesInFolder(selectedPath, searchDepth)
+							if err != nil {
+								util.Slog.Error("Failed to count files in folder", "path", selectedPath, "error", err.Error())
+								fileCount = 0
+							}
+							chip.FileCount = fileCount
+						}
+
+						p.contextChips = append(p.contextChips, chip)
+					} else {
+						util.Slog.Debug("Skipping duplicate context chip", "path", selectedPath)
+					}
+				}
+			} else {
+				// Add as image attachment
+				// Check for duplicates before adding
+				isDuplicate := false
+				for _, existingAttachment := range p.attachments {
+					if existingAttachment.Path == selectedPath {
+						isDuplicate = true
+						break
+					}
+				}
+
+				if !isDuplicate {
+					util.Slog.Debug("Adding image attachment", "path", selectedPath, "total_attachments", len(p.attachments)+1)
+					p.attachments = append(p.attachments, util.Attachment{
+						Type: "img",
+						Path: selectedPath,
+					})
+				} else {
+					util.Slog.Debug("Skipping duplicate image attachment", "path", selectedPath)
+				}
+			}
 
 			cmds = append(cmds, util.SendViewModeChangedMsg(p.filePicker.PrevView))
 			p.filePicker.SelectedFile = ""
@@ -438,8 +514,35 @@ func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 		case util.FilePickerMode:
 			break
 		case util.TextEditMode:
+			// Check for @ trigger to open context picker
+			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "@" {
+				// Get editor content to check position
+				editorContent := p.textEditor.Value()
+				// Check if @ is at start or after space
+				if len(editorContent) == 0 {
+					p.filePicker.IsContextMode = true
+					return util.SendViewModeChangedWithContextMsg(util.FilePickerMode, true)
+				}
+				// Check if last character is a space (handles UTF-8 properly)
+				lastRune, _ := utf8.DecodeLastRuneInString(editorContent)
+				if lastRune == ' ' {
+					p.filePicker.IsContextMode = true
+					return util.SendViewModeChangedWithContextMsg(util.FilePickerMode, true)
+				}
+			}
 			p.textEditor, cmd = p.textEditor.Update(msg)
 		default:
+			// Check for @ trigger to open context picker
+			if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "@" {
+				// Only trigger if at beginning of input or after space
+				currentValue := p.input.Value()
+				if len(currentValue) == 0 || currentValue[len(currentValue)-1] == ' ' {
+					// Set IsContextMode to true and open file picker
+					p.filePicker.IsContextMode = true
+					return util.SendViewModeChangedWithContextMsg(util.FilePickerMode, true)
+				}
+			}
+
 			// TODO: maybe there is a way to adjust heihgt for long inputs?
 			// TODO: move to dimensions?
 			if lipgloss.Width(p.input.Value()) > p.input.Width-4 {
@@ -561,7 +664,8 @@ func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput
 
 func (p *PromptPane) openFilePicker(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
 	w, h := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-	p.filePicker = components.NewFilePicker(previousViewMode, currentInput, p.colors)
+	searchDepth := p.config.GetContextMaxDepth()
+	p.filePicker = components.NewFilePicker(previousViewMode, currentInput, p.colors, p.filePicker.IsContextMode, searchDepth)
 	p.filePicker.SetSize(w, h)
 	return p.filePicker.Init()
 }
@@ -689,16 +793,23 @@ func (p PromptPane) View() string {
 			content = p.input.View()
 		}
 
-		infoBlockContent := infoLabel.Render("Use ctrl+a to attach an image")
+		infoBlockContent := infoLabel.Render("Use ctrl+a to attach an image • @ to add file context")
 
-		if len(p.attachments) != 0 {
-			imageBlocks := []string{infoPrefix.Render("Attachments: ")}
+		if len(p.attachments) != 0 || len(p.contextChips) != 0 {
+			blocks := []string{infoPrefix.Render("Attachments: ")}
 			for _, image := range p.attachments {
 				fileName := filepath.Base(image.Path)
-				imageBlocks = append(imageBlocks, infoLabel.Render(fileName))
+				blocks = append(blocks, infoLabel.Render(fileName))
+			}
+			for _, chip := range p.contextChips {
+				chipText := chip.Name
+				if chip.IsFolder {
+					chipText += " (folder)"
+				}
+				blocks = append(blocks, infoLabel.Render(chipText))
 			}
 
-			infoBlockContent = lipgloss.JoinHorizontal(lipgloss.Left, imageBlocks...)
+			infoBlockContent = lipgloss.JoinHorizontal(lipgloss.Left, blocks...)
 		}
 
 		if p.operation == util.SystemMessageEditing {
@@ -712,4 +823,45 @@ func (p PromptPane) View() string {
 	}
 
 	return zone.Mark("prompt_pane", p.inputContainer.Render(ResponseWaitingMsg))
+}
+
+// GetFilePickerView returns the file picker view for rendering in main view
+func (p *PromptPane) GetFilePickerView() string {
+	return p.filePicker.View()
+}
+
+// GetFilePickerViewWithoutFilter returns the file picker view without filter input
+// This is used when the filter input is displayed separately (e.g., below preview)
+func (p *PromptPane) GetFilePickerViewWithoutFilter() string {
+	return p.filePicker.GetFilePickerViewWithoutFilter()
+}
+
+// GetFilePickerFilterInputView returns the filter input view
+func (p *PromptPane) GetFilePickerFilterInputView() string {
+	return p.filePicker.GetFilterInputView()
+}
+
+// GetInputContainerStyle returns the input container style for wrapping the file picker
+func (p *PromptPane) GetInputContainerStyle() lipgloss.Style {
+	return p.inputContainer
+}
+
+// GetInfoLabelStyle returns the info label style for rendering reminders
+func (p *PromptPane) GetInfoLabelStyle() lipgloss.Style {
+	return infoLabel
+}
+
+// GetInfoBlockStyle returns the info block style for rendering reminders
+func (p *PromptPane) GetInfoBlockStyle() lipgloss.Style {
+	return infoBlockStyle
+}
+
+// GetFilePickerPreviewView returns the file picker preview view for rendering in main view
+func (p *PromptPane) GetFilePickerPreviewView(height int) string {
+	return p.filePicker.GetPreviewView(height)
+}
+
+// GetFilePickerIsContextMode returns whether the file picker is in context mode
+func (p *PromptPane) GetFilePickerIsContextMode() bool {
+	return p.filePicker.IsContextMode
 }

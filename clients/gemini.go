@@ -442,6 +442,15 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 			messageContent += singleMessage.Content
 		}
 
+		if singleMessage.ContextContent != "" {
+			util.Slog.Debug("Gemini: Including ContextContent in message",
+				"contextContentLength", len(singleMessage.ContextContent))
+			if messageContent != "" {
+				messageContent += "\n\n"
+			}
+			messageContent += singleMessage.ContextContent
+		}
+
 		message := genai.Content{
 			Parts: []genai.Part{},
 			Role:  role,
