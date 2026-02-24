@@ -267,6 +267,15 @@ func setRequestContext(
 			messageContent += singleMessage.Content
 		}
 
+		if singleMessage.ContextContent != "" {
+			util.Slog.Debug("OpenRouter: Including ContextContent in message",
+				"contextContentLength", len(singleMessage.ContextContent))
+			if messageContent != "" {
+				messageContent += "\n\n"
+			}
+			messageContent += singleMessage.ContextContent
+		}
+
 		if len(singleMessage.ToolCalls) > 0 {
 			toolCalls := constructOpenrouterToolCalls(singleMessage)
 			chat = append(chat, toolCalls...)

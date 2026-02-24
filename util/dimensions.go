@@ -88,7 +88,9 @@ func CalcPromptPaneSize(tw, th int, mode ViewMode) (w, h int) {
 		paneHeight := oneThird(th)
 		return tw - PromptPanePadding, paneHeight
 	case FilePickerMode:
-		paneHeight := oneThird(th)
+		// Full screen file picker: use almost full terminal height
+		// Reserve space for borders, info block, and padding
+		paneHeight := th - 4
 		return tw - PromptPanePadding, paneHeight
 	}
 
@@ -124,7 +126,9 @@ func CalcChatPaneSize(tw, th int, mode ViewMode) (w, h int) {
 		paneHeight = twoThirds(th) - EditModeUIElementsSum - 1
 		paneWidth = tw - DefaultElementsPadding
 	case FilePickerMode:
-		paneHeight = twoThirds(th) - EditModeUIElementsSum - 2
+		// Full screen file picker: use almost full terminal height
+		// Reserve space for borders, info block, and padding
+		paneHeight = th - 4
 		paneWidth = tw - DefaultElementsPadding
 	}
 
