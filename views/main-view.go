@@ -635,13 +635,18 @@ func (m MainView) View() string {
 
 			if previewView != "" {
 				// Show file picker and preview side by side
-				// Filter input is shown above the preview
+				// Filter input is shown above the preview only when visible
 				filterInputView := m.promptPane.GetFilePickerFilterInputView()
-				previewWithFilter := lipgloss.JoinVertical(
-					lipgloss.Left,
-					filterInputView,
-					previewView,
-				)
+				var previewWithFilter string
+				if filterInputView != "" {
+					previewWithFilter = lipgloss.JoinVertical(
+						lipgloss.Left,
+						filterInputView,
+						previewView,
+					)
+				} else {
+					previewWithFilter = previewView
+				}
 				// Create a vertical border between file picker and preview
 				colors := m.config.ColorScheme.GetColors()
 				borderStyle := lipgloss.NewStyle().

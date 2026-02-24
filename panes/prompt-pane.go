@@ -841,6 +841,11 @@ func (p *PromptPane) GetFilePickerFilterInputView() string {
 	return p.filePicker.GetFilterInputView()
 }
 
+// IsFilePickerFilterInputVisible returns true if the filter input should be shown
+func (p *PromptPane) IsFilePickerFilterInputVisible() bool {
+	return p.filePicker.IsFilterInputVisible()
+}
+
 // GetInputContainerStyle returns the input container style for wrapping the file picker
 func (p *PromptPane) GetInputContainerStyle() lipgloss.Style {
 	return p.inputContainer

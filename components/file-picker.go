@@ -411,15 +411,18 @@ func (m FilePicker) View() string {
 		filePickerView = m.FilterFilePickerView(filterText)
 	}
 
-	// Show filter input beneath the file listing
-	filterInputView := m.filterInput.View()
+	// Only show filter input when focused or has value
+	if m.IsFilterInputVisible() {
+		filterInputView := m.filterInput.View()
+		// Join file picker view and filter input vertically
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			filePickerView,
+			filterInputView,
+		)
+	}
 
-	// Join file picker view and filter input vertically
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		filePickerView,
-		filterInputView,
-	)
+	return filePickerView
 }
 
 // GetFilePickerViewWithoutFilter returns the file picker view without the filter input
@@ -441,7 +444,17 @@ func (m FilePicker) GetFilePickerViewWithoutFilter() string {
 	return filePickerView
 }
 
+// IsFilterInputVisible returns true if the filter input should be shown
+// Filter is shown only when it's focused or has a value
+func (m FilePicker) IsFilterInputVisible() bool {
+	return m.filterInputFocused || m.filterInput.Value() != ""
+}
+
 // GetFilterInputView returns the filter input view
+// Returns empty string if filter should not be visible
 func (m FilePicker) GetFilterInputView() string {
+	if !m.IsFilterInputVisible() {
+		return ""
+	}
 	return m.filterInput.View()
 }
