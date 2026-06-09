@@ -18,7 +18,7 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 )
 
-const ResponseWaitingMsg = "> Please wait ..."
+const ResponseWaitingMsg = "Inference in progress • ctrl+s to stop"
 const InitializingMsg = "Components initializing ..."
 const PlaceholderMsg = "Press i to type • ctrl+e expand/collapse editor • ctrl+r clear"
 
@@ -711,5 +711,6 @@ func (p PromptPane) View() string {
 		))
 	}
 
-	return zone.Mark("prompt_pane", p.inputContainer.Render(ResponseWaitingMsg))
+	p.input.Placeholder = ResponseWaitingMsg
+	return zone.Mark("prompt_pane", p.inputContainer.Render(p.input.View()))
 }
