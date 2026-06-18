@@ -15,6 +15,8 @@ ____________________________
 __`j/k` to navigate the manual__
  <!------->
 __`2` to focus on the manual (pane)__
+ <!------->
+__`?` open help__
 
 # Global keybindings
 
