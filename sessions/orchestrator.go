@@ -149,6 +149,14 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 			cmds = append(cmds, SendUpdateCurrentSessionMsg(updatedSession))
 			cmds = append(cmds, SendRefreshSessionsListMsg())
 			cmds = append(cmds, util.SendNotificationMsg(util.SessionSavedNotification))
+			cmds = append(cmds, GlobalSessionNameGenerator.GenerateTitleAsync(
+				m.mainCtx,
+				m.config,
+				m.Settings,
+				updatedSession.ID,
+				updatedSession.SessionName,
+				updatedSession.Messages,
+			))
 		}
 
 	case UpdateCurrentSession:
@@ -440,10 +448,23 @@ func (m *Orchestrator) finishResponseProcessing(response util.LocalStoreMessage,
 	m.ResponseBuffer = ""
 	m.ArrayOfProcessResult = []util.ProcessApiCompletionResponse{}
 
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		util.SendProcessingStateChangedMsg(nextProcessingState),
 		SendResponseChunkProcessedMsg(m.CurrentAnswer, m.ArrayOfMessages, true),
-	)
+	}
+
+	if !isToolCall && !m.CurrentSessionIsTemporary {
+		cmds = append(cmds, GlobalSessionNameGenerator.GenerateTitleAsync(
+			m.mainCtx,
+			m.config,
+			m.Settings,
+			m.CurrentSessionID,
+			m.CurrentSessionName,
+			m.ArrayOfMessages,
+		))
+	}
+
+	return tea.Batch(cmds...)
 }
 
 func (m *Orchestrator) handleTokenStatsUpdate(processingResult ProcessingResult) {

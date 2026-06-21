@@ -239,6 +239,30 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.initialPrompt = ""
 		}
 
+	case sessions.SessionTitleGeneratedMsg:
+		session, err := m.sessionService.GetSession(msg.SessionID)
+		if err != nil {
+			break
+		}
+		if !sessions.IsAutoTitle(session.SessionName) {
+			break
+		}
+		title := sessions.SanitizeTitle(msg.Title)
+		if title == "" || title == sessions.DefaultTitle || title == session.SessionName {
+			break
+		}
+		if err := m.sessionService.UpdateSessionName(msg.SessionID, title); err != nil {
+			return m, util.MakeErrorMsg(err.Error())
+		}
+		updatedSession, err := m.sessionService.GetSession(msg.SessionID)
+		if err != nil {
+			break
+		}
+		cmds = append(cmds, sessions.SendRefreshSessionsListMsg())
+		if updatedSession.ID == m.sessionOrchestrator.GetCurrentSessionId() {
+			cmds = append(cmds, sessions.SendUpdateCurrentSessionMsg(updatedSession))
+		}
+
 	case util.ProcessingStateChanged:
 		if msg.State == util.Idle {
 			m.controlsLocked = false
@@ -376,7 +400,8 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Sequence(
 			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
 			util.SendViewModeChangedMsg(m.viewMode),
-			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator))
+			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator),
+		)
 
 	case tea.MouseMsg:
 		targetPane := m.focused
