@@ -38,6 +38,7 @@ type keyMap struct {
 	saveQuickChat key.Binding
 	quit          key.Binding
 	help          key.Binding
+	esc           key.Binding
 }
 
 var defaultKeyMap = keyMap{
@@ -81,6 +82,10 @@ var defaultKeyMap = keyMap{
 	help: key.NewBinding(
 		key.WithKeys("?"),
 		key.WithHelp("?", "show help"),
+	),
+	esc: key.NewBinding(
+		key.WithKeys(tea.KeyEsc.String()),
+		key.WithHelp(tea.KeyEsc.String(), "hide help"),
 	),
 }
 
@@ -532,8 +537,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.viewMode == util.HelpMode {
-			switch msg.String() {
-			case "esc":
+			if key.Matches(msg, m.keys.esc) || key.Matches(msg, m.keys.help) {
 				m.viewMode = m.previousViewMode
 				cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
 			}
