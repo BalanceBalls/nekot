@@ -4,7 +4,11 @@
   "defaultModel": "",
   "colorScheme": "groove",
   "provider": "openai",
-	"maxAttachmentSizeMb": 10,
-	"includeReasoningTokensInContext": true,
-	"sessionExportDir": ""
+  "maxAttachmentSizeMb": 10,
+  "includeReasoningTokensInContext": true,
+  "sessionExportDir": "",
+  "titleGeneration": {
+    "enabled": true,
+    "timeoutSeconds": 5
+  }
 }

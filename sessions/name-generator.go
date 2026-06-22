@@ -88,6 +88,11 @@ func (g *SessionNameGenerator) GenerateTitleAsync(
 	msgs []util.LocalStoreMessage,
 ) tea.Cmd {
 	return func() tea.Msg {
+		if cfg.TitleGeneration == nil || !cfg.TitleGeneration.Enabled {
+			util.Slog.Warn("session generation disabled", "cfg", cfg.TitleGeneration)
+			return nil
+		}
+
 		if !IsAutoTitle(currentName) {
 			util.Slog.Warn("session already semantically named, skipping session naming")
 			return nil
@@ -173,7 +178,8 @@ func (g *SessionNameGenerator) requestTitleCompletion(
 	userText string,
 ) (context.Context, context.CancelFunc, <-chan util.ProcessApiCompletionResponse) {
 
-	titleCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	timeout := time.Duration(cfg.TitleGeneration.TimeoutSeconds)
+	titleCtx, cancel := context.WithTimeout(ctx, timeout*time.Second)
 	llmClient := clients.ResolveLlmClient(
 		cfg.Provider,
 		cfg.ProviderBaseUrl,
