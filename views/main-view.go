@@ -523,25 +523,35 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetFocus()
 
 		case key.Matches(msg, m.keys.help):
+			if m.viewMode == util.HelpMode {
+				m.viewMode = m.previousViewMode
+				cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+				return m, tea.Batch(cmds...)
+			}
+
 			if !m.isFocusChangeAllowed(false) {
 				break
 			}
 
-			if m.viewMode == util.HelpMode {
-				m.viewMode = m.previousViewMode
-			} else {
-				m.previousViewMode = m.viewMode
-				m.viewMode = util.HelpMode
-			}
+			m.previousViewMode = m.viewMode
+			m.viewMode = util.HelpMode
 			cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
-		}
+			return m, tea.Batch(cmds...)
 
-		if m.viewMode == util.HelpMode {
-			if key.Matches(msg, m.keys.esc) || key.Matches(msg, m.keys.help) {
+		case key.Matches(msg, m.keys.esc):
+			if !m.isFocusChangeAllowed(false) && m.viewMode == util.HelpMode {
 				m.viewMode = m.previousViewMode
 				cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+				return m, tea.Batch(cmds...)
 			}
 		}
+
+		// if m.viewMode == util.HelpMode {
+		// 	if key.Matches(msg, m.keys.esc) || key.Matches(msg, m.keys.help) {
+		// 		m.viewMode = m.previousViewMode
+		// 		cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+		// 	}
+		// }
 
 	case tea.WindowSizeMsg:
 		m.terminalWidth = msg.Width

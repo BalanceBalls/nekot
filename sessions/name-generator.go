@@ -2,7 +2,6 @@ package sessions
 
 import (
 	"context"
-	"encoding/json"
 	"regexp"
 	"strings"
 	"sync"
@@ -89,25 +88,21 @@ func (g *SessionNameGenerator) GenerateTitleAsync(
 ) tea.Cmd {
 	return func() tea.Msg {
 		if cfg.TitleGeneration == nil || !cfg.TitleGeneration.Enabled {
-			util.Slog.Warn("session generation disabled", "cfg", cfg.TitleGeneration)
 			return nil
 		}
 
 		if !IsAutoTitle(currentName) {
-			util.Slog.Warn("session already semantically named, skipping session naming")
 			return nil
 		}
 
 		userText, ok := GetFirstMeaningfulUserMessage(msgs)
 		if !ok {
-			util.Slog.Warn("no meaningful user message detected, skipping session naming")
 			return nil
 		}
 
 		g.mu.Lock()
 		if g.isProcessing {
 			g.mu.Unlock()
-			util.Slog.Warn("name generation in progress, falling back to heuristic")
 			return g.fallbackHeuristic(sessionID, userText)
 		}
 		g.isProcessing = true
@@ -149,17 +144,13 @@ loop:
 			break loop
 		case res := <-resultChan:
 			if res.Err != nil {
-				util.Slog.Warn("name generation error", "err", res.Err.Error())
+				util.Slog.Error("name generation error", "err", res.Err.Error())
 				break loop
 			}
 			if len(res.Result.Choices) > 0 {
-				data, _ := json.Marshal(res.Result.Choices[0])
-				util.Slog.Warn("name generation chunk received", "data", string(data))
 				if content, ok := res.Result.Choices[0].Delta["content"].(string); ok {
 					titleBuilder.WriteString(content)
 				}
-			} else {
-				util.Slog.Warn("name generation chunk has no choices")
 			}
 			if res.Final {
 				success = true
@@ -167,7 +158,6 @@ loop:
 			}
 		}
 	}
-	util.Slog.Warn("name generation finished", "success", success, "result", titleBuilder.String())
 	return titleBuilder.String(), success
 }
 

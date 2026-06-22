@@ -122,6 +122,13 @@ func validateConfig(config Config) bool {
 		}
 	}
 
+	if config.TitleGeneration != nil {
+		if config.TitleGeneration.TimeoutSeconds < 1 {
+			fmt.Println("Title generation timeout must be >= 1 second")
+			return false
+		}
+	}
+
 	switch config.Provider {
 	case util.OpenrouterProviderType:
 		return true
