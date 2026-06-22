@@ -546,13 +546,6 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// if m.viewMode == util.HelpMode {
-		// 	if key.Matches(msg, m.keys.esc) || key.Matches(msg, m.keys.help) {
-		// 		m.viewMode = m.previousViewMode
-		// 		cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
-		// 	}
-		// }
-
 	case tea.WindowSizeMsg:
 		m.terminalWidth = msg.Width
 		m.terminalHeight = msg.Height

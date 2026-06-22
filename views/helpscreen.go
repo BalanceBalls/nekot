@@ -7,13 +7,6 @@ import (
 func (m MainView) renderHelpView() string {
 	colors := m.config.ColorScheme.GetColors()
 
-	// titleStyle := lipgloss.NewStyle().
-	// 	Bold(true).
-	// 	BorderForeground(colors.NormalTabBorderColor).
-	// 	Foreground(colors.ActiveTabBorderColor).
-	// 	MarginBottom(1).
-	// 	Align(lipgloss.Center)
-
 	sectionStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(colors.MainColor).
@@ -123,12 +116,7 @@ func (m MainView) renderHelpView() string {
 	)
 
 	columns := lipgloss.NewStyle()
-	// Padding(2).
-	// Border(lipgloss.NormalBorder()).
-	// BorderForeground(colors.ActiveTabBorderColor)
-
 	content := lipgloss.JoinVertical(lipgloss.Center,
-		// titleStyle.Render("__________________________________________________"),
 		columns.Render(lipgloss.JoinHorizontal(lipgloss.Top, leftColumn, "    ", rightColumn)),
 		exitHint,
 	)
