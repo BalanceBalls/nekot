@@ -182,6 +182,12 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case util.ViewModeChanged:
+		if p.viewMode == util.HelpMode {
+			p.viewMode = msg.Mode
+			p = p.handleWindowResize(p.terminalWidth, p.terminalHeight)
+			break
+		}
+
 		p.viewMode = msg.Mode
 		return p, func() tea.Msg {
 			return tea.WindowSizeMsg{

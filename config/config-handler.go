@@ -44,15 +44,21 @@ func FromContext(ctx context.Context) (*Config, bool) {
 }
 
 type Config struct {
-	ChatGPTApiUrl                   string           `json:"chatGPTAPiUrl"`
-	ProviderBaseUrl                 string           `json:"providerBaseUrl"`
-	SystemMessage                   string           `json:"systemMessage"`
-	DefaultModel                    string           `json:"defaultModel"`
-	Provider                        string           `json:"provider"`
-	ColorScheme                     util.ColorScheme `json:"colorScheme"`
-	MaxAttachmentSizeMb             int              `json:"maxAttachmentSizeMb"`
-	IncludeReasoningTokensInContext *bool            `json:"includeReasoningTokensInContext"`
-	SessionExportDir                string           `json:"sessionExportDir"`
+	ChatGPTApiUrl                   string                 `json:"chatGPTAPiUrl"`
+	ProviderBaseUrl                 string                 `json:"providerBaseUrl"`
+	SystemMessage                   string                 `json:"systemMessage"`
+	DefaultModel                    string                 `json:"defaultModel"`
+	Provider                        string                 `json:"provider"`
+	ColorScheme                     util.ColorScheme       `json:"colorScheme"`
+	MaxAttachmentSizeMb             int                    `json:"maxAttachmentSizeMb"`
+	IncludeReasoningTokensInContext *bool                  `json:"includeReasoningTokensInContext"`
+	SessionExportDir                string                 `json:"sessionExportDir"`
+	TitleGeneration                 *TitleGenerationConfig `json:"titleGeneration"`
+}
+
+type TitleGenerationConfig struct {
+	Enabled        bool `json:"enabled"`
+	TimeoutSeconds int  `json:"timeoutSeconds"`
 }
 
 type StartupFlags struct {
@@ -112,6 +118,13 @@ func validateConfig(config Config) bool {
 	if config.SessionExportDir != "" {
 		if !filepath.IsAbs(config.SessionExportDir) {
 			fmt.Println("SessionExportDir must be an absolute path")
+			return false
+		}
+	}
+
+	if config.TitleGeneration != nil {
+		if config.TitleGeneration.TimeoutSeconds < 1 {
+			fmt.Println("Title generation timeout must be >= 1 second")
 			return false
 		}
 	}
@@ -228,6 +241,13 @@ func (c *Config) setDefaults() {
 
 	if c.IncludeReasoningTokensInContext == nil {
 		c.IncludeReasoningTokensInContext = &TRUE
+	}
+
+	if c.TitleGeneration == nil {
+		c.TitleGeneration = &TitleGenerationConfig{
+			Enabled:        true,
+			TimeoutSeconds: 5,
+		}
 	}
 }
 

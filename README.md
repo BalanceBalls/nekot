@@ -141,7 +141,11 @@ We provide a `config.json` file within your directory for easy access to essenti
   "provider": "openai", // openai, gemini, openrouter
   "maxAttachmentSizeMb": 3,
   "includeReasoningTokensInContext": true,
-  "sessionExportDir": "/must/be/absolute/path/to/exports"
+  "sessionExportDir": "/must/be/absolute/path/to/exports",
+  "titleGeneration": {
+    "enabled": true,
+    "timeoutSeconds": 5
+  }
 }
 ```
 
@@ -152,6 +156,7 @@ We provide a `config.json` file within your directory for easy access to essenti
  - `maxAttachmentSizeMb` field sets maximum allowed image size
  - `includeReasoningTokensInContext` field sets whether to include reasoning tokens in the next request or not.
  - `sessionExportDir` allows to specify directory for session exports. If not set, exports are saved to current directory. **The path must be an absolute path**
+ - `titleGeneration` config for automatic session name generation
 
 
 ### Providers

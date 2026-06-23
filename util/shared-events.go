@@ -46,6 +46,7 @@ const (
 	TextEditMode
 	NormalMode
 	FilePickerMode
+	HelpMode
 )
 
 type Operation int

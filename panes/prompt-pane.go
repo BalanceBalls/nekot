@@ -18,7 +18,7 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 )
 
-const ResponseWaitingMsg = "> Please wait ..."
+const ResponseWaitingMsg = "Inference in progress • ctrl+s to stop"
 const InitializingMsg = "Components initializing ..."
 const PlaceholderMsg = "Press i to type • ctrl+e expand/collapse editor • ctrl+r clear"
 
@@ -553,10 +553,10 @@ func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput
 	}
 
 	inputLength := len(p.input.Value())
-	p.input.Focus()
+	//p.input.Focus()
 	p.input.SetCursor(inputLength)
-	p.inputMode = util.PromptInsertMode
-	return p.input.Cursor.BlinkCmd()
+	p.inputMode = util.PromptNormalMode
+	return nil //p.input.Cursor.BlinkCmd()
 }
 
 func (p *PromptPane) openFilePicker(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
@@ -711,5 +711,6 @@ func (p PromptPane) View() string {
 		))
 	}
 
-	return zone.Mark("prompt_pane", p.inputContainer.Render(ResponseWaitingMsg))
+	p.input.Placeholder = ResponseWaitingMsg
+	return zone.Mark("prompt_pane", p.inputContainer.Render(p.input.View()))
 }

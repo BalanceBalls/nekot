@@ -498,6 +498,10 @@ func (p SessionsPane) AllowFocusChange(isMouseEvent bool) bool {
 	if isMouseEvent {
 		return true
 	}
+
+	if p.sessionsList.IsFiltering() {
+		return false
+	}
 	return p.operationMode == defaultMode
 }
 

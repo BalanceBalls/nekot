@@ -96,3 +96,17 @@ type ToolCallComplete struct {
 	Name      string
 	Result    string
 }
+
+type SessionTitleGeneratedMsg struct {
+	SessionID int
+	Title     string
+}
+
+func SendSessionTitleGeneratedMsg(sessionID int, title string) tea.Cmd {
+	return func() tea.Msg {
+		return SessionTitleGeneratedMsg{
+			SessionID: sessionID,
+			Title:     title,
+		}
+	}
+}

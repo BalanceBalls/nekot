@@ -37,6 +37,8 @@ type keyMap struct {
 	quickChat     key.Binding
 	saveQuickChat key.Binding
 	quit          key.Binding
+	help          key.Binding
+	esc           key.Binding
 }
 
 var defaultKeyMap = keyMap{
@@ -77,6 +79,14 @@ var defaultKeyMap = keyMap{
 		key.WithKeys("ctrl+n"),
 		key.WithHelp("ctrl+n", "add new session"),
 	),
+	help: key.NewBinding(
+		key.WithKeys("?"),
+		key.WithHelp("?", "show help"),
+	),
+	esc: key.NewBinding(
+		key.WithKeys(tea.KeyEsc.String()),
+		key.WithHelp(tea.KeyEsc.String(), "hide help"),
+	),
 }
 
 type MainView struct {
@@ -84,6 +94,7 @@ type MainView struct {
 	controlsLocked   bool
 	focused          util.Pane
 	viewMode         util.ViewMode
+	previousViewMode util.ViewMode
 	error            util.ErrorEvent
 	currentSessionID string
 	keys             keyMap
@@ -233,6 +244,30 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.initialPrompt = ""
 		}
 
+	case sessions.SessionTitleGeneratedMsg:
+		session, err := m.sessionService.GetSession(msg.SessionID)
+		if err != nil {
+			break
+		}
+		if !sessions.IsAutoTitle(session.SessionName) {
+			break
+		}
+		title := sessions.SanitizeTitle(msg.Title)
+		if title == "" || title == sessions.DefaultTitle || title == session.SessionName {
+			break
+		}
+		if err := m.sessionService.UpdateSessionName(msg.SessionID, title); err != nil {
+			return m, util.MakeErrorMsg(err.Error())
+		}
+		updatedSession, err := m.sessionService.GetSession(msg.SessionID)
+		if err != nil {
+			break
+		}
+		cmds = append(cmds, sessions.SendRefreshSessionsListMsg())
+		if updatedSession.ID == m.sessionOrchestrator.GetCurrentSessionId() {
+			cmds = append(cmds, sessions.SendUpdateCurrentSessionMsg(updatedSession))
+		}
+
 	case util.ProcessingStateChanged:
 		if msg.State == util.Idle {
 			m.controlsLocked = false
@@ -370,7 +405,8 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Sequence(
 			util.SendProcessingStateChangedMsg(util.ProcessingChunks),
 			util.SendViewModeChangedMsg(m.viewMode),
-			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator))
+			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator),
+		)
 
 	case tea.MouseMsg:
 		targetPane := m.focused
@@ -485,6 +521,29 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.focused = util.GetNewFocusMode(m.viewMode, m.focused, m.terminalWidth, true)
 			m.resetFocus()
+
+		case key.Matches(msg, m.keys.help):
+			if m.viewMode == util.HelpMode {
+				m.viewMode = m.previousViewMode
+				cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+				return m, tea.Batch(cmds...)
+			}
+
+			if !m.isFocusChangeAllowed(false) {
+				break
+			}
+
+			m.previousViewMode = m.viewMode
+			m.viewMode = util.HelpMode
+			cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+			return m, tea.Batch(cmds...)
+
+		case key.Matches(msg, m.keys.esc):
+			if !m.isFocusChangeAllowed(false) && m.viewMode == util.HelpMode {
+				m.viewMode = m.previousViewMode
+				cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+				return m, tea.Batch(cmds...)
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -516,6 +575,10 @@ func (m *MainView) handleFocusChange(targetPane util.Pane, isMouseEvent bool) {
 }
 
 func (m MainView) View() string {
+	if m.viewMode == util.HelpMode {
+		return m.renderHelpView()
+	}
+
 	var windowViews string
 
 	settingsAndSessionPanes := lipgloss.JoinVertical(
@@ -602,6 +665,10 @@ func mapAttachmentType(attachmentType string) string {
 
 // TODO: use event to lock/unlock allowFocusChange flag?
 func (m MainView) isFocusChangeAllowed(isMouseEvent bool) bool {
+	if m.viewMode == util.HelpMode {
+		return false
+	}
+
 	if !m.promptPane.AllowFocusChange(isMouseEvent) ||
 		!m.chatPane.AllowFocusChange(isMouseEvent) ||
 		!m.settingsPane.AllowFocusChange(isMouseEvent) ||
