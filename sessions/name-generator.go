@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/BalanceBalls/nekot/clients"
 	"github.com/BalanceBalls/nekot/config"
@@ -29,17 +30,19 @@ func IsAutoTitle(name string) bool {
 }
 
 func EnsureMaxTitleLength(title string) string {
-	if len(title) < maxTitleLength {
+	runes := []rune(title)
+	if len(runes) < maxTitleLength {
 		return title
 	}
 
-	title = title[:maxTitleLength-len(reducedTitleSuffix)]
-	lastSpace := strings.LastIndex(title, " ")
+	runes = runes[:maxTitleLength-len(reducedTitleSuffix)]
+	titleStr := string(runes)
+	lastSpace := strings.LastIndex(titleStr, " ")
 	if lastSpace > 0 {
-		title = title[:lastSpace]
+		titleStr = titleStr[:lastSpace]
 	}
 
-	return title + reducedTitleSuffix
+	return titleStr + reducedTitleSuffix
 }
 
 func SanitizeTitle(title string) string {
@@ -51,10 +54,12 @@ func SanitizeTitle(title string) string {
 
 	t = EnsureMaxTitleLength(t)
 
-	if t == "" {
+	runes := []rune(t)
+	if len(runes) == 0 {
 		return DefaultTitle
 	}
-	return strings.ToUpper(t[:1]) + t[1:]
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }
 
 func GetFirstMeaningfulUserMessage(msgs []util.LocalStoreMessage) (string, bool) {
@@ -64,7 +69,7 @@ func GetFirstMeaningfulUserMessage(msgs []util.LocalStoreMessage) (string, bool)
 		}
 
 		c := strings.TrimSpace(m.Content)
-		if len(c) > 5 {
+		if len(c) > 15 {
 			return c, true
 		}
 	}
@@ -182,7 +187,7 @@ func (g *SessionNameGenerator) requestTitleCompletion(
 	temp := float32(0.2)
 	modelSettings.Temperature = &temp
 	modelSettings.WebSearchEnabled = false
-	genPrompt := "Think ultra fast - every second counts. Generate a concise session title from the data above. Return only the title. Use 4-7 words, plain text, no quotes, no markdown, and no punctuation at the end."
+	genPrompt := "Think ultra fast - every second counts. Generate a concise session title from the data above using the same language. Return only the title. Use 4-7 words, plain text, no quotes, no markdown, and no punctuation at the end."
 	dummyMsgs := []util.LocalStoreMessage{
 		{Role: "user", Content: userText},
 		{Role: "user", Content: genPrompt},
