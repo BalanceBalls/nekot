@@ -3,7 +3,7 @@ package util
 import (
 	"slices"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 type PrompInputMode int

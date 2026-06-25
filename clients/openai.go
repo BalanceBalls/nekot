@@ -14,9 +14,9 @@ import (
 	"slices"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/util"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 type OpenAiClient struct {

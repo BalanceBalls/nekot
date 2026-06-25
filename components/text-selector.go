@@ -5,12 +5,13 @@ import (
 	"strings"
 	"unicode"
 
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 const (
@@ -33,7 +34,7 @@ type keyMap struct {
 
 var defaultKeyMap = keyMap{
 	visualLineMode: key.NewBinding(
-		key.WithKeys("V", "v", tea.KeySpace.String()),
+		key.WithKeys("V", "v", "space"),
 		key.WithHelp("V, v, <space>", "visual line mode"),
 	),
 	up:   key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "move up")),
@@ -104,7 +105,7 @@ func (s TextSelector) Update(msg tea.Msg) (TextSelector, tea.Cmd) {
 		s.AdjustScroll()
 	case tea.MouseMsg:
 		s = s.handleMouseSelection(msg)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 
 		keypress := msg.String()
 		if number, err := strconv.Atoi(keypress); err == nil {
@@ -193,7 +194,10 @@ func (s TextSelector) View() string {
 }
 
 func (s TextSelector) renderLines() string {
-	textColor := lipgloss.AdaptiveColor{Dark: "#000000", Light: "#ffffff"}
+	textColor := compat.AdaptiveColor{
+		Dark:  lipgloss.Color("#000000"),
+		Light: lipgloss.Color("#ffffff"),
+	}
 	highlightStyle := lipgloss.NewStyle().
 		Foreground(textColor).
 		Background(s.colors.HighlightColor)
@@ -310,13 +314,13 @@ func (s TextSelector) handleKeyDown() TextSelector {
 }
 
 func (s TextSelector) handleMouseSelection(msg tea.MouseMsg) TextSelector {
-	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
-		s.mouseSelecting = false
-		return s
-	}
-
-	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonRight {
-		s.mouseSelectingChar = false
+	if release, ok := msg.(tea.MouseReleaseMsg); ok {
+		switch release.Button {
+		case tea.MouseLeft:
+			s.mouseSelecting = false
+		case tea.MouseRight:
+			s.mouseSelectingChar = false
+		}
 		return s
 	}
 
@@ -324,9 +328,9 @@ func (s TextSelector) handleMouseSelection(msg tea.MouseMsg) TextSelector {
 		return s
 	}
 
-	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+	if wheel, ok := msg.(tea.MouseWheelMsg); ok {
 		delta := 3
-		if msg.Button == tea.MouseButtonWheelUp {
+		if wheel.Button == tea.MouseWheelUp {
 			delta = -3
 		}
 
@@ -349,39 +353,38 @@ func (s TextSelector) handleMouseSelection(msg tea.MouseMsg) TextSelector {
 		return s
 	}
 
-	switch {
-
-	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
+	switch event := msg.(type) {
+	case tea.MouseClickMsg:
 		line, scrollOffset := s.lineFromMouse(msg)
 		s.scrollOffset = scrollOffset
 		s.cursor.line = line
-		s.Selection.Active = true
-		s.Selection.anchor = s.cursor
-		s.CharSelection.Active = false
-		s.mouseSelecting = true
-		s.mouseSelectingChar = false
+		switch event.Button {
+		case tea.MouseLeft:
+			s.Selection.Active = true
+			s.Selection.anchor = s.cursor
+			s.CharSelection.Active = false
+			s.mouseSelecting = true
+			s.mouseSelectingChar = false
+		case tea.MouseRight:
+			s.Selection.Active = false
+			s.mouseSelecting = false
+			s.CharSelection.Active = true
+			s.CharSelection.line = line
+			prefixWidth := lipgloss.Width(CharHighlightPrefix)
+			s.CharSelection.anchorCol = s.columnFromMouse(msg, s.lines[line], prefixWidth)
+			s.CharSelection.cursorCol = s.CharSelection.anchorCol
+			s.mouseSelectingChar = true
+		}
 
-	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonRight:
-		line, scrollOffset := s.lineFromMouse(msg)
-		s.scrollOffset = scrollOffset
-		s.cursor.line = line
-		s.Selection.Active = false
-		s.mouseSelecting = false
-		s.CharSelection.Active = true
-		s.CharSelection.line = line
-		prefixWidth := lipgloss.Width(CharHighlightPrefix)
-		s.CharSelection.anchorCol = s.columnFromMouse(msg, s.lines[line], prefixWidth)
-		s.CharSelection.cursorCol = s.CharSelection.anchorCol
-		s.mouseSelectingChar = true
-
-	case msg.Action == tea.MouseActionMotion && s.mouseSelecting:
-		line, scrollOffset := s.lineFromMouse(msg)
-		s.scrollOffset = scrollOffset
-		s.cursor.line = line
-
-	case msg.Action == tea.MouseActionMotion && s.mouseSelectingChar:
-		prefixWidth := lipgloss.Width(CharHighlightPrefix)
-		s.CharSelection.cursorCol = s.columnFromMouse(msg, s.lines[s.CharSelection.line], prefixWidth)
+	case tea.MouseMotionMsg:
+		if s.mouseSelecting {
+			line, scrollOffset := s.lineFromMouse(msg)
+			s.scrollOffset = scrollOffset
+			s.cursor.line = line
+		} else if s.mouseSelectingChar {
+			prefixWidth := lipgloss.Width(CharHighlightPrefix)
+			s.CharSelection.cursorCol = s.columnFromMouse(msg, s.lines[s.CharSelection.line], prefixWidth)
+		}
 	}
 
 	return s

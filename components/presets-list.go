@@ -5,12 +5,12 @@ import (
 	"io"
 	"strings"
 
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 type PresetsList struct {
@@ -122,18 +122,18 @@ func (l PresetsList) Update(msg tea.Msg) (PresetsList, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
-	case tea.MouseMsg:
-		if msg.Button == tea.MouseButtonWheelUp {
+	case tea.MouseWheelMsg:
+		if msg.Button == tea.MouseWheelUp {
 			l.list.CursorUp()
 			return l, nil
 		}
 
-		if msg.Button == tea.MouseButtonWheelDown {
+		if msg.Button == tea.MouseWheelDown {
 			l.list.CursorDown()
 			return l, nil
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		key := msg.String()
 		switch key {
 		case "d":
@@ -188,10 +188,13 @@ func NewPresetsList(
 		Render(util.InactiveDot)
 	listItemSpan = listItemSpan.Foreground(colors.DefaultTextColor)
 	listItemSpanSelected = listItemSpanSelected.Foreground(colors.AccentColor)
-	l.FilterInput.PromptStyle = l.FilterInput.PromptStyle.Foreground(colors.ActiveTabBorderColor).
+	filterStyles := l.FilterInput.Styles()
+	filterStyles.Focused.Prompt = filterStyles.Focused.Prompt.Foreground(colors.ActiveTabBorderColor).
 		PaddingBottom(0).
 		Margin(0)
-	l.FilterInput.Cursor.Style = l.FilterInput.Cursor.Style.Foreground(colors.NormalTabBorderColor)
+	filterStyles.Blurred.Prompt = filterStyles.Focused.Prompt
+	filterStyles.Cursor.Color = colors.NormalTabBorderColor
+	l.FilterInput.SetStyles(filterStyles)
 
 	return PresetsList{
 		currentPresetId: currentId,

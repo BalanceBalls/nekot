@@ -1,8 +1,14 @@
 package util
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
+)
 
-var SubduedColor = lipgloss.AdaptiveColor{Light: "#9B9B9B", Dark: "#5C5C5C"}
+var SubduedColor = compat.AdaptiveColor{
+	Light: lipgloss.Color("#9B9B9B"),
+	Dark:  lipgloss.Color("#5C5C5C"),
+}
 var HelpStyle = lipgloss.NewStyle().Padding(0, 0, 0, 2).Foreground(SubduedColor)
 
 const ActiveDot = "■"

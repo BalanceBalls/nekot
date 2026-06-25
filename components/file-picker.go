@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
+	"charm.land/bubbles/v2/filepicker"
+	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/util"
-	"github.com/charmbracelet/bubbles/filepicker"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 type FilePicker struct {
@@ -65,7 +65,7 @@ func (m FilePicker) Init() tea.Cmd {
 
 func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc", "q":
 			m.quitting = true

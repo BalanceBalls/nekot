@@ -1,8 +1,8 @@
 package sessions
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/util"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 type LoadDataFromDB struct {
