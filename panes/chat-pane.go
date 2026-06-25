@@ -124,8 +124,8 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	defaultChatContent := util.GetManual(w, colors)
 	chatView.SetContent(defaultChatContent)
 	chatContainerStyle = chatContainerStyle.
-		Width(w).
-		Height(h).
+		Width(w + chatContainerStyle.GetHorizontalBorderSize()).
+		Height(h + chatContainerStyle.GetVerticalBorderSize()).
 		BorderForeground(colors.NormalTabBorderColor)
 
 	infoBarStyle = infoBarStyle.
@@ -249,7 +249,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			return p, renderingPulsar
 		}
 
-		paneWidth := p.chatContainer.GetWidth()
+		paneWidth := p.GetWidth()
 		newContent := p.chunksBuffer[len(p.chunksBuffer)-1]
 
 		p.chunksBuffer = []string{}
@@ -290,7 +290,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 	case sessions.ResponseChunkProcessed:
 		if len(p.sessionContent) != len(msg.PreviousMsgArray) {
-			paneWidth := p.chatContainer.GetWidth()
+			paneWidth := p.GetWidth()
 			p.renderedHistory = util.GetMessagesAsPrettyString(
 				msg.PreviousMsgArray,
 				paneWidth,
@@ -503,7 +503,7 @@ func (p ChatPane) View() string {
 		infoRow := p.renderSelectionViewInfoRow()
 		selectionView := p.selectionView.View()
 
-		infoRowStyle := lipgloss.NewStyle().MarginTop(p.chatContainer.GetHeight() - lipgloss.Height(selectionView) - 2)
+		infoRowStyle := lipgloss.NewStyle().MarginTop(p.GetHeight() - lipgloss.Height(selectionView) - 2)
 		content := lipgloss.JoinVertical(lipgloss.Left, selectionView, infoRowStyle.Render(infoRow))
 		return zone.Mark("chat_pane", p.chatContainer.Render(content))
 	}
@@ -525,20 +525,24 @@ func (p ChatPane) View() string {
 
 func (p ChatPane) DisplayError(error string) string {
 	return p.chatContainer.Render(
-		util.RenderErrorMessage(error, p.chatContainer.GetWidth(), p.colors),
+		util.RenderErrorMessage(error, p.GetWidth(), p.colors),
 	)
 }
 
-func (p ChatPane) SetPaneWitdth(w int) {
-	p.chatContainer.Width(w)
+func (p *ChatPane) SetPaneWitdth(w int) {
+	p.chatContainer = p.chatContainer.Width(w + p.chatContainer.GetHorizontalBorderSize())
 }
 
-func (p ChatPane) SetPaneHeight(h int) {
-	p.chatContainer.Height(h)
+func (p *ChatPane) SetPaneHeight(h int) {
+	p.chatContainer = p.chatContainer.Height(h + p.chatContainer.GetVerticalBorderSize())
 }
 
 func (p ChatPane) GetWidth() int {
-	return p.chatContainer.GetWidth()
+	return p.chatContainer.GetWidth() - p.chatContainer.GetHorizontalBorderSize()
+}
+
+func (p ChatPane) GetHeight() int {
+	return p.chatContainer.GetHeight() - p.chatContainer.GetVerticalBorderSize()
 }
 
 func (p ChatPane) renderInfoRow() string {
@@ -661,7 +665,9 @@ func (p ChatPane) handleWindowResize(width int, height int) ChatPane {
 	w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 	p.chatView.SetHeight(h - 2)
 	p.chatView.SetWidth(w)
-	p.chatContainer = p.chatContainer.Width(w).Height(h)
+	p.chatContainer = p.chatContainer.
+		Width(w + p.chatContainer.GetHorizontalBorderSize()).
+		Height(h + p.chatContainer.GetVerticalBorderSize())
 
 	if p.viewMode == util.NormalMode {
 		p = p.displaySession(p.sessionContent, w, false)

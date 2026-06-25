@@ -519,7 +519,11 @@ func (p SessionsPane) createInput(
 	ti.SetStyles(styles)
 	ti.Placeholder = placeholder
 	ti.Validate = validator
-	ti.SetWidth(p.container.GetWidth() - util.InputContainerDelta)
+	ti.SetWidth(
+		p.container.GetWidth() -
+			p.container.GetHorizontalBorderSize() -
+			util.InputContainerDelta,
+	)
 	ti.CharLimit = charLimit
 	return ti
 }

@@ -500,7 +500,9 @@ func (p *PromptPane) handleWindowSizeMsg(msg tea.WindowSizeMsg) tea.Cmd {
 		p.input.SetWidth(w)
 	}
 
-	p.inputContainer = p.inputContainer.MaxWidth(p.terminalWidth).Width(w)
+	p.inputContainer = p.inputContainer.
+		MaxWidth(p.terminalWidth).
+		Width(w + p.inputContainer.GetHorizontalBorderSize())
 	return nil
 }
 
@@ -526,7 +528,9 @@ func (p *PromptPane) handleViewModeChange(msg util.ViewModeChanged) tea.Cmd {
 		cmd = p.openInputField(prevMode, currentInput)
 	}
 
-	p.inputContainer = p.inputContainer.MaxWidth(p.terminalWidth).Width(w)
+	p.inputContainer = p.inputContainer.
+		MaxWidth(p.terminalWidth).
+		Width(w + p.inputContainer.GetHorizontalBorderSize())
 
 	return cmd
 }

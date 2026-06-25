@@ -239,7 +239,11 @@ func (p *SettingsPane) configureInput(title string, validator func(str string) e
 	ti.SetStyles(styles)
 	p.textInput = ti
 	p.textInput.Placeholder = title
-	p.textInput.SetWidth(p.container.GetWidth() - util.InputContainerDelta)
+	p.textInput.SetWidth(
+		p.container.GetWidth() -
+			p.container.GetHorizontalBorderSize() -
+			util.InputContainerDelta,
+	)
 	p.changeMode = mode
 	p.textInput.Validate = validator
 	return p.textInput.Focus()
