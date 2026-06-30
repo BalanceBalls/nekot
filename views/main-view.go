@@ -482,15 +482,16 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 
+			nextViewMode := m.viewMode
 			switch m.viewMode {
 			case util.NormalMode:
-				m.viewMode = util.TextEditMode
+				nextViewMode = util.TextEditMode
 			case util.ZenMode:
-				m.viewMode = util.TextEditMode
+				nextViewMode = util.TextEditMode
 			case util.TextEditMode:
-				m.viewMode = util.NormalMode
+				nextViewMode = util.NormalMode
 			}
-			cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+			cmds = append(cmds, util.SendViewModeChangedMsg(nextViewMode))
 
 		case key.Matches(msg, m.keys.jumpToPane):
 			var targetPane util.Pane

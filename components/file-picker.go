@@ -15,7 +15,6 @@ type FilePicker struct {
 	PrevView      util.ViewMode
 	PrevInputData string
 	filepicker    filepicker.Model
-	quitting      bool
 	err           error
 }
 
@@ -68,7 +67,6 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc", "q":
-			m.quitting = true
 			return m, util.SendViewModeChangedMsg(m.PrevView)
 		}
 
@@ -93,9 +91,6 @@ func (m FilePicker) Update(msg tea.Msg) (FilePicker, tea.Cmd) {
 }
 
 func (m FilePicker) View() string {
-	if m.quitting {
-		return ""
-	}
 	return m.filepicker.View()
 }
 

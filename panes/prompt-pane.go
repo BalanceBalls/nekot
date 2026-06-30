@@ -515,17 +515,20 @@ func (p *PromptPane) handleViewModeChange(msg util.ViewModeChanged) tea.Cmd {
 	p.viewMode = msg.Mode
 	p.inputMode = util.PromptNormalMode
 
-	w, _ := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
+	w, h := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 
 	switch p.viewMode {
 	case util.TextEditMode:
 		cmd = p.openTextEditor(currentInput, p.operation, false)
+		p.textEditor.SetHeight(h)
+		p.textEditor.SetWidth(w)
 
 	case util.FilePickerMode:
 		cmd = p.openFilePicker(prevMode, currentInput)
 
 	default:
 		cmd = p.openInputField(prevMode, currentInput)
+		p.input.SetWidth(w)
 	}
 
 	p.inputContainer = p.inputContainer.
