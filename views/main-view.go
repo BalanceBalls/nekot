@@ -376,7 +376,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			util.Slog.Debug("preparing attachments")
 
 			for _, attachment := range msg.Attachments {
-				b64, err := m.fileToBase64(attachment.Path)
+				b64, err := m.attachmentToBase64(attachment)
 				if err != nil {
 					util.Slog.Error("failed to convert attachment to base64", "error", err.Error())
 					return m, util.MakeErrorMsg(err.Error())
@@ -649,12 +649,29 @@ func (m MainView) fileToBase64(filePath string) (string, error) {
 		return "", err
 	}
 
+	return m.bytesToBase64(data, filePath)
+}
+
+func (m MainView) attachmentToBase64(attachment util.Attachment) (string, error) {
+	if attachment.Content == "" {
+		return m.fileToBase64(attachment.Path)
+	}
+
+	data, err := base64.StdEncoding.DecodeString(attachment.Content)
+	if err != nil {
+		return "", fmt.Errorf("invalid attachment content: %s", attachment.Path)
+	}
+
+	return m.bytesToBase64(data, attachment.Path)
+}
+
+func (m MainView) bytesToBase64(data []byte, attachmentPath string) (string, error) {
 	maxSize := 1024 * 1024 * m.config.MaxAttachmentSizeMb
 	if len(data) > maxSize {
-		util.Slog.Error("attchment exceeds allowed size limit", "path", filePath, "size (kb)", len(data)*1024)
-		return "", fmt.Errorf("attchment exceeds allowed size limit of %d MB \n Attachment: %s",
+		util.Slog.Error("attachment exceeds allowed size limit", "path", attachmentPath, "size (bytes)", len(data))
+		return "", fmt.Errorf("attachment exceeds allowed size limit of %d MB\nattachment: %s",
 			m.config.MaxAttachmentSizeMb,
-			filePath)
+			attachmentPath)
 	}
 
 	base64Str := base64.StdEncoding.EncodeToString(data)

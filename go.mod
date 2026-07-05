@@ -15,6 +15,7 @@ require (
 	github.com/lrstanley/bubblezone/v2 v2.0.0
 	github.com/pressly/goose/v3 v3.17.0
 	github.com/revrost/go-openrouter v1.0.0
+	golang.design/x/clipboard v0.8.0
 	golang.org/x/term v0.37.0
 	google.golang.org/api v0.227.0
 	modernc.org/sqlite v1.37.1
@@ -26,12 +27,17 @@ require (
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.6 // indirect
 	gitlab.com/golang-commonmark/html v0.0.0-20191124015941-a22733972181 // indirect
 	gitlab.com/golang-commonmark/linkify v0.0.0-20191026162114-a0c2df6c8f82 // indirect
 	gitlab.com/golang-commonmark/markdown v0.0.0-20211110145824-bf3e522c626a // indirect
 	gitlab.com/golang-commonmark/mdurl v0.0.0-20191124015652-932350d1cb84 // indirect
 	gitlab.com/golang-commonmark/puny v0.0.0-20191124015043-9f83538fa04f // indirect
+	golang.design/x/x11 v0.2.0 // indirect
+	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
+	golang.org/x/image v0.28.0 // indirect
+	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
 	golang.org/x/net v0.47.0 // indirect
 )
 

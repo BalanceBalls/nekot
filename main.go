@@ -86,6 +86,10 @@ func main() {
 	// validate config
 	configToUse := config.CreateAndValidateConfig(flags)
 
+	if err := util.InitImageClipboard(); err != nil {
+		util.Slog.Warn("image clipboard support unavailable", "error", err.Error())
+	}
+
 	// run migrations for our database
 	db := util.InitDb()
 	err = util.MigrateFS(db, migrations.FS, ".")

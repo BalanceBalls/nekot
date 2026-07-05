@@ -2,8 +2,11 @@ package panes
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -90,6 +93,17 @@ type PromptPane struct {
 	terminalHeight int
 	ready          bool
 	mainCtx        context.Context
+
+	readClipboardImage func() []byte
+	readClipboardText  func() (string, error)
+	clipboardImageID   int
+	maxAttachmentBytes int
+}
+
+type clipboardPasteMsg struct {
+	image []byte
+	text  string
+	err   error
 }
 
 func NewPromptPane(ctx context.Context) PromptPane {
@@ -140,19 +154,22 @@ func NewPromptPane(ctx context.Context) PromptPane {
 		Foreground(colors.HighlightColor)
 
 	return PromptPane{
-		mainCtx:        ctx,
-		operation:      util.NoOperaton,
-		keys:           defaultKeyMap,
-		viewMode:       util.NormalMode,
-		colors:         colors,
-		input:          input,
-		textEditor:     textEditor,
-		inputContainer: container,
-		inputMode:      util.PromptNormalMode,
-		isSessionIdle:  true,
-		isFocused:      true,
-		terminalWidth:  util.DefaultTerminalWidth,
-		terminalHeight: util.DefaultTerminalHeight,
+		mainCtx:            ctx,
+		operation:          util.NoOperaton,
+		keys:               defaultKeyMap,
+		viewMode:           util.NormalMode,
+		colors:             colors,
+		input:              input,
+		textEditor:         textEditor,
+		inputContainer:     container,
+		inputMode:          util.PromptNormalMode,
+		isSessionIdle:      true,
+		isFocused:          true,
+		terminalWidth:      util.DefaultTerminalWidth,
+		terminalHeight:     util.DefaultTerminalHeight,
+		readClipboardImage: util.ReadClipboardImage,
+		readClipboardText:  clipboard.ReadAll,
+		maxAttachmentBytes: config.MaxAttachmentSizeMb * 1024 * 1024,
 	}
 }
 
@@ -166,7 +183,9 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
-	cmds = append(cmds, p.processTextInputUpdates(msg))
+	if !p.isClipboardPasteKey(msg) {
+		cmds = append(cmds, p.processTextInputUpdates(msg))
+	}
 	cmds = append(cmds, p.processFilePickerUpdates(msg))
 
 	p.handlePlaceholder()
@@ -186,6 +205,9 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 
 	case util.FocusEvent:
 		p.handleFocusEvent(msg)
+
+	case clipboardPasteMsg:
+		cmds = append(cmds, p.handleClipboardPaste(msg))
 
 	case tea.WindowSizeMsg:
 		p.handleWindowSizeMsg(msg)
@@ -355,19 +377,84 @@ func (p *PromptPane) keyEnter() tea.Cmd {
 }
 
 func (p *PromptPane) keyPaste() tea.Cmd {
-	var cmd tea.Cmd
-	if p.isFocused {
-		buffer, _ := clipboard.ReadAll()
-		content := strings.TrimSpace(buffer)
+	if !p.isFocused || !p.isSessionIdle {
+		return nil
+	}
 
-		if p.viewMode != util.TextEditMode && strings.Contains(content, "\n") {
-			cmd = util.SwitchToEditor(content, util.NoOperaton, true)
-			p.pendingInsert = ""
+	readImage := p.readClipboardImage
+	readText := p.readClipboardText
+	allowImage := p.operation == util.NoOperaton && p.viewMode != util.FilePickerMode
+
+	return func() tea.Msg {
+		if allowImage && readImage != nil {
+			if image := readImage(); len(image) != 0 {
+				return clipboardPasteMsg{image: image}
+			}
 		}
 
-		clipboard.WriteAll(content)
+		if readText == nil {
+			return clipboardPasteMsg{}
+		}
+
+		text, err := readText()
+		return clipboardPasteMsg{text: text, err: err}
 	}
-	return cmd
+}
+
+func (p *PromptPane) isClipboardPasteKey(msg tea.Msg) bool {
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	return ok && key.Matches(keyMsg, p.keys.paste)
+}
+
+func (p *PromptPane) handleClipboardPaste(msg clipboardPasteMsg) tea.Cmd {
+	if msg.err != nil {
+		return nil
+	}
+
+	if len(msg.image) != 0 {
+		if !p.isFocused || !p.isSessionIdle ||
+			p.operation != util.NoOperaton || p.viewMode == util.FilePickerMode {
+			return nil
+		}
+
+		if len(msg.image) > p.maxAttachmentBytes {
+			return util.MakeErrorMsg(fmt.Sprintf(
+				"attachment exceeds allowed size limit of %d MB",
+				p.maxAttachmentBytes/(1024*1024),
+			))
+		}
+
+		p.clipboardImageID++
+
+		pendingAttachment := util.Attachment{
+			Type:    "img",
+			Path:    fmt.Sprintf("clipboard-image-%d.png", p.clipboardImageID),
+			Content: base64.StdEncoding.EncodeToString(msg.image),
+		}
+
+		if slices.ContainsFunc(p.attachments, func(a util.Attachment) bool {
+			return a.Content == pendingAttachment.Content
+		}) {
+			return nil
+		}
+
+		p.attachments = append(p.attachments, pendingAttachment)
+		return nil
+	}
+
+	content := strings.TrimSpace(msg.text)
+	if content == "" || p.inputMode != util.PromptInsertMode {
+		return nil
+	}
+
+	if p.viewMode != util.TextEditMode && strings.Contains(content, "\n") {
+		p.pendingInsert = ""
+		return util.SwitchToEditor(content, util.NoOperaton, true)
+	}
+
+	return func() tea.Msg {
+		return tea.PasteMsg{Content: content}
+	}
 }
 
 func (p *PromptPane) keyPasteCode() tea.Cmd {
@@ -703,7 +790,7 @@ func (p PromptPane) View() string {
 			content = p.input.View()
 		}
 
-		infoBlockContent := infoLabel.Render("Use ctrl+a to attach an image")
+		infoBlockContent := infoLabel.Render("Use ctrl+a to select or ctrl+v to paste an image")
 
 		if len(p.attachments) != 0 {
 			imageBlocks := []string{infoPrefix.Render("Attachments: ")}

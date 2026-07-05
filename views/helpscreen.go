@@ -63,7 +63,7 @@ func (m MainView) renderHelpView() string {
 		binding("ctrl+e", "toggle editor mode"),
 		binding("esc", "exit insert/editor mode"),
 		binding("ctrl+r", "clear prompt"),
-		binding("ctrl+v", "paste from clipboard"),
+		binding("ctrl+v", "paste text/image"),
 		binding("ctrl+s", "paste code block"),
 		binding("ctrl+a", "attach image/file"),
 		binding("enter", "send message"),

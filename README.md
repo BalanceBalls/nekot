@@ -247,7 +247,7 @@ nekot -n
 - `i`: Enters insert mode (you can now safely paste messages into the tui)
 - `Ctrl+e`: Open/Close prompt editor
 - `Ctrl+r`: Clear prompt
-- `Ctrl+v`: Paste text from buffer
+- `Ctrl+v`: Paste text from the clipboard, or attach an image copied to the clipboard
 - `Ctrl+s`: Paste text from buffer as a code block (only in editor mode)
     * if current line contains text, that text will be used as a language for the code block
     * Example: if a line contains `go` the result of `Ctrl+s` will be:

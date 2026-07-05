@@ -68,6 +68,8 @@ __`?` open help__
 
 `Ctrl+a` Attach an image
  <!------->
+`Ctrl+v` Paste text or attach a clipboard image
+ <!------->
 `Ctrl+r` Reset input
  <!------->
 `Ctrl+e` Expand editor
