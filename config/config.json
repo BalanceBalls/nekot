@@ -1,5 +1,6 @@
 {
   "providerBaseUrl": "https://api.openai.com",
+  "apiKeyResolveCommand": "",
   "systemMessage": "",
   "defaultModel": "",
   "colorScheme": "groove",

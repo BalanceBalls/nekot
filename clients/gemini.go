@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -71,7 +70,7 @@ func (c GeminiClient) RequestCompletion(
 			panic("No config found in context")
 		}
 
-		client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+		client, err := genai.NewClient(ctx, option.WithAPIKey(config.ResolvedAPIKey()))
 		if err != nil {
 			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: util.ChunkIndexStart, Err: err, Final: true})
 			return nil
@@ -162,7 +161,12 @@ func (c GeminiClient) RequestCompletion(
 }
 
 func (c GeminiClient) RequestModelsList(ctx context.Context) util.ProcessModelsResponse {
-	client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+	config, ok := config.FromContext(ctx)
+	if !ok {
+		return util.ProcessModelsResponse{Err: fmt.Errorf("no config found in context")}
+	}
+
+	client, err := genai.NewClient(ctx, option.WithAPIKey(config.ResolvedAPIKey()))
 	if err != nil {
 		return util.ProcessModelsResponse{Err: err}
 	}

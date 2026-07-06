@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -129,7 +128,6 @@ func (c OpenAiClient) RequestCompletion(
 	modelSettings util.Settings,
 	resultChan chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
-	apiKey := os.Getenv("OPENAI_API_KEY")
 	path := "v1/chat/completions"
 	processResultID := util.GetNextProcessResultId(chatMsgs)
 
@@ -139,6 +137,7 @@ func (c OpenAiClient) RequestCompletion(
 			util.Slog.Error("No config found in a context")
 			panic("No config found in context")
 		}
+		apiKey := config.ResolvedAPIKey()
 
 		body, err := c.constructCompletionRequestPayload(chatMsgs, *config, modelSettings)
 		if err != nil {
@@ -156,7 +155,12 @@ func (c OpenAiClient) RequestCompletion(
 }
 
 func (c OpenAiClient) RequestModelsList(ctx context.Context) util.ProcessModelsResponse {
-	apiKey := os.Getenv("OPENAI_API_KEY")
+	config, ok := config.FromContext(ctx)
+	if !ok {
+		return util.ProcessModelsResponse{Err: fmt.Errorf("no config found in context")}
+	}
+
+	apiKey := config.ResolvedAPIKey()
 	path := "v1/models"
 
 	resp, err := c.getOpenAiAPI(ctx, apiKey, path)
