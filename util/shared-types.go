@@ -38,10 +38,11 @@ type Choice struct {
 }
 
 type ToolCall struct {
-	Id       string       `json:"id"`
-	Type     string       `json:"type"`
-	Function ToolFunction `json:"function"`
-	Result   *string      `json:"result"`
+	Id               string       `json:"id"`
+	Type             string       `json:"type"`
+	Function         ToolFunction `json:"function"`
+	Result           *string      `json:"result"`
+	ThoughtSignature []byte       `json:"thought_signature,omitempty"`
 }
 
 type ToolFunction struct {

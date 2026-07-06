@@ -217,10 +217,34 @@ func (m *Orchestrator) ResumeCompletion(
 ) tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if err := m.prepareToolContinuation(); err != nil {
+		return m.resetStateAndCreateError(err.Error())
+	}
+
 	m.setProcessingContext(ctx)
-	updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
+	updatedSession, err := m.sessionService.GetSession(m.CurrentSessionID)
+	if err != nil {
+		return m.resetStateAndCreateError(err.Error())
+	}
 	m.setCurrentSessionData(updatedSession)
-	return m.InferenceClient.RequestCompletion(m.processingCtx, updatedSession.Messages, m.Settings, resp)
+
+	return tea.Batch(
+		util.SendProcessingStateChangedMsg(util.ProcessingChunks),
+		m.InferenceClient.RequestCompletion(m.processingCtx, updatedSession.Messages, m.Settings, resp),
+	)
+}
+
+func (m *Orchestrator) prepareToolContinuation() error {
+	if m.ResponseProcessingState != util.AwaitingToolCallResult {
+		return fmt.Errorf(
+			"cannot resume tool continuation from processing state %d",
+			m.ResponseProcessingState,
+		)
+	}
+
+	m.ResponseProcessingState = util.ProcessingChunks
+	return nil
 }
 
 func (m *Orchestrator) Cancel() {
