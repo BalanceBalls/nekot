@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"iter"
 	"testing"
 
 	"github.com/BalanceBalls/nekot/config"
@@ -166,6 +167,40 @@ func TestBuildChatHistorySkipsUnsignedLegacyToolExchange(t *testing.T) {
 	}
 }
 
+func TestBuildChatHistorySkipsEmptyMessagesAndStrayToolResults(t *testing.T) {
+	toolResult := "orphaned result"
+	messages := []util.LocalStoreMessage{
+		{Role: "user"},
+		{
+			Role: "tool",
+			ToolCalls: []util.ToolCall{
+				{
+					Id:     "missing-call",
+					Result: &toolResult,
+					Function: util.ToolFunction{
+						Name: "web_search",
+						Args: map[string]string{"query": "current info"},
+					},
+				},
+			},
+		},
+		{Role: "assistant", Content: "answer"},
+	}
+
+	got, err := buildChatHistory(messages, false)
+	if err != nil {
+		t.Fatalf("buildChatHistory() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(history) = %d, want 1", len(got))
+	}
+	if got[0].Role != genai.RoleModel ||
+		len(got[0].Parts) != 1 ||
+		got[0].Parts[0].Text != "answer" {
+		t.Fatalf("history = %#v, want only assistant answer", got)
+	}
+}
+
 func TestToolCallThoughtSignatureJSONRoundTrip(t *testing.T) {
 	want := util.ToolCall{
 		Id:               "call-1",
@@ -291,5 +326,196 @@ func TestProcessResponseChunkFunctionCall(t *testing.T) {
 		toolCall.Function.Args["query"] != "latest release" ||
 		!bytes.Equal(toolCall.ThoughtSignature, thoughtSignature) {
 		t.Fatalf("tool call = %#v", toolCall)
+	}
+}
+
+func TestProcessGeminiCompletionStreamFinalizesWithCitations(t *testing.T) {
+	stream := geminiResponseStream(&genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Index:        0,
+				FinishReason: genai.FinishReasonStop,
+				Content: &genai.Content{
+					Parts: []*genai.Part{{Text: "answer"}},
+				},
+				CitationMetadata: &genai.CitationMetadata{
+					Citations: []*genai.Citation{{URI: "https://example.com"}},
+				},
+			},
+		},
+	})
+	resultChan := make(chan util.ProcessApiCompletionResponse, 4)
+
+	msg := processGeminiCompletionStream(t.Context(), stream, resultChan, 10)
+	if msg != nil {
+		t.Fatalf("processGeminiCompletionStream() = %#v, want nil", msg)
+	}
+	if len(resultChan) != 4 {
+		t.Fatalf("len(resultChan) = %d, want 4", len(resultChan))
+	}
+
+	first := <-resultChan
+	if first.ID != 10 ||
+		first.Final ||
+		first.Result.Choices[0].Delta["content"] != "answer" {
+		t.Fatalf("first response = %#v", first)
+	}
+
+	citations := <-resultChan
+	if citations.ID != 11 ||
+		citations.Final ||
+		citations.Result.Choices[0].Delta["content"] != "\n\n`Sources`\n\t> [](https://example.com)" {
+		t.Fatalf("citations response = %#v", citations)
+	}
+
+	stop := <-resultChan
+	if stop.ID != 12 ||
+		!stop.Final ||
+		stop.Result.Choices[0].FinishReason != "stop" {
+		t.Fatalf("stop response = %#v", stop)
+	}
+
+	empty := <-resultChan
+	if empty.ID != 13 ||
+		!empty.Final ||
+		empty.Result.Choices[0].FinishReason != "" {
+		t.Fatalf("empty response = %#v", empty)
+	}
+}
+
+func TestProcessGeminiCompletionStreamStopsOnToolCall(t *testing.T) {
+	stream := geminiResponseStream(&genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						{
+							ThoughtSignature: []byte("signed reasoning state"),
+							FunctionCall: &genai.FunctionCall{
+								ID:   "call-4",
+								Name: "web_search",
+								Args: map[string]any{"query": "latest release"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	resultChan := make(chan util.ProcessApiCompletionResponse, 2)
+
+	msg := processGeminiCompletionStream(t.Context(), stream, resultChan, 20)
+	if msg != nil {
+		t.Fatalf("processGeminiCompletionStream() = %#v, want nil", msg)
+	}
+	if len(resultChan) != 1 {
+		t.Fatalf("len(resultChan) = %d, want only the tool call chunk", len(resultChan))
+	}
+
+	got := <-resultChan
+	if got.ID != 20 ||
+		len(got.Result.Choices) != 1 ||
+		len(got.Result.Choices[0].ToolCalls) != 1 ||
+		got.Final {
+		t.Fatalf("tool call response = %#v", got)
+	}
+}
+
+func geminiResponseStream(
+	responses ...*genai.GenerateContentResponse,
+) iter.Seq2[*genai.GenerateContentResponse, error] {
+	return func(yield func(*genai.GenerateContentResponse, error) bool) {
+		for _, response := range responses {
+			if !yield(response, nil) {
+				return
+			}
+		}
+	}
+}
+
+func TestProcessResponseChunkMixedContentSuppressesToolCall(t *testing.T) {
+	response := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						{Text: "visible"},
+						{
+							FunctionCall: &genai.FunctionCall{
+								ID:   "call-3",
+								Name: "web_search",
+								Args: map[string]any{"query": "ignored"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := processResponseChunk(response, 3)
+	if err != nil {
+		t.Fatalf("processResponseChunk() error = %v", err)
+	}
+	if got.isToolCall {
+		t.Fatal("isToolCall = true, want false")
+	}
+	if len(got.chunk.Choices) != 1 {
+		t.Fatalf("choices = %#v", got.chunk.Choices)
+	}
+	if len(got.chunk.Choices[0].ToolCalls) != 0 {
+		t.Fatalf("tool calls = %#v, want none", got.chunk.Choices[0].ToolCalls)
+	}
+	if got.chunk.Choices[0].Delta != nil {
+		t.Fatalf("delta = %#v, want nil when text and function call are mixed", got.chunk.Choices[0].Delta)
+	}
+}
+
+func TestProcessResponseChunkThoughtOnlyPartHasEmptyContent(t *testing.T) {
+	response := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						{Text: "hidden", Thought: true},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := processResponseChunk(response, 4)
+	if err != nil {
+		t.Fatalf("processResponseChunk() error = %v", err)
+	}
+	if got.chunk.Choices[0].Delta["content"] != "" {
+		t.Fatalf("content = %#v, want empty string", got.chunk.Choices[0].Delta["content"])
+	}
+}
+
+func TestHandleFinishReason(t *testing.T) {
+	tests := []struct {
+		name    string
+		reason  genai.FinishReason
+		want    string
+		wantErr bool
+	}{
+		{name: "stop", reason: genai.FinishReasonStop, want: "stop"},
+		{name: "max tokens", reason: genai.FinishReasonMaxTokens, want: "length"},
+		{name: "missing", reason: "", want: ""},
+		{name: "safety", reason: genai.FinishReasonSafety, want: ""},
+		{name: "recitation", reason: genai.FinishReasonRecitation, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := handleFinishReason(tt.reason)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("handleFinishReason() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("handleFinishReason() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

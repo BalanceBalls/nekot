@@ -335,15 +335,7 @@ func (p MessageProcessor) prepareResponseJSONForDB(currentChunk *util.ProcessApi
 		}
 	}
 
-	// newMessage.Resoning = formatThinkingContent(newMessage.Resoning)
 	return newMessage
-}
-
-func formatThinkingContent(text string) string {
-	text = strings.ReplaceAll(text, legacyThinkStartToken, "")
-	text = strings.ReplaceAll(text, legacyThinkEndToken, "")
-
-	return text
 }
 
 func anyChunkContainsText(chunks []util.ProcessApiCompletionResponse, text string) bool {
