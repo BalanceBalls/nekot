@@ -7,13 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/sessions"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 const notificationDisplayDurationSec = 2
@@ -90,13 +90,13 @@ func NewInfoPane(db *sql.DB, ctx context.Context) InfoPane {
 		Background(colors.NormalTabBorderColor).
 		BorderLeftForeground(colors.HighlightColor).
 		Align(lipgloss.Left).
-		Foreground(lipgloss.Color(colors.DefaultTextColor.Dark))
+		Foreground(colors.DefaultTextColor.Dark)
 	quickChatLabel := defaultLabelStyle.
 		Background(colors.HighlightColor).
-		Foreground(lipgloss.Color(colors.DefaultTextColor.Dark))
+		Foreground(colors.DefaultTextColor.Dark)
 	webSearchLabel := defaultLabelStyle.
 		Background(colors.ErrorColor).
-		Foreground(lipgloss.Color(colors.DefaultTextColor.Dark))
+		Foreground(colors.DefaultTextColor.Dark)
 
 	return InfoPane{
 		processingIdleLabel:   processingIdleLabel,
@@ -264,10 +264,12 @@ func (p InfoPane) View() string {
 		secondRow = ""
 	}
 
-	return lipgloss.NewStyle().
+	container := lipgloss.NewStyle().
 		BorderStyle(lipgloss.ThickBorder()).
-		BorderForeground(p.colors.NormalTabBorderColor).
-		Width(paneWidth).
+		BorderForeground(p.colors.NormalTabBorderColor)
+
+	return container.
+		Width(paneWidth + container.GetHorizontalBorderSize()).
 		Render(
 			lipgloss.JoinVertical(
 				lipgloss.Left,

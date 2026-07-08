@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/rivo/uniseg"
 )
 
@@ -84,14 +84,23 @@ func RenderUserMessage(userMessage LocalStoreMessage, width int, colors SchemeCo
 		colors.RendererThemeOption,
 	)
 	msg := userMessage.Content
+
+	highlightedHeader := lipgloss.NewStyle().
+		Bold(true).
+		MarginLeft(2).
+		Width(width/2-2).
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(colors.NormalTabBorderColor).
+		Foreground(colors.NormalTabBorderColor).
+		Render("[User message]")
+
 	if isVisualMode {
-		msg = "\n💁 " + msg
 		userMsg, _ := renderer.Render(msg)
 		output := strings.TrimSpace(userMsg)
-		return lipgloss.NewStyle().Render("\n" + output + "\n")
+		return lipgloss.NewStyle().Render(highlightedHeader + "\n  " + output + "\n")
 	}
 
-	msg = "\n💁 **[Prooompter]**\n" + msg + "\n"
+	msg += "\n"
 	if len(userMessage.Attachments) != 0 {
 		attachments := "\n *Attachments:* \n"
 		for _, file := range userMessage.Attachments {
@@ -103,11 +112,12 @@ func RenderUserMessage(userMessage LocalStoreMessage, width int, colors SchemeCo
 
 	userMsg, _ := renderer.Render(msg)
 	output := strings.TrimSpace(userMsg)
+
 	return lipgloss.NewStyle().
 		BorderLeft(true).
 		BorderStyle(lipgloss.InnerHalfBlockBorder()).
 		BorderLeftForeground(colors.NormalTabBorderColor).
-		Render("\n" + output + "\n")
+		Render("\n" + highlightedHeader + "\n  " + output + "\n")
 }
 
 func RenderErrorMessage(msg string, width int, colors SchemeColors) string {
@@ -181,29 +191,37 @@ func RenderBotMessage(
 
 	content += msg.Content
 	modelName := ""
-	icon := "\n 🤖 "
 	if len(msg.Model) > 0 {
-		modelName = "**[" + msg.Model + "]**\n"
+		modelName = "[" + msg.Model + "]"
+	} else {
+		modelName = "Cogitating..."
 	}
 
 	content = cleanContent(content)
 
+	highlightedHeader := lipgloss.NewStyle().
+		Bold(true).
+		MarginLeft(2).
+		Width(width/2-2).
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(colors.ActiveTabBorderColor).
+		Foreground(colors.ActiveTabBorderColor).
+		Render(modelName)
+
 	if isVisualMode {
-		content = icon + content
 		userMsg, _ := renderer.Render(content)
 		output := strings.TrimSpace(userMsg)
-		return lipgloss.NewStyle().Render(output + "\n")
+		return lipgloss.NewStyle().Render(highlightedHeader + "\n  " + output + "\n")
 	}
 
-	content = icon + modelName + content + "\n"
+	content = content + "\n"
 	aiResponse, _ := renderer.Render(content)
 	output := strings.TrimSpace(aiResponse)
 	return lipgloss.NewStyle().
 		BorderLeft(true).
 		BorderStyle(lipgloss.InnerHalfBlockBorder()).
 		BorderLeftForeground(colors.ActiveTabBorderColor).
-		Width(width - 1).
-		Render(output)
+		Render("\n" + highlightedHeader + "\n  " + output)
 }
 
 func RenderToolCall(
@@ -248,7 +266,7 @@ func RenderToolCall(
 
 			content += "<div>" + reasoningLine + "</div>\n"
 		}
-		content += "\n  \n"
+		content = "  " + content + "\n  \n"
 	}
 
 	if msg.Role == "tool" {
@@ -272,7 +290,7 @@ func RenderToolCall(
 	if isVisualMode {
 		userMsg, _ := renderer.Render(content)
 		output := strings.TrimSpace(userMsg)
-		return lipgloss.NewStyle().Render(output + "\n")
+		return lipgloss.NewStyle().Render("  " + output + "\n")
 	}
 
 	aiResponse, _ := renderer.Render(content)
@@ -282,7 +300,7 @@ func RenderToolCall(
 		BorderStyle(lipgloss.InnerHalfBlockBorder()).
 		BorderLeftForeground(colors.HighlightColor).
 		Width(width - 1).
-		Render(output)
+		Render("  " + output)
 }
 
 func RenderBotChunk(

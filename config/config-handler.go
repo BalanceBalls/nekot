@@ -46,6 +46,7 @@ func FromContext(ctx context.Context) (*Config, bool) {
 type Config struct {
 	ChatGPTApiUrl                   string                 `json:"chatGPTAPiUrl"`
 	ProviderBaseUrl                 string                 `json:"providerBaseUrl"`
+	APIKeyResolveCommand            string                 `json:"apiKeyResolveCommand"`
 	SystemMessage                   string                 `json:"systemMessage"`
 	DefaultModel                    string                 `json:"defaultModel"`
 	Provider                        string                 `json:"provider"`
@@ -54,6 +55,7 @@ type Config struct {
 	IncludeReasoningTokensInContext *bool                  `json:"includeReasoningTokensInContext"`
 	SessionExportDir                string                 `json:"sessionExportDir"`
 	TitleGeneration                 *TitleGenerationConfig `json:"titleGeneration"`
+	resolvedAPIKey                  string
 }
 
 type TitleGenerationConfig struct {
@@ -178,51 +180,13 @@ func CreateAndValidateConfig(flags StartupFlags) Config {
 		panic(fmt.Errorf("Invalid config"))
 	}
 
-	config.checkApiKeys()
+	if err := config.resolveAPIKey(); err != nil {
+		fmt.Printf("API key error: %s\n", err)
+		fmt.Println("Exiting...")
+		os.Exit(1)
+	}
 
 	return config
-}
-
-func (c Config) checkApiKeys() {
-	switch c.Provider {
-	case util.OpenrouterProviderType:
-		apiKey := os.Getenv("OPENROUTER_API_KEY")
-		if apiKey == "" {
-			fmt.Println("OPENROUTER_API_KEY not set; set it in your profile")
-			fmt.Printf(
-				"export OPENROUTER_API_KEY=your_key in the config for :%v \n",
-				os.Getenv("SHELL"),
-			)
-			fmt.Println("Exiting...")
-			os.Exit(1)
-		}
-	case util.GeminiProviderType:
-		apiKey := os.Getenv("GEMINI_API_KEY")
-		if apiKey == "" {
-			fmt.Println("GEMINI_API_KEY not set; set it in your profile")
-			fmt.Printf(
-				"export GEMINI_API_KEY=your_key in the config for :%v \n",
-				os.Getenv("SHELL"),
-			)
-			fmt.Println("Exiting...")
-			os.Exit(1)
-		}
-	case util.OpenAiProviderType:
-		if util.IsLocalProvider(c.ProviderBaseUrl) {
-			return
-		}
-
-		apiKey := os.Getenv("OPENAI_API_KEY")
-		if apiKey == "" {
-			fmt.Println("OPENAI_API_KEY not set; set it in your profile")
-			fmt.Printf(
-				"export OPENAI_API_KEY=your_key in the config for :%v \n",
-				os.Getenv("SHELL"),
-			)
-			fmt.Println("Exiting...")
-			os.Exit(1)
-		}
-	}
 }
 
 func (c *Config) setDefaults() {

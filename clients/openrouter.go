@@ -6,11 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/util"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/revrost/go-openrouter"
 )
 
@@ -60,7 +59,7 @@ func (c OpenrouterClient) RequestCompletion(
 			panic("No config found in context")
 		}
 
-		client := openrouter.NewClient(os.Getenv("OPENROUTER_API_KEY"))
+		client := openrouter.NewClient(config.ResolvedAPIKey())
 
 		request := openrouter.ChatCompletionRequest{}
 		setRequestParams(&request, modelSettings)
@@ -139,7 +138,12 @@ func (c OpenrouterClient) RequestCompletion(
 }
 
 func (c OpenrouterClient) RequestModelsList(ctx context.Context) util.ProcessModelsResponse {
-	client := openrouter.NewClient(os.Getenv("OPENROUTER_API_KEY"))
+	config, ok := config.FromContext(ctx)
+	if !ok {
+		return util.ProcessModelsResponse{Err: fmt.Errorf("no config found in context")}
+	}
+
+	client := openrouter.NewClient(config.ResolvedAPIKey())
 
 	client.ListUserModels(ctx)
 	models, err := client.ListModels(ctx)

@@ -7,17 +7,17 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/sessions"
 	"github.com/BalanceBalls/nekot/user"
 	"github.com/BalanceBalls/nekot/util"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 const NoTargetSession = -1
@@ -43,10 +43,10 @@ var defaultSessionsKeyMap = sessionsKeyMap{
 	delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "d delete")),
 	rename: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "e edit")),
 	export: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "shift+x export")),
-	cancel: key.NewBinding(key.WithKeys(tea.KeyEsc.String()), key.WithHelp("esc", "cancel action")),
+	cancel: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel action")),
 	apply: key.NewBinding(
-		key.WithKeys(tea.KeyEnter.String()),
-		key.WithHelp("esc", "switch to session/apply renaming"),
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "switch to session/apply renaming"),
 	),
 	addNew: key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "ctrl+n add new")),
 }
@@ -165,7 +165,9 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 		p.terminalWidth = msg.Width
 		p.terminalHeight = msg.Height
 		width, height := util.CalcSessionsPaneSize(p.terminalWidth, p.terminalHeight)
-		p.container = p.container.Width(width).Height(height)
+		p.container = p.container.
+			Width(width + p.container.GetHorizontalBorderSize()).
+			Height(height + p.container.GetVerticalBorderSize())
 		if p.sessionsListReady {
 			offset := 0
 			if p.isFocused {
@@ -184,12 +186,12 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 			cmds = append(cmds, p.handleUpdateCurrentSession(session))
 		}
 
-	case tea.MouseMsg:
+	case tea.MouseClickMsg:
 		if !zone.Get("sessions_pane").InBounds(msg) || !p.isFocused {
 			break
 		}
 
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		if msg.Button == tea.MouseLeft {
 			for idx, listItem := range p.sessionsList.VisibleItems() {
 				v, _ := listItem.(components.SessionListItem)
 				if zone.Get(v.Id).InBounds(msg) {
@@ -212,7 +214,7 @@ func (p SessionsPane) Update(msg tea.Msg) (SessionsPane, tea.Cmd) {
 			}
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if p.isFocused && !p.sessionsList.IsFiltering() {
 			switch p.operationMode {
 			case defaultMode:
@@ -272,7 +274,7 @@ func (p SessionsPane) View() string {
 	))
 }
 
-func (p *SessionsPane) handleDefaultMode(msg tea.KeyMsg) tea.Cmd {
+func (p *SessionsPane) handleDefaultMode(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 
 	switch {
@@ -371,7 +373,7 @@ func (p *SessionsPane) handleUpdateCurrentSession(session sessions.Session) tea.
 	return sessions.SendUpdateCurrentSessionMsg(session)
 }
 
-func (p *SessionsPane) handleDeleteMode(msg tea.KeyMsg) tea.Cmd {
+func (p *SessionsPane) handleDeleteMode(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	p.textInput, cmd = p.textInput.Update(msg)
 
@@ -398,7 +400,7 @@ func (p *SessionsPane) handleDeleteMode(msg tea.KeyMsg) tea.Cmd {
 	return cmd
 }
 
-func (p *SessionsPane) handleEditMode(msg tea.KeyMsg) tea.Cmd {
+func (p *SessionsPane) handleEditMode(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	p.textInput, cmd = p.textInput.Update(msg)
 
@@ -463,11 +465,11 @@ func (p SessionsPane) listItem(heading string, value string, isActive bool, widt
 	}
 	headingEl := lipgloss.NewStyle().
 		PaddingLeft(util.ListItemPaddingLeft).
-		Foreground(lipgloss.AdaptiveColor{Dark: headingColor.Dark, Light: headingColor.Light}).
+		Foreground(headingColor).
 		Bold(isActive).
 		Render
 	spanEl := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Dark: color.Dark, Light: color.Light}).
+		Foreground(color).
 		Render
 
 	value = util.TrimListItem(value, widthCap)
@@ -511,10 +513,17 @@ func (p SessionsPane) createInput(
 	validator func(s string) error) textinput.Model {
 
 	ti := textinput.New()
-	ti.PromptStyle = lipgloss.NewStyle().PaddingLeft(util.DefaultElementsPadding)
+	styles := ti.Styles()
+	styles.Focused.Prompt = lipgloss.NewStyle().PaddingLeft(util.DefaultElementsPadding)
+	styles.Blurred.Prompt = styles.Focused.Prompt
+	ti.SetStyles(styles)
 	ti.Placeholder = placeholder
 	ti.Validate = validator
-	ti.Width = p.container.GetWidth() - util.InputContainerDelta
+	ti.SetWidth(
+		p.container.GetWidth() -
+			p.container.GetHorizontalBorderSize() -
+			util.InputContainerDelta,
+	)
 	ti.CharLimit = charLimit
 	return ti
 }

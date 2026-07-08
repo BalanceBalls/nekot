@@ -29,7 +29,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows (*mo
 
 ## App installation
 
-**Ensure API keys are set before proceeding to installtion**
+**Ensure API keys are configured before running NeKot**
 
 > A good terminal with GPU acceleration is recommended (the app is mostly tested on [Ghostty](https://ghostty.org/))
 
@@ -75,7 +75,34 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/BalanceBalls/nekot/main/
 
 ## Setting API keys
 
-To use the app, you will need to set `OPENAI_API_KEY` or/and `GEMINI_API_KEY`, `OPENROUTER_API_KEY` env variables depending on your needs
+NeKot can load the active provider's API key from a command or from its existing
+environment variable. To use a secure store, add an `apiKeyResolveCommand` command to
+`~/.nekot/config.json`:
+
+```json
+{
+  "apiKeyResolveCommand": "cmd:security find-generic-password -s openrouter_nekot_key -w"
+}
+```
+
+Everything after `cmd:` is executed once at startup using `/bin/sh -c` on macOS
+and Linux, or `cmd /C` on Windows. The command's trimmed standard output is used
+as the API key. This also supports password-manager CLIs, for example:
+
+```json
+{
+  "apiKeyResolveCommand": "cmd:bw get password openrouter_nekot_key"
+}
+```
+
+The command inherits NeKot's environment, including variables such as
+`BW_SESSION`. Do not put secrets directly in the command. If `apiKeyResolveCommand` is absent
+or empty, NeKot falls back to `OPENAI_API_KEY`, `GEMINI_API_KEY`, or
+`OPENROUTER_API_KEY`, depending on the active provider. A configured command
+takes precedence and a command failure does not fall back to the environment.
+Plaintext values in `apiKeyResolveCommand` are rejected. Treat config files that
+contain `apiKeyResolveCommand` like scripts: do not copy or run configs from
+people you do not trust. 
 
 <details>
 
@@ -135,6 +162,7 @@ We provide a `config.json` file within your directory for easy access to essenti
 ```json
 {
   "providerBaseUrl": "https://api.openai.com", // Or http://localhost:11434, or any other OpenAi compatible API
+  "apiKeyResolveCommand": "", // Optional cmd: command; falls back to the provider's environment variable
   "systemMessage": "",
   "defaultModel": "",
   "colorScheme": "groove", // pink, blue, groove
@@ -150,6 +178,7 @@ We provide a `config.json` file within your directory for easy access to essenti
 ```
 
  - `providerBaseUrl`: The url can be anything that follows OpenAI API standard ( [ollama](http://localhost:11434), [lmstudio](http://127.0.0.1:1234), etc)
+ - `apiKeyResolveCommand`: optional `cmd:` command whose output provides the active provider's API key
  - `chatGPTApiUrl` [obsolete]: same as `providerBaseUrl`
  - `systemMessage` field is available for customizing system prompt messages. **Better to set it from the app**
  - `defaultModel` field sets the default model.  **Better to set it from the app**
@@ -168,7 +197,7 @@ Available providers:
  * `gemini`
  * `openrouter`
 
-To use **GeminiAPI**, just set `"provider": "gemini"` (make sure to set GEMINI_API_KEY env variable).
+To use **GeminiAPI**, set `"provider": "gemini"` and configure `apiKeyResolveCommand` or `GEMINI_API_KEY`.
 When using the `gemini` or `openrouter` providers, `providerBaseUrl` param is not used.
 
 ### Themes
@@ -247,7 +276,7 @@ nekot -n
 - `i`: Enters insert mode (you can now safely paste messages into the tui)
 - `Ctrl+e`: Open/Close prompt editor
 - `Ctrl+r`: Clear prompt
-- `Ctrl+v`: Paste text from buffer
+- `Ctrl+v`: Paste text from the clipboard, or attach an image copied to the clipboard
 - `Ctrl+s`: Paste text from buffer as a code block (only in editor mode)
     * if current line contains text, that text will be used as a language for the code block
     * Example: if a line contains `go` the result of `Ctrl+s` will be:

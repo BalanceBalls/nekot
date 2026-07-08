@@ -3,8 +3,9 @@ package util
 import (
 	_ "embed"
 
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
 )
 
 type ColorScheme string
@@ -73,68 +74,75 @@ var (
 )
 
 type SchemeColors struct {
-	MainColor            lipgloss.AdaptiveColor
-	AccentColor          lipgloss.AdaptiveColor
-	HighlightColor       lipgloss.AdaptiveColor
-	DefaultTextColor     lipgloss.AdaptiveColor
-	ErrorColor           lipgloss.AdaptiveColor
-	NormalTabBorderColor lipgloss.AdaptiveColor
-	ActiveTabBorderColor lipgloss.AdaptiveColor
+	MainColor            compat.AdaptiveColor
+	AccentColor          compat.AdaptiveColor
+	HighlightColor       compat.AdaptiveColor
+	DefaultTextColor     compat.AdaptiveColor
+	ErrorColor           compat.AdaptiveColor
+	NormalTabBorderColor compat.AdaptiveColor
+	ActiveTabBorderColor compat.AdaptiveColor
 	RendererThemeOption  glamour.TermRendererOption
+}
+
+func adaptiveColor(dark, light string) compat.AdaptiveColor {
+	return compat.AdaptiveColor{
+		Dark:  lipgloss.Color(dark),
+		Light: lipgloss.Color(light),
+	}
 }
 
 func (s ColorScheme) GetColors() SchemeColors {
 	defaultThemeBytes := pinkThemeBytes
-	if !lipgloss.HasDarkBackground() {
+	if !compat.HasDarkBackground {
 		defaultThemeBytes = pinkLightThemeBytes
 	}
 	defaultColors := SchemeColors{
-		MainColor:            lipgloss.AdaptiveColor{Dark: pinkThemeLightPink, Light: pinkThemeLightPink},
-		AccentColor:          lipgloss.AdaptiveColor{Dark: pinkThemePurple, Light: pinkThemePurple},
-		HighlightColor:       lipgloss.AdaptiveColor{Dark: pinkThemeGrey, Light: pinkThemeBlueLight},
-		DefaultTextColor:     lipgloss.AdaptiveColor{Dark: pinkThemeWhite, Light: pinkThemeDarkPurpleLight},
-		ErrorColor:           lipgloss.AdaptiveColor{Dark: pinkThemeRed, Light: pinkThemeRed},
-		NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: pinkThemeLightGrey, Light: pinkThemeDarkGreyLight},
-		ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: pinkThemeSolidPink, Light: pinkThemeSolidPink},
+		MainColor:            adaptiveColor(pinkThemeLightPink, pinkThemeLightPink),
+		AccentColor:          adaptiveColor(pinkThemePurple, pinkThemePurple),
+		HighlightColor:       adaptiveColor(pinkThemeGrey, pinkThemeBlueLight),
+		DefaultTextColor:     adaptiveColor(pinkThemeWhite, pinkThemeDarkPurpleLight),
+		ErrorColor:           adaptiveColor(pinkThemeRed, pinkThemeRed),
+		NormalTabBorderColor: adaptiveColor(pinkThemeLightGrey, pinkThemeDarkGreyLight),
+		ActiveTabBorderColor: adaptiveColor(pinkThemeSolidPink, pinkThemeSolidPink),
 		RendererThemeOption:  glamour.WithStylesFromJSONBytes(defaultThemeBytes),
 	}
 
 	switch s {
 	case SmoothBlue:
 		themeBytes := blueThemeBytes
-		if !lipgloss.HasDarkBackground() {
+		if !compat.HasDarkBackground {
 			themeBytes = blueLightThemeBytes
 		}
 		return SchemeColors{
-			MainColor:            lipgloss.AdaptiveColor{Dark: blueThemePinkYellow, Light: blueThemePinkYellowLight},
-			AccentColor:          lipgloss.AdaptiveColor{Dark: blueThemeLightGreen, Light: blueThemeLightGreen},
-			HighlightColor:       lipgloss.AdaptiveColor{Dark: blueThemeSmoothRed, Light: blueThemeSmoothRed},
-			DefaultTextColor:     lipgloss.AdaptiveColor{Dark: blueThemeWhite, Light: blueThemeDarkBlueLight},
-			ErrorColor:           lipgloss.AdaptiveColor{Dark: blueThemeRed, Light: blueThemeRed},
-			NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: blueThemeSmoothBlue, Light: blueThemeSmoothBlue},
-			ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: blueThemePinkYellow, Light: blueThemePinkYellowLight},
+			MainColor:            adaptiveColor(blueThemePinkYellow, blueThemePinkYellowLight),
+			AccentColor:          adaptiveColor(blueThemeLightGreen, blueThemeLightGreen),
+			HighlightColor:       adaptiveColor(blueThemeSmoothRed, blueThemeSmoothRed),
+			DefaultTextColor:     adaptiveColor(blueThemeWhite, blueThemeDarkBlueLight),
+			ErrorColor:           adaptiveColor(blueThemeRed, blueThemeRed),
+			NormalTabBorderColor: adaptiveColor(blueThemeSmoothBlue, blueThemeSmoothBlue),
+			ActiveTabBorderColor: adaptiveColor(blueThemePinkYellow, blueThemePinkYellowLight),
 			RendererThemeOption:  glamour.WithStylesFromJSONBytes(themeBytes),
 		}
 
 	case Groovebox:
 		themeBytes := grooveBoxThemeBytes
-		if !lipgloss.HasDarkBackground() {
+		if !compat.HasDarkBackground {
 			themeBytes = grooveBoxLightThemeBytes
 		}
 		return SchemeColors{
-			MainColor:            lipgloss.AdaptiveColor{Dark: grooveboxOrange, Light: grooveboxOrangeLight},
-			AccentColor:          lipgloss.AdaptiveColor{Dark: grooveboxGreen, Light: grooveboxGreenLight},
-			HighlightColor:       lipgloss.AdaptiveColor{Dark: grooveboxBlue, Light: grooveboxBlueLight},
-			DefaultTextColor:     lipgloss.AdaptiveColor{Dark: grooveboxGrey, Light: grooveboxGreyLight},
-			ErrorColor:           lipgloss.AdaptiveColor{Dark: grooveboxRed, Light: grooveboxRedLight},
-			NormalTabBorderColor: lipgloss.AdaptiveColor{Dark: grooveboxYellow, Light: grooveboxYellowLight},
-			ActiveTabBorderColor: lipgloss.AdaptiveColor{Dark: grooveboxGreen, Light: grooveboxGreenLight},
+			MainColor:            adaptiveColor(grooveboxOrange, grooveboxOrangeLight),
+			AccentColor:          adaptiveColor(grooveboxGreen, grooveboxGreenLight),
+			HighlightColor:       adaptiveColor(grooveboxBlue, grooveboxBlueLight),
+			DefaultTextColor:     adaptiveColor(grooveboxGrey, grooveboxGreyLight),
+			ErrorColor:           adaptiveColor(grooveboxRed, grooveboxRedLight),
+			NormalTabBorderColor: adaptiveColor(grooveboxYellow, grooveboxYellowLight),
+			ActiveTabBorderColor: adaptiveColor(grooveboxGreen, grooveboxGreenLight),
 			RendererThemeOption:  glamour.WithStylesFromJSONBytes(themeBytes),
 		}
 
 	case OriginalPink:
 		themeBytes := pinkThemeBytes
-		if !lipgloss.HasDarkBackground() {
+		if !compat.HasDarkBackground {
 			themeBytes = pinkLightThemeBytes
 		}
 		defaultColors.RendererThemeOption = glamour.WithStylesFromJSONBytes(themeBytes)

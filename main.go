@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -9,13 +10,13 @@ import (
 	"os"
 	"path/filepath"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/migrations"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/BalanceBalls/nekot/views"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
-	zone "github.com/lrstanley/bubblezone"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 var purgeCache bool
@@ -85,6 +86,10 @@ func main() {
 	// validate config
 	configToUse := config.CreateAndValidateConfig(flags)
 
+	if err := util.InitImageClipboard(); err != nil {
+		util.Slog.Warn("image clipboard support unavailable", "error", err.Error())
+	}
+
 	// run migrations for our database
 	db := util.InitDb()
 	err = util.MigrateFS(db, migrations.FS, ".")
@@ -108,15 +113,11 @@ func main() {
 	appCtx := config.WithFlags(ctxWithConfig, &flags)
 	zone.NewGlobal()
 
-	p := tea.NewProgram(
-		views.NewMainView(db, appCtx),
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	)
+	p := tea.NewProgram(views.NewMainView(db, appCtx))
 
 	_, err = p.Run()
 	if err != nil {
-		if err == tea.ErrProgramPanic {
+		if errors.Is(err, tea.ErrProgramPanic) {
 			fmt.Fprintf(os.Stderr, "Program panicked: %v\n", err)
 			os.Exit(1)
 		}

@@ -2,20 +2,23 @@ package panes
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 const ResponseWaitingMsg = "Inference in progress • ctrl+s to stop"
@@ -35,27 +38,27 @@ type keyMap struct {
 var defaultKeyMap = keyMap{
 	insert: key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "enter insert mode")),
 	clear: key.NewBinding(
-		key.WithKeys(tea.KeyCtrlR.String()),
+		key.WithKeys("ctrl+r"),
 		key.WithHelp("ctrl+r", "clear prompt"),
 	),
 	exit: key.NewBinding(
-		key.WithKeys(tea.KeyEsc.String()),
+		key.WithKeys("esc"),
 		key.WithHelp("esc", "exit insert mode or editor mode"),
 	),
 	paste: key.NewBinding(
-		key.WithKeys(tea.KeyCtrlV.String()),
+		key.WithKeys("ctrl+v"),
 		key.WithHelp("ctrl+v", "insert text from clipboard"),
 	),
 	pasteCode: key.NewBinding(
-		key.WithKeys(tea.KeyCtrlS.String()),
+		key.WithKeys("ctrl+s"),
 		key.WithHelp("ctrl+s", "insert code block from clipboard"),
 	),
 	attach: key.NewBinding(
-		key.WithKeys(tea.KeyCtrlA.String()),
+		key.WithKeys("ctrl+a"),
 		key.WithHelp("ctrl+a", "attach an image"),
 	),
 	enter: key.NewBinding(
-		key.WithKeys(tea.KeyEnter.String()),
+		key.WithKeys("enter"),
 		key.WithHelp("enter", "send prompt"),
 	),
 }
@@ -90,6 +93,17 @@ type PromptPane struct {
 	terminalHeight int
 	ready          bool
 	mainCtx        context.Context
+
+	readClipboardImage func() []byte
+	readClipboardText  func() (string, error)
+	clipboardImageID   int
+	maxAttachmentBytes int
+}
+
+type clipboardPasteMsg struct {
+	image []byte
+	text  string
+	err   error
 }
 
 func NewPromptPane(ctx context.Context) PromptPane {
@@ -103,17 +117,22 @@ func NewPromptPane(ctx context.Context) PromptPane {
 
 	input := textinput.New()
 	input.Placeholder = InitializingMsg
-	input.PromptStyle = lipgloss.NewStyle().Foreground(colors.ActiveTabBorderColor)
+	inputStyles := input.Styles()
+	inputStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(colors.ActiveTabBorderColor)
+	inputStyles.Blurred.Prompt = inputStyles.Focused.Prompt
+	input.SetStyles(inputStyles)
 	input.CharLimit = 0
-	input.Width = 20000
+	input.SetWidth(20000)
 
 	textEditor := textarea.New()
 	textEditor.Placeholder = PlaceholderMsg
-	textEditor.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(colors.ActiveTabBorderColor)
-	textEditor.FocusedStyle.CursorLine.Background(lipgloss.NoColor{})
-	textEditor.FocusedStyle.EndOfBuffer = lipgloss.NewStyle().
+	textEditorStyles := textEditor.Styles()
+	textEditorStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(colors.ActiveTabBorderColor)
+	textEditorStyles.Focused.CursorLine = textEditorStyles.Focused.CursorLine.Background(lipgloss.NoColor{})
+	textEditorStyles.Focused.EndOfBuffer = lipgloss.NewStyle().
 		Foreground(colors.ActiveTabBorderColor)
-	textEditor.FocusedStyle.LineNumber = lipgloss.NewStyle().Foreground(colors.AccentColor)
+	textEditorStyles.Focused.LineNumber = lipgloss.NewStyle().Foreground(colors.AccentColor)
+	textEditor.SetStyles(textEditorStyles)
 
 	textEditor.EndOfBufferCharacter = rune(' ')
 	textEditor.ShowLineNumbers = true
@@ -135,24 +154,27 @@ func NewPromptPane(ctx context.Context) PromptPane {
 		Foreground(colors.HighlightColor)
 
 	return PromptPane{
-		mainCtx:        ctx,
-		operation:      util.NoOperaton,
-		keys:           defaultKeyMap,
-		viewMode:       util.NormalMode,
-		colors:         colors,
-		input:          input,
-		textEditor:     textEditor,
-		inputContainer: container,
-		inputMode:      util.PromptNormalMode,
-		isSessionIdle:  true,
-		isFocused:      true,
-		terminalWidth:  util.DefaultTerminalWidth,
-		terminalHeight: util.DefaultTerminalHeight,
+		mainCtx:            ctx,
+		operation:          util.NoOperaton,
+		keys:               defaultKeyMap,
+		viewMode:           util.NormalMode,
+		colors:             colors,
+		input:              input,
+		textEditor:         textEditor,
+		inputContainer:     container,
+		inputMode:          util.PromptNormalMode,
+		isSessionIdle:      true,
+		isFocused:          true,
+		terminalWidth:      util.DefaultTerminalWidth,
+		terminalHeight:     util.DefaultTerminalHeight,
+		readClipboardImage: util.ReadClipboardImage,
+		readClipboardText:  clipboard.ReadAll,
+		maxAttachmentBytes: config.MaxAttachmentSizeMb * 1024 * 1024,
 	}
 }
 
 func (p PromptPane) Init() tea.Cmd {
-	return p.input.Cursor.BlinkCmd()
+	return nil
 }
 
 func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
@@ -161,7 +183,9 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
-	cmds = append(cmds, p.processTextInputUpdates(msg))
+	if !p.isClipboardPasteKey(msg) {
+		cmds = append(cmds, p.processTextInputUpdates(msg))
+	}
 	cmds = append(cmds, p.processFilePickerUpdates(msg))
 
 	p.handlePlaceholder()
@@ -182,18 +206,21 @@ func (p PromptPane) Update(msg tea.Msg) (PromptPane, tea.Cmd) {
 	case util.FocusEvent:
 		p.handleFocusEvent(msg)
 
+	case clipboardPasteMsg:
+		cmds = append(cmds, p.handleClipboardPaste(msg))
+
 	case tea.WindowSizeMsg:
 		p.handleWindowSizeMsg(msg)
 
-	case tea.MouseMsg:
+	case tea.MouseClickMsg:
 		if !zone.Get("prompt_pane").InBounds(msg) || !p.isFocused {
 			break
 		}
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		if msg.Button == tea.MouseLeft {
 			cmds = append(cmds, p.keyInsert())
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if !p.ready {
 			break
 		}
@@ -241,11 +268,9 @@ func (p *PromptPane) keyInsert() tea.Cmd {
 	p.inputMode = util.PromptInsertMode
 	switch p.viewMode {
 	case util.TextEditMode:
-		p.textEditor.Focus()
-		return p.textEditor.Cursor.BlinkCmd()
+		return p.textEditor.Focus()
 	default:
-		p.input.Focus()
-		return p.input.Cursor.BlinkCmd()
+		return p.input.Focus()
 	}
 }
 
@@ -352,19 +377,84 @@ func (p *PromptPane) keyEnter() tea.Cmd {
 }
 
 func (p *PromptPane) keyPaste() tea.Cmd {
-	var cmd tea.Cmd
-	if p.isFocused {
-		buffer, _ := clipboard.ReadAll()
-		content := strings.TrimSpace(buffer)
+	if !p.isFocused || !p.isSessionIdle {
+		return nil
+	}
 
-		if p.viewMode != util.TextEditMode && strings.Contains(content, "\n") {
-			cmd = util.SwitchToEditor(content, util.NoOperaton, true)
-			p.pendingInsert = ""
+	readImage := p.readClipboardImage
+	readText := p.readClipboardText
+	allowImage := p.operation == util.NoOperaton && p.viewMode != util.FilePickerMode
+
+	return func() tea.Msg {
+		if allowImage && readImage != nil {
+			if image := readImage(); len(image) != 0 {
+				return clipboardPasteMsg{image: image}
+			}
 		}
 
-		clipboard.WriteAll(content)
+		if readText == nil {
+			return clipboardPasteMsg{}
+		}
+
+		text, err := readText()
+		return clipboardPasteMsg{text: text, err: err}
 	}
-	return cmd
+}
+
+func (p *PromptPane) isClipboardPasteKey(msg tea.Msg) bool {
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	return ok && key.Matches(keyMsg, p.keys.paste)
+}
+
+func (p *PromptPane) handleClipboardPaste(msg clipboardPasteMsg) tea.Cmd {
+	if msg.err != nil {
+		return nil
+	}
+
+	if len(msg.image) != 0 {
+		if !p.isFocused || !p.isSessionIdle ||
+			p.operation != util.NoOperaton || p.viewMode == util.FilePickerMode {
+			return nil
+		}
+
+		if len(msg.image) > p.maxAttachmentBytes {
+			return util.MakeErrorMsg(fmt.Sprintf(
+				"attachment exceeds allowed size limit of %d MB",
+				p.maxAttachmentBytes/(1024*1024),
+			))
+		}
+
+		p.clipboardImageID++
+
+		pendingAttachment := util.Attachment{
+			Type:    "img",
+			Path:    fmt.Sprintf("clipboard-image-%d.png", p.clipboardImageID),
+			Content: base64.StdEncoding.EncodeToString(msg.image),
+		}
+
+		if slices.ContainsFunc(p.attachments, func(a util.Attachment) bool {
+			return a.Content == pendingAttachment.Content
+		}) {
+			return nil
+		}
+
+		p.attachments = append(p.attachments, pendingAttachment)
+		return nil
+	}
+
+	content := strings.TrimSpace(msg.text)
+	if content == "" || p.inputMode != util.PromptInsertMode {
+		return nil
+	}
+
+	if p.viewMode != util.TextEditMode && strings.Contains(content, "\n") {
+		p.pendingInsert = ""
+		return util.SwitchToEditor(content, util.NoOperaton, true)
+	}
+
+	return func() tea.Msg {
+		return tea.PasteMsg{Content: content}
+	}
 }
 
 func (p *PromptPane) keyPasteCode() tea.Cmd {
@@ -442,7 +532,7 @@ func (p *PromptPane) processTextInputUpdates(msg tea.Msg) tea.Cmd {
 		default:
 			// TODO: maybe there is a way to adjust heihgt for long inputs?
 			// TODO: move to dimensions?
-			if lipgloss.Width(p.input.Value()) > p.input.Width-4 {
+			if lipgloss.Width(p.input.Value()) > p.input.Width()-4 {
 				p.input, cmd = p.input.Update(msg)
 				cmds = append(cmds, util.SwitchToEditor(p.input.Value(), util.NoOperaton, true))
 			} else {
@@ -465,13 +555,19 @@ func (p *PromptPane) handleFocusEvent(msg util.FocusEvent) {
 	if p.isFocused {
 		p.inputMode = util.PromptNormalMode
 		p.inputContainer = p.inputContainer.BorderForeground(p.colors.ActiveTabBorderColor)
-		p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.ActiveTabBorderColor)
+		styles := p.input.Styles()
+		styles.Focused.Prompt = styles.Focused.Prompt.Foreground(p.colors.ActiveTabBorderColor)
+		styles.Blurred.Prompt = styles.Blurred.Prompt.Foreground(p.colors.ActiveTabBorderColor)
+		p.input.SetStyles(styles)
 		return
 	}
 
 	p.inputMode = util.PromptNormalMode
 	p.inputContainer = p.inputContainer.BorderForeground(p.colors.NormalTabBorderColor)
-	p.input.PromptStyle = p.input.PromptStyle.Foreground(p.colors.NormalTabBorderColor)
+	styles := p.input.Styles()
+	styles.Focused.Prompt = styles.Focused.Prompt.Foreground(p.colors.NormalTabBorderColor)
+	styles.Blurred.Prompt = styles.Blurred.Prompt.Foreground(p.colors.NormalTabBorderColor)
+	p.input.SetStyles(styles)
 	p.input.Blur()
 }
 
@@ -488,10 +584,12 @@ func (p *PromptPane) handleWindowSizeMsg(msg tea.WindowSizeMsg) tea.Cmd {
 		p.textEditor.SetHeight(h)
 		p.textEditor.SetWidth(w)
 	default:
-		p.input.Width = w
+		p.input.SetWidth(w)
 	}
 
-	p.inputContainer = p.inputContainer.MaxWidth(p.terminalWidth).Width(w)
+	p.inputContainer = p.inputContainer.
+		MaxWidth(p.terminalWidth).
+		Width(w + p.inputContainer.GetHorizontalBorderSize())
 	return nil
 }
 
@@ -504,20 +602,25 @@ func (p *PromptPane) handleViewModeChange(msg util.ViewModeChanged) tea.Cmd {
 	p.viewMode = msg.Mode
 	p.inputMode = util.PromptNormalMode
 
-	w, _ := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
+	w, h := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 
 	switch p.viewMode {
 	case util.TextEditMode:
 		cmd = p.openTextEditor(currentInput, p.operation, false)
+		p.textEditor.SetHeight(h)
+		p.textEditor.SetWidth(w)
 
 	case util.FilePickerMode:
 		cmd = p.openFilePicker(prevMode, currentInput)
 
 	default:
 		cmd = p.openInputField(prevMode, currentInput)
+		p.input.SetWidth(w)
 	}
 
-	p.inputContainer = p.inputContainer.MaxWidth(p.terminalWidth).Width(w)
+	p.inputContainer = p.inputContainer.
+		MaxWidth(p.terminalWidth).
+		Width(w + p.inputContainer.GetHorizontalBorderSize())
 
 	return cmd
 }
@@ -538,7 +641,7 @@ func (p *PromptPane) getCurrentInput() string {
 func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
 	w, _ := util.CalcPromptPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 	if previousViewMode == util.TextEditMode {
-		p.input.Width = w - 2
+		p.input.SetWidth(w - 2)
 		p.textEditor.Blur()
 		p.textEditor.Reset()
 
@@ -553,10 +656,9 @@ func (p *PromptPane) openInputField(previousViewMode util.ViewMode, currentInput
 	}
 
 	inputLength := len(p.input.Value())
-	//p.input.Focus()
 	p.input.SetCursor(inputLength)
 	p.inputMode = util.PromptNormalMode
-	return nil //p.input.Cursor.BlinkCmd()
+	return nil
 }
 
 func (p *PromptPane) openFilePicker(previousViewMode util.ViewMode, currentInput string) tea.Cmd {
@@ -581,8 +683,7 @@ func (p *PromptPane) openTextEditor(content string, op util.Operation, isFocused
 
 	if isFocused {
 		p.inputMode = util.PromptInsertMode
-		p.textEditor.Focus()
-		return p.textEditor.Cursor.BlinkCmd()
+		return p.textEditor.Focus()
 	}
 
 	return nil
@@ -648,7 +749,7 @@ func (p *PromptPane) insertBufferContentAsCodeBlock() {
 	codeBlock := "\n```" + lang + "\n" + bufferContent + "\n```\n"
 
 	p.textEditor.SetValue(currentInput + codeBlock)
-	p.textEditor.SetCursor(0)
+	p.textEditor.SetCursorColumn(0)
 }
 
 func (p PromptPane) AllowFocusChange(isMouseEvent bool) bool {
@@ -689,7 +790,7 @@ func (p PromptPane) View() string {
 			content = p.input.View()
 		}
 
-		infoBlockContent := infoLabel.Render("Use ctrl+a to attach an image")
+		infoBlockContent := infoLabel.Render("Use ctrl+a to select or ctrl+v to paste an image")
 
 		if len(p.attachments) != 0 {
 			imageBlocks := []string{infoPrefix.Render("Attachments: ")}

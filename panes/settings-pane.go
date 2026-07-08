@@ -6,18 +6,19 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
 	"github.com/BalanceBalls/nekot/clients"
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 type settingsViewMode int
@@ -72,14 +73,14 @@ var defaultSettingsKeyMap = settingsKeyMap{
 		key.WithHelp("ctrl+r", "ctrl+r - reset preset"),
 	),
 	presetsMenu: key.NewBinding(
-		key.WithKeys("]", tea.KeyRight.String()),
+		key.WithKeys("]", "right"),
 		key.WithHelp("]", "presets menu"),
 	),
 	goBack: key.NewBinding(
-		key.WithKeys(tea.KeyEsc.String(), "[", tea.KeyLeft.String()),
+		key.WithKeys("esc", "[", "left"),
 		key.WithHelp("esc, [", "go back"),
 	),
-	choose: key.NewBinding(key.WithKeys(tea.KeyEnter.String())),
+	choose: key.NewBinding(key.WithKeys("enter")),
 	enableWebSearch: key.NewBinding(
 		key.WithKeys("ctrl+w"),
 		key.WithHelp("ctrl+w", "toggle web search"),
@@ -131,7 +132,7 @@ var activeHeader = lipgloss.NewStyle().
 	Bold(true).
 	MarginLeft(util.ListItemMarginLeft)
 
-var inactiveHeader = list.DefaultStyles().
+var inactiveHeader = list.DefaultStyles(compat.HasDarkBackground).
 	NoItems.
 	Bold(true).
 	MarginLeft(util.ListItemMarginLeft)
@@ -272,7 +273,9 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		p.terminalWidth = msg.Width
 		p.terminalHeight = msg.Height
 		w, h := util.CalcSettingsPaneSize(p.terminalWidth, p.terminalHeight)
-		p.container = p.container.Width(w).Height(h)
+		p.container = p.container.
+			Width(w + p.container.GetHorizontalBorderSize()).
+			Height(h + p.container.GetVerticalBorderSize())
 
 	case spinner.TickMsg:
 		p.spinner, cmd = p.spinner.Update(msg)
@@ -303,12 +306,12 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		p.updateModelsList(msg.Models)
 		return p, nil
 
-	case tea.MouseMsg:
+	case tea.MouseReleaseMsg:
 		if !p.isFocused {
 			break
 		}
 
-		if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
+		if msg.Button == tea.MouseLeft {
 			switch p.viewMode {
 			case defaultView:
 				cmd = p.handleViewModeMouse(msg)
@@ -322,7 +325,7 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 			}
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if p.initMode {
 			break
 		}
@@ -374,13 +377,14 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 
 func (p SettingsPane) View() string {
 	w, h := util.CalcSettingsPaneSize(p.terminalWidth, p.terminalHeight)
+	containerWidth := w + p.container.GetHorizontalBorderSize()
 	defaultHeader := lipgloss.JoinHorizontal(
 		lipgloss.Left,
 		zone.Mark("set_p_settings_tab", activeHeader.Render("[Settings]")),
 		zone.Mark("set_p_presets_tab", inactiveHeader.Render("Presets")),
 	)
 	if p.viewMode == modelsView {
-		return zone.Mark("settings_pane", p.container.Width(w).Render(
+		return zone.Mark("settings_pane", p.container.Width(containerWidth).Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				defaultHeader,
 				p.modelPicker.View(),
@@ -389,7 +393,7 @@ func (p SettingsPane) View() string {
 	}
 
 	if p.viewMode == presetsView {
-		return zone.Mark("settings_pane", p.container.Width(w).Render(
+		return zone.Mark("settings_pane", p.container.Width(containerWidth).Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				lipgloss.JoinHorizontal(
 					lipgloss.Left,
@@ -419,7 +423,9 @@ func (p SettingsPane) View() string {
 
 	modelName := util.TrimListItem(
 		p.settings.Model,
-		util.CalcMaxSettingItemWidth(p.container.GetWidth()))
+		util.CalcMaxSettingItemWidth(
+			p.container.GetWidth()-p.container.GetHorizontalBorderSize(),
+		))
 	modelRowContent := p.listItemRenderer("(m) model", modelName)
 	if p.loading {
 		modelRowContent = p.listItemRenderer(p.spinner.View(), "")
@@ -455,7 +461,7 @@ func (p SettingsPane) View() string {
 		borderColor = p.colors.ActiveTabBorderColor
 	}
 
-	rendered := p.container.Width(w).BorderForeground(borderColor).Render(
+	rendered := p.container.Width(containerWidth).BorderForeground(borderColor).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
 			defaultHeader,
 			lipgloss.NewStyle().Height(listItemsHeight).Render(

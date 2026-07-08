@@ -6,25 +6,25 @@ import (
 	"strconv"
 	"time"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 const floatPrescision = 32
 
-func (p *SettingsPane) handlePresetModeMouse(msg tea.MouseMsg) tea.Cmd {
+func (p *SettingsPane) handlePresetModeMouse(msg tea.MouseReleaseMsg) tea.Cmd {
 	if zone.Get("set_p_settings_tab").InBounds(msg) && p.viewMode == presetsView {
 		p.viewMode = defaultView
 	}
 
-	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft && p.viewMode == presetsView {
+	if msg.Button == tea.MouseLeft && p.viewMode == presetsView {
 		for _, listItem := range p.presetPicker.VisibleItems() {
 			v, _ := listItem.(components.PresetsListItem)
 			if zone.Get(v.Id).InBounds(msg) {
@@ -36,7 +36,7 @@ func (p *SettingsPane) handlePresetModeMouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
-func (p *SettingsPane) handlePresetMode(msg tea.KeyMsg) tea.Cmd {
+func (p *SettingsPane) handlePresetMode(msg tea.KeyPressMsg) tea.Cmd {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -48,7 +48,7 @@ func (p *SettingsPane) handlePresetMode(msg tea.KeyMsg) tea.Cmd {
 
 	switch {
 	case key.Matches(msg, p.keyMap.goBack):
-		if msg.String() == tea.KeyLeft.String() && !p.presetPicker.IsFirstPage() {
+		if msg.String() == "left" && !p.presetPicker.IsFirstPage() {
 			return nil
 		}
 
@@ -81,12 +81,12 @@ func (p *SettingsPane) selectPreset(presetId int) tea.Cmd {
 	return settings.MakeSettingsUpdateMsg(p.settings, nil)
 }
 
-func (p *SettingsPane) handleModelModeMouse(msg tea.MouseMsg) tea.Cmd {
+func (p *SettingsPane) handleModelModeMouse(msg tea.MouseReleaseMsg) tea.Cmd {
 	if zone.Get("set_p_presets_tab").InBounds(msg) && p.viewMode == modelsView {
 		return p.switchToPresets()
 	}
 
-	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft && p.viewMode == modelsView {
+	if msg.Button == tea.MouseLeft && p.viewMode == modelsView {
 		for _, listItem := range p.modelPicker.VisibleItems() {
 			v, _ := listItem.(components.ModelsListItem)
 			if zone.Get(v.Id).InBounds(msg) {
@@ -98,7 +98,7 @@ func (p *SettingsPane) handleModelModeMouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
-func (p *SettingsPane) handleModelMode(msg tea.KeyMsg) tea.Cmd {
+func (p *SettingsPane) handleModelMode(msg tea.KeyPressMsg) tea.Cmd {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -108,7 +108,7 @@ func (p *SettingsPane) handleModelMode(msg tea.KeyMsg) tea.Cmd {
 		return tea.Batch(cmds...)
 	}
 
-	switch msg.Type {
+	switch msg.Code {
 	case tea.KeyEsc:
 		p.viewMode = defaultView
 		return cmd
@@ -137,7 +137,7 @@ func (p *SettingsPane) selectModel(model string) tea.Cmd {
 	return settings.MakeSettingsUpdateMsg(p.settings, nil)
 }
 
-func (p *SettingsPane) handleViewModeMouse(msg tea.MouseMsg) tea.Cmd {
+func (p *SettingsPane) handleViewModeMouse(msg tea.MouseReleaseMsg) tea.Cmd {
 	if zone.Get("set_p_presets_tab").InBounds(msg) && p.viewMode == defaultView {
 		return p.switchToPresets()
 	}
@@ -169,7 +169,7 @@ func (p *SettingsPane) handleViewModeMouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
-func (p *SettingsPane) handleViewMode(msg tea.KeyMsg) tea.Cmd {
+func (p *SettingsPane) handleViewMode(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 
 	switch {
@@ -233,21 +233,27 @@ func (p *SettingsPane) switchToModelsList() tea.Cmd {
 
 func (p *SettingsPane) configureInput(title string, validator func(str string) error, mode settingsChangeMode) tea.Cmd {
 	ti := textinput.New()
-	ti.PromptStyle = lipgloss.NewStyle().PaddingLeft(util.DefaultElementsPadding)
+	styles := ti.Styles()
+	styles.Focused.Prompt = lipgloss.NewStyle().PaddingLeft(util.DefaultElementsPadding)
+	styles.Blurred.Prompt = styles.Focused.Prompt
+	ti.SetStyles(styles)
 	p.textInput = ti
 	p.textInput.Placeholder = title
-	p.textInput.Width = p.container.GetWidth() - util.InputContainerDelta
+	p.textInput.SetWidth(
+		p.container.GetWidth() -
+			p.container.GetHorizontalBorderSize() -
+			util.InputContainerDelta,
+	)
 	p.changeMode = mode
-	p.textInput.Focus()
 	p.textInput.Validate = validator
-	return p.textInput.Cursor.BlinkCmd()
+	return p.textInput.Focus()
 }
 
-func (p *SettingsPane) handleSettingsUpdate(msg tea.KeyMsg) tea.Cmd {
+func (p *SettingsPane) handleSettingsUpdate(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
-	switch msg.Type {
+	switch msg.Code {
 
 	case tea.KeyEsc:
 		p.viewMode = defaultView
@@ -306,7 +312,6 @@ func (p *SettingsPane) handleSettingsUpdate(msg tea.KeyMsg) tea.Cmd {
 		cmds = append(cmds, settings.MakeSettingsUpdateMsg(p.settings, nil))
 	}
 
-	cmds = append(cmds, p.textInput.Cursor.BlinkCmd())
 	return tea.Batch(cmds...)
 }
 

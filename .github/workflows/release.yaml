@@ -35,9 +35,6 @@ jobs:
 
       - run: git fetch --prune --unshallow
 
-      - name: setup dependencies
-        uses: actions/setup-go@v2
-  
       - name: setup release environment
         run: |
           echo "HOMEBREW_APP_NAME=${HOMEBREW_APP_NAME}" > .release-env
@@ -47,6 +44,8 @@ jobs:
 
       - name: Set up Go
         uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -71,9 +70,6 @@ jobs:
 
       - run: git fetch --prune --unshallow
 
-      - name: setup dependencies
-        uses: actions/setup-go@v2
-
       - name: setup release environment
         run: |
           echo "CHOCO_API_KEY=${{ secrets.CHOCO_API_KEY }}" >> .release-env
@@ -81,6 +77,8 @@ jobs:
 
       - name: Set up Go
         uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -106,9 +104,6 @@ jobs:
 
       - run: git fetch --prune --unshallow
 
-      - name: setup dependencies
-        uses: actions/setup-go@v2
-
       - name: setup release environment
         run: |
           echo "GITHUB_TOKEN=${{ secrets.PUBLISHER_TOKEN }}" >> .release-env
@@ -117,6 +112,8 @@ jobs:
 
       - name: Set up Go
         uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

@@ -7,16 +7,16 @@ import (
 	"sync"
 	"time"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/sessions"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 type displayMode int
@@ -37,7 +37,7 @@ type chatPaneKeyMap struct {
 
 var defaultChatPaneKeyMap = chatPaneKeyMap{
 	exit: key.NewBinding(
-		key.WithKeys(tea.KeyEsc.String()),
+		key.WithKeys("esc"),
 		key.WithHelp("esc", "exit insert mode or editor mode"),
 	),
 	copyLast: key.NewBinding(
@@ -49,7 +49,7 @@ var defaultChatPaneKeyMap = chatPaneKeyMap{
 		key.WithHelp("Y", "copy all chat to clipboard"),
 	),
 	selectionMode: key.NewBinding(
-		key.WithKeys(tea.KeySpace.String(), "v", "V"),
+		key.WithKeys("space", "v", "V"),
 		key.WithHelp("<space>, v, V", "enter selection mode"),
 	),
 	goUp: key.NewBinding(
@@ -111,7 +111,7 @@ var infoBarStyle = lipgloss.NewStyle().
 	BorderStyle(lipgloss.HiddenBorder())
 
 func NewChatPane(ctx context.Context, w, h int) ChatPane {
-	chatView := viewport.New(w, h)
+	chatView := viewport.New(viewport.WithWidth(w), viewport.WithHeight(h))
 	msgChan := make(chan util.ProcessApiCompletionResponse)
 
 	config, ok := config.FromContext(ctx)
@@ -124,8 +124,8 @@ func NewChatPane(ctx context.Context, w, h int) ChatPane {
 	defaultChatContent := util.GetManual(w, colors)
 	chatView.SetContent(defaultChatContent)
 	chatContainerStyle = chatContainerStyle.
-		Width(w).
-		Height(h).
+		Width(w + chatContainerStyle.GetHorizontalBorderSize()).
+		Height(h + chatContainerStyle.GetVerticalBorderSize()).
 		BorderForeground(colors.NormalTabBorderColor)
 
 	infoBarStyle = infoBarStyle.
@@ -182,19 +182,11 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case util.ViewModeChanged:
-		if p.viewMode == util.HelpMode {
-			p.viewMode = msg.Mode
-			p = p.handleWindowResize(p.terminalWidth, p.terminalHeight)
-			break
-		}
-
 		p.viewMode = msg.Mode
-		return p, func() tea.Msg {
-			return tea.WindowSizeMsg{
-				Width:  p.terminalWidth,
-				Height: p.terminalHeight,
-			}
+		if p.viewMode != util.HelpMode {
+			p = p.handleWindowResize(p.terminalWidth, p.terminalHeight)
 		}
+		return p, nil
 
 	case util.FocusEvent:
 		p.isChatContainerFocused = msg.IsFocused
@@ -249,7 +241,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			return p, renderingPulsar
 		}
 
-		paneWidth := p.chatContainer.GetWidth()
+		paneWidth := p.GetWidth()
 		newContent := p.chunksBuffer[len(p.chunksBuffer)-1]
 
 		p.chunksBuffer = []string{}
@@ -259,7 +251,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 		renderWindow := p.responseBuffer
 
-		chatHeightDelta := p.chatView.Height + 20 // arbitrary , just my emperical guess
+		chatHeightDelta := p.chatView.Height() + 20 // arbitrary , just my emperical guess
 		bufferLines := strings.Split(renderWindow, "\n")
 
 		showOldMessages := true
@@ -290,7 +282,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 
 	case sessions.ResponseChunkProcessed:
 		if len(p.sessionContent) != len(msg.PreviousMsgArray) {
-			paneWidth := p.chatContainer.GetWidth()
+			paneWidth := p.GetWidth()
 			p.renderedHistory = util.GetMessagesAsPrettyString(
 				msg.PreviousMsgArray,
 				paneWidth,
@@ -312,28 +304,29 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		p = p.handleWindowResize(msg.Width, msg.Height)
 
-	case tea.MouseMsg:
+	case tea.MouseWheelMsg:
 		if p.IsSelectionMode() && p.selectionView.IsCharSelecting() {
-			if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+			if msg.Button == tea.MouseWheelUp || msg.Button == tea.MouseWheelDown {
 				return p, nil
 			}
 		}
 
-		if msg.Button == tea.MouseButtonWheelUp && p.isChatContainerFocused {
+		if msg.Button == tea.MouseWheelUp && p.isChatContainerFocused {
 			p.chatView.ScrollUp(3)
 			return p, nil
 		}
 
-		if msg.Button == tea.MouseButtonWheelDown && p.isChatContainerFocused {
+		if msg.Button == tea.MouseWheelDown && p.isChatContainerFocused {
 			p.chatView.ScrollDown(3)
 			return p, nil
 		}
 
+	case tea.MouseClickMsg:
 		if !p.isChatContainerFocused {
 			break
 		}
 
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		if msg.Button == tea.MouseLeft {
 			if !p.IsSelectionMode() && len(p.sessionContent) > 0 {
 				p.enterSelectionMode()
 				enableUpdateOfViewport = false
@@ -343,7 +336,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			}
 		}
 
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonRight {
+		if msg.Button == tea.MouseRight {
 			if !p.IsSelectionMode() && len(p.sessionContent) > 0 {
 				p.enterSelectionMode()
 				enableUpdateOfViewport = false
@@ -353,7 +346,7 @@ func (p ChatPane) Update(msg tea.Msg) (ChatPane, tea.Cmd) {
 			}
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if !p.isChatContainerFocused {
 			enableUpdateOfViewport = false
 		}
@@ -438,7 +431,7 @@ func (p *ChatPane) enterSelectionMode() {
 	p.chatContainer = p.chatContainer.BorderForeground(p.colors.AccentColor)
 	renderedContent := util.GetVisualModeView(
 		p.sessionContent,
-		p.chatView.Width,
+		p.chatView.Width(),
 		p.colors,
 		p.currentSettings)
 	mouseTopOffset := p.chatContainer.GetMarginTop() + p.chatContainer.GetBorderTopSize() + p.chatContainer.GetPaddingTop()
@@ -446,7 +439,7 @@ func (p *ChatPane) enterSelectionMode() {
 	p.selectionView = components.NewTextSelector(
 		p.terminalWidth,
 		p.terminalHeight,
-		p.chatView.YOffset,
+		p.chatView.YOffset(),
 		mouseTopOffset,
 		mouseLeftOffset,
 		renderedContent,
@@ -502,7 +495,7 @@ func (p ChatPane) View() string {
 		infoRow := p.renderSelectionViewInfoRow()
 		selectionView := p.selectionView.View()
 
-		infoRowStyle := lipgloss.NewStyle().MarginTop(p.chatContainer.GetHeight() - lipgloss.Height(selectionView) - 2)
+		infoRowStyle := lipgloss.NewStyle().MarginTop(p.GetHeight() - lipgloss.Height(selectionView) - 2)
 		content := lipgloss.JoinVertical(lipgloss.Left, selectionView, infoRowStyle.Render(infoRow))
 		return zone.Mark("chat_pane", p.chatContainer.Render(content))
 	}
@@ -524,20 +517,24 @@ func (p ChatPane) View() string {
 
 func (p ChatPane) DisplayError(error string) string {
 	return p.chatContainer.Render(
-		util.RenderErrorMessage(error, p.chatContainer.GetWidth(), p.colors),
+		util.RenderErrorMessage(error, p.GetWidth(), p.colors),
 	)
 }
 
-func (p ChatPane) SetPaneWitdth(w int) {
-	p.chatContainer.Width(w)
+func (p *ChatPane) SetPaneWitdth(w int) {
+	p.chatContainer = p.chatContainer.Width(w + p.chatContainer.GetHorizontalBorderSize())
 }
 
-func (p ChatPane) SetPaneHeight(h int) {
-	p.chatContainer.Height(h)
+func (p *ChatPane) SetPaneHeight(h int) {
+	p.chatContainer = p.chatContainer.Height(h + p.chatContainer.GetVerticalBorderSize())
 }
 
 func (p ChatPane) GetWidth() int {
-	return p.chatContainer.GetWidth()
+	return p.chatContainer.GetWidth() - p.chatContainer.GetHorizontalBorderSize()
+}
+
+func (p ChatPane) GetHeight() int {
+	return p.chatContainer.GetHeight() - p.chatContainer.GetVerticalBorderSize()
 }
 
 func (p ChatPane) renderInfoRow() string {
@@ -563,7 +560,7 @@ func (p ChatPane) renderInfoRow() string {
 		info += " | [Reasoning hidden]"
 	}
 
-	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
+	infoBar := infoBarStyle.Width(p.chatView.Width()).Render(info)
 	return infoBar
 }
 
@@ -593,14 +590,17 @@ func (p ChatPane) renderSelectionViewInfoRow() string {
 		info += "▐ Press 'space' to start selecting"
 	}
 
-	infoBar := infoBarStyle.Width(p.chatView.Width).Render(info)
+	infoBar := infoBarStyle.Width(p.chatView.Width()).Render(info)
 	return infoBar
 }
 
 func (p ChatPane) initializePane(session sessions.Session) (ChatPane, tea.Cmd) {
 	paneWidth, paneHeight := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
 	if !p.isChatPaneReady {
-		p.chatView = viewport.New(paneWidth, paneHeight-2)
+		p.chatView = viewport.New(
+			viewport.WithWidth(paneWidth),
+			viewport.WithHeight(paneHeight-2),
+		)
 		p.chatView.MouseWheelEnabled = false
 
 		p.isChatPaneReady = true
@@ -655,9 +655,11 @@ func (p ChatPane) handleWindowResize(width int, height int) ChatPane {
 	p.terminalHeight = height
 
 	w, h := util.CalcChatPaneSize(p.terminalWidth, p.terminalHeight, p.viewMode)
-	p.chatView.Height = h - 2
-	p.chatView.Width = w
-	p.chatContainer = p.chatContainer.Width(w).Height(h)
+	p.chatView.SetHeight(h - 2)
+	p.chatView.SetWidth(w)
+	p.chatContainer = p.chatContainer.
+		Width(w + p.chatContainer.GetHorizontalBorderSize()).
+		Height(h + p.chatContainer.GetVerticalBorderSize())
 
 	if p.viewMode == util.NormalMode {
 		p = p.displaySession(p.sessionContent, w, false)

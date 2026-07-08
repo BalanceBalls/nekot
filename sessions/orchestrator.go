@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/clients"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/extensions/websearch"
@@ -16,7 +17,6 @@ import (
 	"github.com/BalanceBalls/nekot/user"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/atotto/clipboard"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 type Orchestrator struct {
@@ -217,10 +217,34 @@ func (m *Orchestrator) ResumeCompletion(
 ) tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if err := m.prepareToolContinuation(); err != nil {
+		return m.resetStateAndCreateError(err.Error())
+	}
+
 	m.setProcessingContext(ctx)
-	updatedSession, _ := m.sessionService.GetSession(m.CurrentSessionID)
+	updatedSession, err := m.sessionService.GetSession(m.CurrentSessionID)
+	if err != nil {
+		return m.resetStateAndCreateError(err.Error())
+	}
 	m.setCurrentSessionData(updatedSession)
-	return m.InferenceClient.RequestCompletion(m.processingCtx, updatedSession.Messages, m.Settings, resp)
+
+	return tea.Batch(
+		util.SendProcessingStateChangedMsg(util.ProcessingChunks),
+		m.InferenceClient.RequestCompletion(m.processingCtx, updatedSession.Messages, m.Settings, resp),
+	)
+}
+
+func (m *Orchestrator) prepareToolContinuation() error {
+	if m.ResponseProcessingState != util.AwaitingToolCallResult {
+		return fmt.Errorf(
+			"cannot resume tool continuation from processing state %d",
+			m.ResponseProcessingState,
+		)
+	}
+
+	m.ResponseProcessingState = util.ProcessingChunks
+	return nil
 }
 
 func (m *Orchestrator) Cancel() {

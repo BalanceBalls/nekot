@@ -5,18 +5,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"os"
+	"iter"
 	"path/filepath"
-	"slices"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/util"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/googleapi"
-	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
+	"google.golang.org/genai"
 )
 
 const modelNamePrefix = "models/"
@@ -65,133 +61,177 @@ func (c GeminiClient) RequestCompletion(
 ) tea.Cmd {
 
 	return func() tea.Msg {
-		config, ok := config.FromContext(ctx)
+		cfg, ok := config.FromContext(ctx)
 		if !ok {
 			fmt.Println("No config found")
 			panic("No config found in context")
 		}
 
-		client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+		client, err := newGeminiAPIClient(ctx, *cfg)
 		if err != nil {
 			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: util.ChunkIndexStart, Err: err, Final: true})
 			return nil
 		}
-		defer client.Close()
 
-		util.Slog.Debug("constructing message", "model", modelSettings.Model)
-
-		model := client.GenerativeModel(modelNamePrefix + modelSettings.Model)
-
-		if modelSettings.WebSearchEnabled {
-			model.Tools = []*genai.Tool{webSearchTool}
-		}
-
-		util.Slog.Debug("added tools", "tools", model.Tools)
-
-		setParams(model, *config, modelSettings)
-
-		cs := model.StartChat()
-		cs.History, err = buildChatHistory(chatMsgs, *config.IncludeReasoningTokensInContext)
+		contents, generationConfig, err := prepareGeminiCompletionRequest(chatMsgs, *cfg, modelSettings)
 		if err != nil {
 			return util.MakeErrorMsg(err.Error())
 		}
 
-		iter := cs.SendMessageStream(ctx)
-		processResultID := util.GetNextProcessResultId(chatMsgs)
-
-		var citations []string
-		for {
-			resp, err := iter.Next()
-			if err == iterator.Done {
-				util.Slog.Debug(
-					"Gemini: Iterator done. processResultID: ",
-					"result id",
-					processResultID,
-				)
-				sendCompensationChunk(ctx, resultChan, processResultID)
-				return nil
-			}
-
-			if err != nil {
-				var apiErr *googleapi.Error
-				if errors.As(err, &apiErr) {
-					util.Slog.Error(
-						"Gemini: Encountered error while receiving response",
-						"error",
-						apiErr.Body,
-					)
-					util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: apiErr})
-				} else {
-					util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: err})
-				}
-				break
-			}
-
-			result, err := processResponseChunk(resp, processResultID)
-			if err != nil {
-				util.Slog.Error("Gemini: Encountered error during chunks processing", "error", err)
-				util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: err})
-				break
-			}
-
-			citations = append(citations, result.citations...)
-			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
-				ID:     processResultID,
-				Result: result.chunk,
-				Err:    nil,
-			})
-
-			processResultID++
-			if result.isToolCall {
-				break
-			}
-
-			if result.isFinal {
-				if len(citations) > 0 {
-					sendCitationsChunk(ctx, resultChan, processResultID, citations)
-					processResultID++
-				}
-
-				sendCompensationChunk(ctx, resultChan, processResultID)
-				break
-			}
-		}
-
-		return nil
+		stream := client.Models.GenerateContentStream(
+			ctx,
+			modelSettings.Model,
+			contents,
+			generationConfig,
+		)
+		return processGeminiCompletionStream(
+			ctx,
+			stream,
+			resultChan,
+			util.GetNextProcessResultId(chatMsgs),
+		)
 	}
 }
 
+func newGeminiAPIClient(ctx context.Context, cfg config.Config) (*genai.Client, error) {
+	return genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  cfg.ResolvedAPIKey(),
+		Backend: genai.BackendGeminiAPI,
+	})
+}
+
+func prepareGeminiCompletionRequest(
+	chatMsgs []util.LocalStoreMessage,
+	cfg config.Config,
+	modelSettings util.Settings,
+) ([]*genai.Content, *genai.GenerateContentConfig, error) {
+	util.Slog.Debug("constructing message", "model", modelSettings.Model)
+
+	generationConfig := buildGenerateContentConfig(cfg, modelSettings)
+	util.Slog.Debug("added tools", "tools", generationConfig.Tools)
+
+	contents, err := buildChatHistory(chatMsgs, *cfg.IncludeReasoningTokensInContext)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return contents, generationConfig, nil
+}
+
+func processGeminiCompletionStream(
+	ctx context.Context,
+	stream iter.Seq2[*genai.GenerateContentResponse, error],
+	resultChan chan util.ProcessApiCompletionResponse,
+	processResultID int,
+) tea.Msg {
+	var citations []string
+	for resp, err := range stream {
+		if err != nil {
+			writeGeminiStreamError(ctx, resultChan, processResultID, err)
+			return nil
+		}
+
+		result, err := processResponseChunk(resp, processResultID)
+		if err != nil {
+			util.Slog.Error("Gemini: Encountered error during chunks processing", "error", err)
+			util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: processResultID, Err: err})
+			break
+		}
+
+		citations = append(citations, result.citations...)
+		util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
+			ID:     processResultID,
+			Result: result.chunk,
+			Err:    nil,
+		})
+
+		processResultID++
+		if result.isToolCall {
+			return nil
+		}
+
+		if result.isFinal {
+			sendFinalGeminiChunks(ctx, resultChan, processResultID, citations)
+			return nil
+		}
+	}
+
+	util.Slog.Debug(
+		"Gemini: stream done",
+		"result id",
+		processResultID,
+	)
+	sendCompensationChunk(ctx, resultChan, processResultID)
+	return nil
+}
+
+func writeGeminiStreamError(
+	ctx context.Context,
+	resultChan chan util.ProcessApiCompletionResponse,
+	id int,
+	err error,
+) {
+	var apiErr genai.APIError
+	if errors.As(err, &apiErr) {
+		util.Slog.Error(
+			"Gemini: Encountered error while receiving response",
+			"error",
+			apiErr.Message,
+		)
+		util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: id, Err: apiErr})
+		return
+	}
+
+	util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{ID: id, Err: err})
+}
+
+func sendFinalGeminiChunks(
+	ctx context.Context,
+	resultChan chan util.ProcessApiCompletionResponse,
+	processResultID int,
+	citations []string,
+) {
+	if len(citations) > 0 {
+		sendCitationsChunk(ctx, resultChan, processResultID, citations)
+		processResultID++
+	}
+
+	sendCompensationChunk(ctx, resultChan, processResultID)
+}
+
 func (c GeminiClient) RequestModelsList(ctx context.Context) util.ProcessModelsResponse {
-	client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+	config, ok := config.FromContext(ctx)
+	if !ok {
+		return util.ProcessModelsResponse{Err: fmt.Errorf("no config found in context")}
+	}
+
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  config.ResolvedAPIKey(),
+		Backend: genai.BackendGeminiAPI,
+	})
 	if err != nil {
 		return util.ProcessModelsResponse{Err: err}
 	}
-	defer client.Close()
-
-	modelsIter := client.ListModels(ctx)
-
-	if ctx.Err() == context.DeadlineExceeded {
-		return util.ProcessModelsResponse{Err: errors.New("timed out during fetching models")}
-	}
 
 	var modelsList []util.ModelDescription
-	for {
-		model, err := modelsIter.Next()
-		if err == iterator.Done {
-			return util.ProcessModelsResponse{
-				Result: util.ModelsListResponse{
-					Data: modelsList,
-				},
-				Err: nil,
-			}
-		}
-
+	for model, err := range client.Models.All(ctx) {
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) ||
+				errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return util.ProcessModelsResponse{Err: errors.New("timed out during fetching models")}
+			}
 			return util.ProcessModelsResponse{Err: err}
 		}
 
 		formattedName := strings.TrimPrefix(model.Name, modelNamePrefix)
 		modelsList = append(modelsList, util.ModelDescription{Id: formattedName})
+	}
+
+	return util.ProcessModelsResponse{
+		Result: util.ModelsListResponse{
+			Data: modelsList,
+		},
+		Err: nil,
 	}
 }
 
@@ -204,24 +244,13 @@ func sendCitationsChunk(
 	id int,
 	citations []string,
 ) {
-	var chunk util.CompletionChunk
-	chunk.ID = fmt.Sprint(id)
-
 	citations = util.RemoveDuplicates(citations)
 	citationsString := strings.Join(citations, "\n")
 	content := "\n\n`Sources`\n" + citationsString
 
-	choice := util.Choice{
-		Index: id,
-		Delta: map[string]any{
-			"content": content,
-		},
-	}
-
-	chunk.Choices = []util.Choice{choice}
 	util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
 		ID:     id,
-		Result: chunk,
+		Result: singleChoiceChunk(id, content, ""),
 		Final:  false,
 	})
 }
@@ -230,51 +259,48 @@ func sendCitationsChunk(
 // Gemeni sends finish reason with the last response, and openai apis send finish reason with an empty response
 func sendCompensationChunk(ctx context.Context, resultChan chan util.ProcessApiCompletionResponse, id int) {
 	util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
-		ID: id,
-		Result: util.CompletionChunk{
-			ID: fmt.Sprint(id),
-			Choices: []util.Choice{
-				{
-					Index: id,
-					Delta: map[string]any{
-						"content": "",
-					},
-					FinishReason: "stop",
-				},
-			},
-		},
-		Final: true,
+		ID:     id,
+		Result: singleChoiceChunk(id, "", "stop"),
+		Final:  true,
 	})
 
 	nextId := id + 1
 	util.WriteToResponseChannel(ctx, resultChan, util.ProcessApiCompletionResponse{
-		ID: nextId,
-		Result: util.CompletionChunk{
-			ID: fmt.Sprint(nextId),
-			Choices: []util.Choice{
-				{
-					Index: nextId,
-					Delta: map[string]any{
-						"content": "",
-					},
-					FinishReason: "",
-				},
-			},
-		},
-		Final: true,
+		ID:     nextId,
+		Result: singleChoiceChunk(nextId, "", ""),
+		Final:  true,
 	})
 	util.Slog.Debug("Gemini: compensation chunks sent")
 }
 
-func setParams(model *genai.GenerativeModel, cfg config.Config, settings util.Settings) {
-	model.SetMaxOutputTokens(int32(settings.MaxTokens))
+func singleChoiceChunk(id int, content, finishReason string) util.CompletionChunk {
+	return util.CompletionChunk{
+		ID: fmt.Sprint(id),
+		Choices: []util.Choice{
+			{
+				Index:        id,
+				Delta:        contentDelta(content),
+				FinishReason: finishReason,
+			},
+		},
+	}
+}
+
+func buildGenerateContentConfig(cfg config.Config, settings util.Settings) *genai.GenerateContentConfig {
+	generationConfig := &genai.GenerateContentConfig{
+		MaxOutputTokens: int32(settings.MaxTokens),
+	}
 
 	if settings.TopP != nil {
-		model.SetTopP(*settings.TopP)
+		generationConfig.TopP = settings.TopP
 	}
 
 	if settings.Temperature != nil {
-		model.SetTemperature(*settings.Temperature)
+		generationConfig.Temperature = settings.Temperature
+	}
+
+	if settings.WebSearchEnabled {
+		generationConfig.Tools = []*genai.Tool{webSearchTool}
 	}
 
 	if cfg.SystemMessage != "" || (settings.SystemPrompt != nil && *settings.SystemPrompt != "") {
@@ -282,119 +308,185 @@ func setParams(model *genai.GenerativeModel, cfg config.Config, settings util.Se
 		if settings.SystemPrompt != nil && *settings.SystemPrompt != "" {
 			systemMsg = *settings.SystemPrompt
 		}
-		model.SystemInstruction = genai.NewUserContent(genai.Text(systemMsg))
+		generationConfig.SystemInstruction = genai.NewContentFromText(systemMsg, genai.RoleUser)
 	}
+
+	return generationConfig
 }
 
 // Maps gemini response model to the openai response model
 func processResponseChunk(response *genai.GenerateContentResponse, id int) (processedChunk, error) {
-	var chunk util.CompletionChunk
-	chunk.ID = fmt.Sprint(id)
-
-	result := processedChunk{}
+	result := processedChunk{
+		chunk: util.CompletionChunk{ID: fmt.Sprint(id)},
+	}
 	for _, candidate := range response.Candidates {
 		if candidate.Content == nil {
 			break
 		}
 
-		finishReason, err := handleFinishReason(candidate.FinishReason)
-
+		choice, err := processCandidate(candidate, &result)
 		if err != nil {
 			return result, err
 		}
 
-		choice := util.Choice{
-			Index:        int(candidate.Index),
-			FinishReason: finishReason,
-		}
-
-		if len(candidate.Content.Parts) > 0 {
-			if candidate.CitationMetadata != nil &&
-				len(candidate.CitationMetadata.CitationSources) > 0 {
-				for _, source := range candidate.CitationMetadata.CitationSources {
-					if source.URI != nil {
-						sourceString := fmt.Sprintf("\t> [](%s)", *source.URI)
-						result.citations = append(result.citations, sourceString)
-					}
-				}
-			}
-
-			hasResponseContent := hasResponseContent(candidate.Content.Parts)
-			toolCalls := candidate.FunctionCalls()
-
-			if len(toolCalls) > 0 && !hasResponseContent {
-				responseToolCalls := []util.ToolCall{}
-				util.Slog.Debug("decided to include tool call request")
-				for _, tc := range toolCalls {
-					if tc.Name == webSearchTool.FunctionDeclarations[0].Name {
-						query := tc.Args["query"].(string)
-						responseToolCalls = append(responseToolCalls, util.ToolCall{
-							Id:   "gemini_func",
-							Type: "function",
-							Function: util.ToolFunction{
-								Args: map[string]string{
-									"query": query,
-								},
-								Name: tc.Name,
-							},
-						})
-					}
-				}
-
-				choice.ToolCalls = responseToolCalls
-				result.isToolCall = true
-			}
-
-			if len(toolCalls) == 0 {
-				choice.Delta = map[string]any{
-					"content": formatResponsePart(candidate.Content.Parts[0]),
-				}
-			}
-		} else {
-			choice.Delta = map[string]any{
-				"content": "",
+		if result.isFinal {
+			if response.UsageMetadata != nil {
+				result.chunk.Usage = tokenUsage(response.UsageMetadata)
 			}
 		}
 
-		if finishReason != "" {
-
-			util.Slog.Debug("gemini finish reason", "data", finishReason)
-			choice.FinishReason = ""
-			chunk.Usage = &util.TokenUsage{
-				Prompt:     int(response.UsageMetadata.PromptTokenCount),
-				Completion: int(response.UsageMetadata.CandidatesTokenCount),
-			}
-
-			result.isFinal = true
-		}
-
-		chunk.Choices = append(chunk.Choices, choice)
+		result.chunk.Choices = append(result.chunk.Choices, choice)
 	}
 
-	result.chunk = chunk
 	return result, nil
 }
 
-func hasResponseContent(parts []genai.Part) bool {
-	return slices.ContainsFunc(parts, func(p genai.Part) bool {
-		switch p.(type) {
-		case genai.Text:
-			return true
-		default:
-			return false
-		}
-	})
+func processCandidate(candidate *genai.Candidate, result *processedChunk) (util.Choice, error) {
+	finishReason, err := handleFinishReason(candidate.FinishReason)
+	if err != nil {
+		return util.Choice{}, err
+	}
 
+	choice := util.Choice{
+		Index:        int(candidate.Index),
+		FinishReason: finishReason,
+	}
+
+	if len(candidate.Content.Parts) > 0 {
+		result.citations = append(result.citations, citationSources(candidate)...)
+	}
+	if err := applyCandidateParts(candidate.Content.Parts, &choice, result); err != nil {
+		return util.Choice{}, err
+	}
+
+	if finishReason != "" {
+		util.Slog.Debug("gemini finish reason", "data", finishReason)
+		choice.FinishReason = ""
+		result.isFinal = true
+	}
+
+	return choice, nil
 }
 
-func formatResponsePart(part genai.Part) string {
-	switch v := part.(type) {
-	case genai.Text:
-		response := string(v)
-		return response
-	default:
-		panic("Only text type is supported")
+func applyCandidateParts(parts []*genai.Part, choice *util.Choice, result *processedChunk) error {
+	if len(parts) == 0 {
+		choice.Delta = contentDelta("")
+		return nil
 	}
+
+	toolCallParts := functionCallParts(parts)
+	if len(toolCallParts) > 0 {
+		if hasResponseContent(parts) {
+			return nil
+		}
+
+		toolCalls, err := responseToolCalls(toolCallParts)
+		if err != nil {
+			return err
+		}
+		choice.ToolCalls = toolCalls
+		result.isToolCall = true
+		return nil
+	}
+
+	choice.Delta = contentDelta(formatResponseParts(parts))
+	return nil
+}
+
+func citationSources(candidate *genai.Candidate) []string {
+	if candidate.CitationMetadata == nil {
+		return nil
+	}
+
+	var sources []string
+	for _, source := range candidate.CitationMetadata.Citations {
+		if source != nil && source.URI != "" {
+			sources = append(sources, fmt.Sprintf("\t> [](%s)", source.URI))
+		}
+	}
+
+	return sources
+}
+
+func responseToolCalls(parts []*genai.Part) ([]util.ToolCall, error) {
+	util.Slog.Debug("decided to include tool call request")
+
+	var toolCalls []util.ToolCall
+	for _, part := range parts {
+		tc := part.FunctionCall
+		if tc.Name != webSearchTool.FunctionDeclarations[0].Name {
+			continue
+		}
+
+		query, ok := tc.Args["query"].(string)
+		if !ok {
+			return nil, errors.New("GeminiAPI: web search tool call has no string query")
+		}
+
+		toolCalls = append(toolCalls, util.ToolCall{
+			Id:   geminiCallID(tc.ID),
+			Type: "function",
+			Function: util.ToolFunction{
+				Args: map[string]string{
+					"query": query,
+				},
+				Name: tc.Name,
+			},
+			ThoughtSignature: append([]byte(nil), part.ThoughtSignature...),
+		})
+	}
+
+	return toolCalls, nil
+}
+
+func geminiCallID(id string) string {
+	if id != "" {
+		return id
+	}
+	return "gemini_func"
+}
+
+func contentDelta(content string) map[string]any {
+	return map[string]any{"content": content}
+}
+
+func tokenUsage(metadata *genai.GenerateContentResponseUsageMetadata) *util.TokenUsage {
+	return &util.TokenUsage{
+		Prompt:     int(metadata.PromptTokenCount),
+		Completion: int(metadata.CandidatesTokenCount),
+	}
+}
+
+func hasResponseContent(parts []*genai.Part) bool {
+	for _, part := range parts {
+		if part != nil && part.Text != "" && !part.Thought {
+			return true
+		}
+	}
+
+	return false
+}
+
+func functionCallParts(parts []*genai.Part) []*genai.Part {
+	var calls []*genai.Part
+	for _, part := range parts {
+		if part != nil && part.FunctionCall != nil {
+			calls = append(calls, part)
+		}
+	}
+
+	return calls
+}
+
+func formatResponseParts(parts []*genai.Part) string {
+	var response strings.Builder
+	for _, part := range parts {
+		if part != nil && !part.Thought {
+			response.WriteString(part.Text)
+		}
+	}
+
+	return response.String()
 }
 
 func handleFinishReason(reason genai.FinishReason) (string, error) {
@@ -403,6 +495,7 @@ func handleFinishReason(reason genai.FinishReason) (string, error) {
 		return "stop", nil
 	case genai.FinishReasonMaxTokens:
 		return "length", nil
+	case "":
 	case genai.FinishReasonOther:
 	case genai.FinishReasonUnspecified:
 	case genai.FinishReasonRecitation:
@@ -420,75 +513,21 @@ func handleFinishReason(reason genai.FinishReason) (string, error) {
 
 func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*genai.Content, error) {
 	chat := []*genai.Content{}
+	builder := geminiHistoryBuilder{
+		includeReasoning:  includeReasoning,
+		signedToolCallIDs: make(map[string]struct{}),
+	}
 
 	util.Slog.Debug("building messages history:", "data", msgs)
 
 	for _, singleMessage := range msgs {
-		role := "user"
-		if singleMessage.Role == "assistant" {
-			role = "model"
+		message, err := builder.contentFromMessage(singleMessage)
+		if err != nil {
+			return nil, err
 		}
 
-		if singleMessage.Role == "tool" {
-			role = "function"
-		}
-
-		messageContent := ""
-
-		if singleMessage.Resoning != "" && includeReasoning {
-			messageContent += singleMessage.Resoning
-		}
-		if singleMessage.Content != "" {
-			messageContent += singleMessage.Content
-		}
-
-		message := genai.Content{
-			Parts: []genai.Part{},
-			Role:  role,
-		}
-
-		if messageContent != "" {
-			message.Parts = append(message.Parts, genai.Text(messageContent))
-		}
-
-		if len(singleMessage.Attachments) != 0 {
-			for _, item := range singleMessage.Attachments {
-				decodedBytes, err := base64.StdEncoding.DecodeString(item.Content)
-
-				if err != nil {
-					util.Slog.Error("failed to decode file bytes", "item", item.Path, "error", err.Error())
-					return nil, errors.New("could not prepare attachments for request")
-				}
-
-				extension := filepath.Ext(item.Path)
-				extension = strings.TrimPrefix(extension, ".")
-				part := genai.ImageData(extension, decodedBytes)
-				message.Parts = append(message.Parts, part)
-			}
-		}
-
-		if len(singleMessage.ToolCalls) != 0 {
-			for _, tc := range singleMessage.ToolCalls {
-				var part genai.Part
-
-				if role == "function" {
-					util.Slog.Debug("appending tool call result", "data", tc)
-					part = genai.FunctionResponse{
-						Name: tc.Function.Name,
-						Response: map[string]any{
-							"query":  tc.Function.Args["query"],
-							"result": *tc.Result,
-						}}
-				} else {
-					util.Slog.Debug("appending tool call request", "data", tc)
-					part = genai.FunctionCall{
-						Name: tc.Function.Name,
-						Args: map[string]any{"query": tc.Function.Args["query"]},
-					}
-				}
-
-				message.Parts = append(message.Parts, part)
-			}
+		if len(message.Parts) == 0 {
+			continue
 		}
 
 		chat = append(chat, &message)
@@ -496,4 +535,133 @@ func buildChatHistory(msgs []util.LocalStoreMessage, includeReasoning bool) ([]*
 	}
 
 	return chat, nil
+}
+
+type geminiHistoryBuilder struct {
+	includeReasoning  bool
+	signedToolCallIDs map[string]struct{}
+}
+
+func (b *geminiHistoryBuilder) contentFromMessage(msg util.LocalStoreMessage) (genai.Content, error) {
+	message := genai.Content{
+		Parts: []*genai.Part{},
+		Role:  geminiRole(msg.Role),
+	}
+
+	if content := messageContent(msg, b.includeReasoning); content != "" {
+		message.Parts = append(message.Parts, genai.NewPartFromText(content))
+	}
+
+	attachmentParts, err := attachmentParts(msg.Attachments)
+	if err != nil {
+		return message, err
+	}
+	message.Parts = append(message.Parts, attachmentParts...)
+	message.Parts = append(message.Parts, b.toolCallParts(msg)...)
+
+	return message, nil
+}
+
+func geminiRole(role string) string {
+	if role == "assistant" {
+		return genai.RoleModel
+	}
+	return genai.RoleUser
+}
+
+func messageContent(msg util.LocalStoreMessage, includeReasoning bool) string {
+	var content strings.Builder
+	if includeReasoning {
+		content.WriteString(msg.Resoning)
+	}
+	content.WriteString(msg.Content)
+	return content.String()
+}
+
+func attachmentParts(attachments []util.Attachment) ([]*genai.Part, error) {
+	var parts []*genai.Part
+	for _, item := range attachments {
+		decodedBytes, err := base64.StdEncoding.DecodeString(item.Content)
+		if err != nil {
+			util.Slog.Error("failed to decode file bytes", "item", item.Path, "error", err.Error())
+			return nil, errors.New("could not prepare attachments for request")
+		}
+
+		extension := strings.TrimPrefix(filepath.Ext(item.Path), ".")
+		parts = append(parts, genai.NewPartFromBytes(decodedBytes, "image/"+extension))
+	}
+
+	return parts, nil
+}
+
+func (b *geminiHistoryBuilder) toolCallParts(msg util.LocalStoreMessage) []*genai.Part {
+	var parts []*genai.Part
+	for _, tc := range msg.ToolCalls {
+		part := b.toolCallPart(msg.Role, tc)
+		if part != nil {
+			parts = append(parts, part)
+		}
+	}
+
+	return parts
+}
+
+func (b *geminiHistoryBuilder) toolCallPart(role string, tc util.ToolCall) *genai.Part {
+	if role == "tool" {
+		return b.toolResponsePart(tc)
+	}
+	return b.toolRequestPart(tc)
+}
+
+func (b *geminiHistoryBuilder) toolResponsePart(tc util.ToolCall) *genai.Part {
+	if _, ok := b.signedToolCallIDs[tc.Id]; !ok {
+		util.Slog.Warn(
+			"skipping Gemini tool response without a signed function call",
+			"tool call id",
+			tc.Id,
+		)
+		return nil
+	}
+
+	util.Slog.Debug("appending tool call result", "data", tc)
+	delete(b.signedToolCallIDs, tc.Id)
+
+	result := ""
+	if tc.Result != nil {
+		result = *tc.Result
+	}
+
+	return &genai.Part{
+		FunctionResponse: &genai.FunctionResponse{
+			ID:   tc.Id,
+			Name: tc.Function.Name,
+			Response: map[string]any{
+				"query":  tc.Function.Args["query"],
+				"result": result,
+			},
+		},
+	}
+}
+
+func (b *geminiHistoryBuilder) toolRequestPart(tc util.ToolCall) *genai.Part {
+	if len(tc.ThoughtSignature) == 0 {
+		util.Slog.Warn(
+			"skipping Gemini function call without a thought signature",
+			"tool call id",
+			tc.Id,
+		)
+		return nil
+	}
+
+	util.Slog.Debug("appending tool call request", "data", tc)
+	b.signedToolCallIDs[tc.Id] = struct{}{}
+
+	return &genai.Part{
+		FunctionCall: &genai.FunctionCall{
+			ID:   tc.Id,
+			Name: tc.Function.Name,
+			Args: map[string]any{"query": tc.Function.Args["query"]},
+		},
+		ThoughtSignature: append([]byte(nil), tc.ThoughtSignature...),
+	}
 }

@@ -10,10 +10,10 @@ import (
 	"slices"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	zone "github.com/lrstanley/bubblezone/v2"
 	"golang.org/x/term"
 
 	"github.com/BalanceBalls/nekot/config"
@@ -68,11 +68,11 @@ var defaultKeyMap = keyMap{
 		key.WithHelp("1,2,3,4", "jump to specific pane"),
 	),
 	nextPane: key.NewBinding(
-		key.WithKeys(tea.KeyTab.String()),
+		key.WithKeys("tab"),
 		key.WithHelp("TAB", "move to next pane"),
 	),
 	previousPane: key.NewBinding(
-		key.WithKeys(tea.KeyShiftTab.String()),
+		key.WithKeys("shift+tab"),
 		key.WithHelp("SHIFT+TAB", "move to previous pane"),
 	),
 	newSession: key.NewBinding(
@@ -84,8 +84,8 @@ var defaultKeyMap = keyMap{
 		key.WithHelp("?", "show help"),
 	),
 	esc: key.NewBinding(
-		key.WithKeys(tea.KeyEsc.String()),
-		key.WithHelp(tea.KeyEsc.String(), "hide help"),
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "hide help"),
 	),
 }
 
@@ -376,7 +376,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			util.Slog.Debug("preparing attachments")
 
 			for _, attachment := range msg.Attachments {
-				b64, err := m.fileToBase64(attachment.Path)
+				b64, err := m.attachmentToBase64(attachment)
 				if err != nil {
 					util.Slog.Error("failed to convert attachment to base64", "error", err.Error())
 					return m, util.MakeErrorMsg(err.Error())
@@ -408,14 +408,14 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chatPane.DisplayCompletion(m.processingCtx, &m.sessionOrchestrator),
 		)
 
-	case tea.MouseMsg:
+	case tea.MouseClickMsg:
 		targetPane := m.focused
 
 		if m.controlsLocked {
 			break
 		}
 
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		if msg.Button == tea.MouseLeft {
 			switch {
 			case zone.Get("chat_pane").InBounds(msg):
 				targetPane = util.ChatPane
@@ -433,7 +433,7 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if key.Matches(msg, m.keys.quit) {
 			return m, tea.Quit
 		}
@@ -482,15 +482,16 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 
+			nextViewMode := m.viewMode
 			switch m.viewMode {
 			case util.NormalMode:
-				m.viewMode = util.TextEditMode
+				nextViewMode = util.TextEditMode
 			case util.ZenMode:
-				m.viewMode = util.TextEditMode
+				nextViewMode = util.TextEditMode
 			case util.TextEditMode:
-				m.viewMode = util.NormalMode
+				nextViewMode = util.NormalMode
 			}
-			cmds = append(cmds, util.SendViewModeChangedMsg(m.viewMode))
+			cmds = append(cmds, util.SendViewModeChangedMsg(nextViewMode))
 
 		case key.Matches(msg, m.keys.jumpToPane):
 			var targetPane util.Pane
@@ -574,19 +575,17 @@ func (m *MainView) handleFocusChange(targetPane util.Pane, isMouseEvent bool) {
 	}
 }
 
-func (m MainView) View() string {
+func (m MainView) View() tea.View {
 	if m.viewMode == util.HelpMode {
-		return m.renderHelpView()
+		view := tea.NewView(lipgloss.NewStyle().
+			Width(m.terminalWidth).
+			Render(m.renderHelpView()))
+		view.AltScreen = true
+		view.MouseMode = tea.MouseModeCellMotion
+		return view
 	}
 
 	var windowViews string
-
-	settingsAndSessionPanes := lipgloss.JoinVertical(
-		lipgloss.Left,
-		m.settingsPane.View(),
-		m.sessionsPane.View(),
-		m.infoPane.View(),
-	)
 
 	mainView := m.chatPane.View()
 	if m.error.Message != "" {
@@ -594,29 +593,39 @@ func (m MainView) View() string {
 	}
 
 	secondaryScreen := ""
-	if m.viewMode == util.NormalMode {
-		secondaryScreen = settingsAndSessionPanes
+	if m.viewMode == util.NormalMode && m.terminalWidth >= util.WidthMinScalingLimit {
+		secondaryScreen = lipgloss.JoinVertical(
+			lipgloss.Left,
+			m.settingsPane.View(),
+			m.sessionsPane.View(),
+			m.infoPane.View(),
+		)
 	}
 
-	windowViews = lipgloss.NewStyle().
-		Align(lipgloss.Right, lipgloss.Right).
-		Render(
-			lipgloss.JoinHorizontal(
-				lipgloss.Top,
-				mainView,
-				secondaryScreen,
-			),
-		)
+	windowViews = lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		mainView,
+		secondaryScreen,
+	)
 
 	promptView := m.promptPane.View()
 
-	return zone.Scan(lipgloss.NewStyle().Render(
-		lipgloss.JoinVertical(
-			lipgloss.Left,
-			windowViews,
-			promptView,
-		),
+	screen := zone.Scan(lipgloss.JoinVertical(
+		lipgloss.Left,
+		windowViews,
+		promptView,
 	))
+
+	// Keep every rendered row as wide as the terminal. When the side panes are
+	// removed after a resize, these trailing cells clear their previous borders.
+	screen = lipgloss.NewStyle().
+		Width(m.terminalWidth).
+		Render(screen)
+
+	view := tea.NewView(screen)
+	view.AltScreen = true
+	view.MouseMode = tea.MouseModeCellMotion
+	return view
 }
 
 func (m *MainView) setProcessingContext() {
@@ -640,12 +649,29 @@ func (m MainView) fileToBase64(filePath string) (string, error) {
 		return "", err
 	}
 
+	return m.bytesToBase64(data, filePath)
+}
+
+func (m MainView) attachmentToBase64(attachment util.Attachment) (string, error) {
+	if attachment.Content == "" {
+		return m.fileToBase64(attachment.Path)
+	}
+
+	data, err := base64.StdEncoding.DecodeString(attachment.Content)
+	if err != nil {
+		return "", fmt.Errorf("invalid attachment content: %s", attachment.Path)
+	}
+
+	return m.bytesToBase64(data, attachment.Path)
+}
+
+func (m MainView) bytesToBase64(data []byte, attachmentPath string) (string, error) {
 	maxSize := 1024 * 1024 * m.config.MaxAttachmentSizeMb
 	if len(data) > maxSize {
-		util.Slog.Error("attchment exceeds allowed size limit", "path", filePath, "size (kb)", len(data)*1024)
-		return "", fmt.Errorf("attchment exceeds allowed size limit of %d MB \n Attachment: %s",
+		util.Slog.Error("attachment exceeds allowed size limit", "path", attachmentPath, "size (bytes)", len(data))
+		return "", fmt.Errorf("attachment exceeds allowed size limit of %d MB\nattachment: %s",
 			m.config.MaxAttachmentSizeMb,
-			filePath)
+			attachmentPath)
 	}
 
 	base64Str := base64.StdEncoding.EncodeToString(data)
