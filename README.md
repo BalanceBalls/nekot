@@ -100,7 +100,9 @@ The command inherits NeKot's environment, including variables such as
 or empty, NeKot falls back to `OPENAI_API_KEY`, `GEMINI_API_KEY`, or
 `OPENROUTER_API_KEY`, depending on the active provider. A configured command
 takes precedence and a command failure does not fall back to the environment.
-Plaintext values in `apiKeyResolveCommand` are rejected.
+Plaintext values in `apiKeyResolveCommand` are rejected. Treat config files that
+contain `apiKeyResolveCommand` like scripts: do not copy or run configs from
+people you do not trust. 
 
 <details>
 

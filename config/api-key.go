@@ -1,17 +1,24 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/BalanceBalls/nekot/util"
 )
 
 const apiKeyResolveCommandPrefix = "cmd:"
+
+var (
+	apiKeyCommandTimeout          = 5 * time.Second
+	apiKeyCommandOutputLimitBytes = int64(8 * 1024)
+)
 
 func (c Config) ResolvedAPIKey() string {
 	return c.resolvedAPIKey
@@ -71,15 +78,64 @@ func apiKeyEnvironmentVariable(provider string) string {
 }
 
 func runAPIKeyCommand(command string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), apiKeyCommandTimeout)
+	defer cancel()
+
+	stdout := &limitedOutputBuffer{limit: apiKeyCommandOutputLimitBytes}
+	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		shell := os.Getenv("COMSPEC")
 		if shell == "" {
 			shell = "cmd.exe"
 		}
-		return exec.Command(shell, "/C", command).Output()
+		cmd = exec.CommandContext(ctx, shell, "/C", command)
+	} else {
+		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", command)
 	}
 
-	return exec.Command("/bin/sh", "-c", command).Output()
+	cmd.Stdout = stdout
+
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("apiKeyResolveCommand command timed out after %s", apiKeyCommandTimeout)
+	}
+	if stdout.exceeded {
+		return nil, fmt.Errorf(
+			"apiKeyResolveCommand command output exceeds %d bytes",
+			apiKeyCommandOutputLimitBytes,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return stdout.bytes(), nil
+}
+
+type limitedOutputBuffer struct {
+	limit    int64
+	data     []byte
+	exceeded bool
+}
+
+func (b *limitedOutputBuffer) Write(p []byte) (int, error) {
+	if int64(len(b.data)) < b.limit {
+		remaining := b.limit - int64(len(b.data))
+		if int64(len(p)) <= remaining {
+			b.data = append(b.data, p...)
+		} else {
+			b.data = append(b.data, p[:remaining]...)
+			b.exceeded = true
+		}
+	} else if len(p) > 0 {
+		b.exceeded = true
+	}
+
+	return len(p), nil
+}
+
+func (b *limitedOutputBuffer) bytes() []byte {
+	return append([]byte(nil), b.data...)
 }
 
 // LogValue prevents the resolved credential and credential command from being
