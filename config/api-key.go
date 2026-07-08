@@ -16,7 +16,7 @@ import (
 const apiKeyResolveCommandPrefix = "cmd:"
 
 var (
-	apiKeyCommandTimeout          = 5 * time.Second
+	apiKeyCommandTimeout          = 10 * time.Second
 	apiKeyCommandOutputLimitBytes = int64(8 * 1024)
 )
 
