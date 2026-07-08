@@ -46,7 +46,7 @@ var defaultSessionsKeyMap = sessionsKeyMap{
 	cancel: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel action")),
 	apply: key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("esc", "switch to session/apply renaming"),
+		key.WithHelp("enter", "switch to session/apply renaming"),
 	),
 	addNew: key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "ctrl+n add new")),
 }
