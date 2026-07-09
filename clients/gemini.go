@@ -37,7 +37,7 @@ func NewGeminiClient(systemMessage string) *GeminiClient {
 var webSearchTool = &genai.Tool{
 	FunctionDeclarations: []*genai.FunctionDeclaration{
 		{
-			Name:        "web_search",
+			Name:        webSearchToolName,
 			Description: "Perform a web search to retrieve up to date info or piece of knowledge you have doubts about.",
 			Parameters: &genai.Schema{
 				Type: genai.TypeObject,
@@ -48,6 +48,14 @@ var webSearchTool = &genai.Tool{
 					},
 				},
 				Required: []string{"query"},
+			},
+		},
+		{
+			Name:        currentDatetimeToolName,
+			Description: "Get the current local date, time, weekday, timezone, UTC offset, RFC3339 datetime, and Unix timestamp. Use this before web_search when the query depends on today's date or current time.",
+			Parameters: &genai.Schema{
+				Type:       genai.TypeObject,
+				Properties: map[string]*genai.Schema{},
 			},
 		},
 	},
@@ -414,12 +422,12 @@ func responseToolCalls(parts []*genai.Part) ([]util.ToolCall, error) {
 	var toolCalls []util.ToolCall
 	for _, part := range parts {
 		tc := part.FunctionCall
-		if tc.Name != webSearchTool.FunctionDeclarations[0].Name {
+		if tc.Name != webSearchToolName && tc.Name != currentDatetimeToolName {
 			continue
 		}
 
-		query, ok := tc.Args["query"].(string)
-		if !ok {
+		args := geminiStringArgs(tc.Args)
+		if tc.Name == webSearchToolName && args["query"] == "" {
 			return nil, errors.New("GeminiAPI: web search tool call has no string query")
 		}
 
@@ -427,9 +435,7 @@ func responseToolCalls(parts []*genai.Part) ([]util.ToolCall, error) {
 			Id:   geminiCallID(tc.ID),
 			Type: "function",
 			Function: util.ToolFunction{
-				Args: map[string]string{
-					"query": query,
-				},
+				Args: args,
 				Name: tc.Name,
 			},
 			ThoughtSignature: append([]byte(nil), part.ThoughtSignature...),
@@ -444,6 +450,25 @@ func geminiCallID(id string) string {
 		return id
 	}
 	return "gemini_func"
+}
+
+func geminiStringArgs(args map[string]any) map[string]string {
+	result := map[string]string{}
+	for key, value := range args {
+		strValue, ok := value.(string)
+		if ok {
+			result[key] = strValue
+		}
+	}
+	return result
+}
+
+func geminiArgs(args map[string]string) map[string]any {
+	result := map[string]any{}
+	for key, value := range args {
+		result[key] = value
+	}
+	return result
 }
 
 func contentDelta(content string) map[string]any {
@@ -631,14 +656,14 @@ func (b *geminiHistoryBuilder) toolResponsePart(tc util.ToolCall) *genai.Part {
 		result = *tc.Result
 	}
 
+	response := geminiArgs(tc.Function.Args)
+	response["result"] = result
+
 	return &genai.Part{
 		FunctionResponse: &genai.FunctionResponse{
-			ID:   tc.Id,
-			Name: tc.Function.Name,
-			Response: map[string]any{
-				"query":  tc.Function.Args["query"],
-				"result": result,
-			},
+			ID:       tc.Id,
+			Name:     tc.Function.Name,
+			Response: response,
 		},
 	}
 }
@@ -660,7 +685,7 @@ func (b *geminiHistoryBuilder) toolRequestPart(tc util.ToolCall) *genai.Part {
 		FunctionCall: &genai.FunctionCall{
 			ID:   tc.Id,
 			Name: tc.Function.Name,
-			Args: map[string]any{"query": tc.Function.Args["query"]},
+			Args: geminiArgs(tc.Function.Args),
 		},
 		ThoughtSignature: append([]byte(nil), tc.ThoughtSignature...),
 	}

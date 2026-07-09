@@ -149,6 +149,7 @@ This feature can be toggled using `Ctrl+w`.
 
 ### Details
 * Uses the [DuckDuckGo](https://duckduckgo.com/) and [Brave](https://search.brave.com/) search engines and requires no configuration
+* Exposes a `current_datetime` tool alongside `web_search` so models can check the local date, time, and timezone before current-day searches
 * Results are scored using bm25 for better accuracy
 * **Using web search can significantly increase token usage**
 

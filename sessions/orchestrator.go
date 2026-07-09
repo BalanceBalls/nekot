@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/clients"
 	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/extensions/datetime"
 	"github.com/BalanceBalls/nekot/extensions/websearch"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/user"
@@ -189,6 +190,8 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		switch tc.Function.Name {
 		case "web_search":
 			return m, m.doWebSearch(m.processingCtx, tc.Id, tc.Function.Args)
+		case "current_datetime":
+			return m, m.doCurrentDatetime(tc.Id)
 		}
 
 	case InferenceFinalized:
@@ -436,6 +439,30 @@ func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[stri
 		}
 
 		util.Slog.Debug("retrieved context from a web search")
+		return ToolCallComplete{
+			Id:        id,
+			IsSuccess: true,
+			Name:      toolName,
+			Result:    string(jsonData),
+		}
+	}
+}
+
+func (m *Orchestrator) doCurrentDatetime(id string) tea.Cmd {
+	return func() tea.Msg {
+		toolName := "current_datetime"
+		jsonData, err := json.Marshal(datetime.CurrentDatetimeResult(time.Now()))
+		if err != nil {
+			util.Slog.Error("failed to serialize current_datetime result data", "error", err.Error())
+			return ToolCallComplete{
+				Id:        id,
+				IsSuccess: false,
+				Name:      toolName,
+				Result:    "",
+			}
+		}
+
+		util.Slog.Debug("retrieved current datetime")
 		return ToolCallComplete{
 			Id:        id,
 			IsSuccess: true,

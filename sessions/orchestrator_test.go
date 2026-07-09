@@ -1,8 +1,10 @@
 package sessions
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/BalanceBalls/nekot/extensions/datetime"
 	"github.com/BalanceBalls/nekot/util"
 )
 
@@ -64,5 +66,35 @@ func TestToolContinuationRejectsInvalidState(t *testing.T) {
 	}
 	if err := orchestrator.prepareToolContinuation(); err == nil {
 		t.Fatal("prepareToolContinuation() error = nil, want invalid-state error")
+	}
+}
+
+func TestDoCurrentDatetimeReturnsSuccessfulToolCall(t *testing.T) {
+	orchestrator := &Orchestrator{}
+
+	msg := orchestrator.doCurrentDatetime("call-date")()
+	got, ok := msg.(ToolCallComplete)
+	if !ok {
+		t.Fatalf("doCurrentDatetime() returned %T, want ToolCallComplete", msg)
+	}
+	if got.Id != "call-date" ||
+		!got.IsSuccess ||
+		got.Name != "current_datetime" ||
+		got.Result == "" {
+		t.Fatalf("tool result = %#v", got)
+	}
+
+	var result datetime.CurrentDatetimeToolResult
+	if err := json.Unmarshal([]byte(got.Result), &result); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if result.Date == "" ||
+		result.Time == "" ||
+		result.Weekday == "" ||
+		result.Timezone == "" ||
+		result.UTCOffset == "" ||
+		result.DatetimeRFC3339 == "" ||
+		result.Unix == 0 {
+		t.Fatalf("current datetime payload = %#v", result)
 	}
 }
