@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/clients"
 	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/extensions/datetime"
 	"github.com/BalanceBalls/nekot/extensions/websearch"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/user"
@@ -447,45 +448,10 @@ func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[stri
 	}
 }
 
-type currentDatetimeToolResult struct {
-	Date            string `json:"date"`
-	Time            string `json:"time"`
-	Weekday         string `json:"weekday"`
-	Timezone        string `json:"timezone"`
-	UTCOffset       string `json:"utc_offset"`
-	DatetimeRFC3339 string `json:"datetime_rfc3339"`
-	Unix            int64  `json:"unix"`
-}
-
-func currentDatetimeResult(now time.Time) currentDatetimeToolResult {
-	timezone, offsetSeconds := now.Zone()
-	return currentDatetimeToolResult{
-		Date:            now.Format("2006-01-02"),
-		Time:            now.Format("15:04:05"),
-		Weekday:         now.Weekday().String(),
-		Timezone:        timezone,
-		UTCOffset:       formatUTCOffset(offsetSeconds),
-		DatetimeRFC3339: now.Format(time.RFC3339),
-		Unix:            now.Unix(),
-	}
-}
-
-func formatUTCOffset(offsetSeconds int) string {
-	sign := "+"
-	if offsetSeconds < 0 {
-		sign = "-"
-		offsetSeconds = -offsetSeconds
-	}
-
-	hours := offsetSeconds / 3600
-	minutes := (offsetSeconds % 3600) / 60
-	return fmt.Sprintf("%s%02d:%02d", sign, hours, minutes)
-}
-
 func (m *Orchestrator) doCurrentDatetime(id string) tea.Cmd {
 	return func() tea.Msg {
 		toolName := "current_datetime"
-		jsonData, err := json.Marshal(currentDatetimeResult(time.Now()))
+		jsonData, err := json.Marshal(datetime.CurrentDatetimeResult(time.Now()))
 		if err != nil {
 			util.Slog.Error("failed to serialize current_datetime result data", "error", err.Error())
 			return ToolCallComplete{

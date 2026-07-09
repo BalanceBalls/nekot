@@ -3,8 +3,8 @@ package sessions
 import (
 	"encoding/json"
 	"testing"
-	"time"
 
+	"github.com/BalanceBalls/nekot/extensions/datetime"
 	"github.com/BalanceBalls/nekot/util"
 )
 
@@ -69,22 +69,6 @@ func TestToolContinuationRejectsInvalidState(t *testing.T) {
 	}
 }
 
-func TestCurrentDatetimeResultFormatsLocalTime(t *testing.T) {
-	location := time.FixedZone("AMT", 4*60*60)
-	now := time.Date(2026, time.July, 9, 13, 14, 15, 0, location)
-
-	got := currentDatetimeResult(now)
-	if got.Date != "2026-07-09" ||
-		got.Time != "13:14:15" ||
-		got.Weekday != "Thursday" ||
-		got.Timezone != "AMT" ||
-		got.UTCOffset != "+04:00" ||
-		got.DatetimeRFC3339 != "2026-07-09T13:14:15+04:00" ||
-		got.Unix != now.Unix() {
-		t.Fatalf("currentDatetimeResult() = %#v", got)
-	}
-}
-
 func TestDoCurrentDatetimeReturnsSuccessfulToolCall(t *testing.T) {
 	orchestrator := &Orchestrator{}
 
@@ -100,7 +84,7 @@ func TestDoCurrentDatetimeReturnsSuccessfulToolCall(t *testing.T) {
 		t.Fatalf("tool result = %#v", got)
 	}
 
-	var result currentDatetimeToolResult
+	var result datetime.CurrentDatetimeToolResult
 	if err := json.Unmarshal([]byte(got.Result), &result); err != nil {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
