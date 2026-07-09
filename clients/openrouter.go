@@ -16,7 +16,7 @@ import (
 var openRouterwebSearchTool = openrouter.Tool{
 	Type: openrouter.ToolTypeFunction,
 	Function: &openrouter.FunctionDefinition{
-		Name:        "web_search",
+		Name:        webSearchToolName,
 		Description: "Perform a web search to retrieve up to date info or piece of knowledge you have doubts about.",
 		Parameters: OpenAiFuncitonParameters{
 			Type:     "object",
@@ -27,6 +27,19 @@ var openRouterwebSearchTool = openrouter.Tool{
 					"description": "The search query string. Should be very specific and moderately detailed for accurate retrieval.",
 				},
 			},
+		},
+	},
+}
+
+var openRouterCurrentDatetimeTool = openrouter.Tool{
+	Type: openrouter.ToolTypeFunction,
+	Function: &openrouter.FunctionDefinition{
+		Name:        currentDatetimeToolName,
+		Description: "Get the current local date, time, weekday, timezone, UTC offset, RFC3339 datetime, and Unix timestamp. Use this before web_search when the query depends on today's date or current time.",
+		Parameters: OpenAiFuncitonParameters{
+			Type:       "object",
+			Required:   []string{},
+			Properties: map[string]any{},
 		},
 	},
 }
@@ -309,7 +322,7 @@ func setRequestParams(
 	}
 
 	if settings.WebSearchEnabled {
-		r.Tools = []openrouter.Tool{openRouterwebSearchTool}
+		r.Tools = []openrouter.Tool{openRouterwebSearchTool, openRouterCurrentDatetimeTool}
 	}
 }
 

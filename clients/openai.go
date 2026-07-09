@@ -94,6 +94,11 @@ type OpenAiToolCallsBuffer struct {
 	Chunks []OpenAiToolCallsDelta
 }
 
+const (
+	webSearchToolName       = "web_search"
+	currentDatetimeToolName = "current_datetime"
+)
+
 func NewOpenAiClient(apiUrl, systemMessage string) *OpenAiClient {
 	provider := util.GetOpenAiInferenceProvider(util.OpenAiProviderType, apiUrl)
 	return &OpenAiClient{
@@ -107,7 +112,7 @@ func NewOpenAiClient(apiUrl, systemMessage string) *OpenAiClient {
 var openAIwebSearchTool = OpenAiToolDefinition{
 	Type: "function",
 	Function: OpenAiFunction{
-		Name:        "web_search",
+		Name:        webSearchToolName,
 		Description: "Perform a web search to retrieve up to date info or piece of knowledge you have doubts about.",
 		Parameters: OpenAiFuncitonParameters{
 			Type:     "object",
@@ -118,6 +123,19 @@ var openAIwebSearchTool = OpenAiToolDefinition{
 					"description": "The search query string. Should be very specific and moderately detailed for accurate retrieval.",
 				},
 			},
+		},
+	},
+}
+
+var openAICurrentDatetimeTool = OpenAiToolDefinition{
+	Type: "function",
+	Function: OpenAiFunction{
+		Name:        currentDatetimeToolName,
+		Description: "Get the current local date, time, weekday, timezone, UTC offset, RFC3339 datetime, and Unix timestamp. Use this before web_search when the query depends on today's date or current time.",
+		Parameters: OpenAiFuncitonParameters{
+			Type:       "object",
+			Required:   []string{},
+			Properties: map[string]any{},
 		},
 	},
 }
@@ -304,7 +322,7 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 	}
 
 	if settings.WebSearchEnabled {
-		reqParams["tools"] = []any{openAIwebSearchTool}
+		reqParams["tools"] = []any{openAIwebSearchTool, openAICurrentDatetimeTool}
 	}
 
 	util.TransformRequestHeaders(c.provider, reqParams)

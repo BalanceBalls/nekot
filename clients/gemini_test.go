@@ -37,8 +37,12 @@ func TestBuildGenerateContentConfig(t *testing.T) {
 	if got.Temperature == nil || *got.Temperature != temperature {
 		t.Fatalf("Temperature = %v, want %v", got.Temperature, temperature)
 	}
-	if len(got.Tools) != 1 || got.Tools[0] != webSearchTool {
-		t.Fatalf("Tools = %#v, want webSearchTool", got.Tools)
+	if len(got.Tools) != 1 ||
+		got.Tools[0] != webSearchTool ||
+		len(got.Tools[0].FunctionDeclarations) != 2 ||
+		got.Tools[0].FunctionDeclarations[0].Name != webSearchToolName ||
+		got.Tools[0].FunctionDeclarations[1].Name != currentDatetimeToolName {
+		t.Fatalf("Tools = %#v, want web search and current datetime tools", got.Tools)
 	}
 	if got.SystemInstruction == nil ||
 		len(got.SystemInstruction.Parts) != 1 ||
@@ -114,6 +118,7 @@ func TestBuildChatHistory(t *testing.T) {
 		len(got[1].Parts) != 1 ||
 		got[1].Parts[0].FunctionCall == nil ||
 		got[1].Parts[0].FunctionCall.ID != "call-1" ||
+		got[1].Parts[0].FunctionCall.Args["query"] != "current info" ||
 		!bytes.Equal(got[1].Parts[0].ThoughtSignature, thoughtSignature) {
 		t.Fatalf("function call content = %#v", got[1])
 	}
@@ -122,8 +127,68 @@ func TestBuildChatHistory(t *testing.T) {
 		len(got[2].Parts) != 1 ||
 		got[2].Parts[0].FunctionResponse == nil ||
 		got[2].Parts[0].FunctionResponse.ID != "call-1" ||
+		got[2].Parts[0].FunctionResponse.Response["query"] != "current info" ||
 		got[2].Parts[0].FunctionResponse.Response["result"] != toolResult {
 		t.Fatalf("function response content = %#v", got[2])
+	}
+}
+
+func TestBuildChatHistoryCurrentDatetimeToolExchange(t *testing.T) {
+	toolResult := `{"date":"2026-07-09"}`
+	thoughtSignature := []byte("signed reasoning state")
+	messages := []util.LocalStoreMessage{
+		{
+			Role: "assistant",
+			ToolCalls: []util.ToolCall{
+				{
+					Id:               "call-date",
+					ThoughtSignature: thoughtSignature,
+					Function: util.ToolFunction{
+						Name: currentDatetimeToolName,
+						Args: map[string]string{},
+					},
+				},
+			},
+		},
+		{
+			Role: "tool",
+			ToolCalls: []util.ToolCall{
+				{
+					Id:     "call-date",
+					Result: &toolResult,
+					Function: util.ToolFunction{
+						Name: currentDatetimeToolName,
+						Args: map[string]string{},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := buildChatHistory(messages, true)
+	if err != nil {
+		t.Fatalf("buildChatHistory() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(history) = %d, want 2", len(got))
+	}
+
+	if got[0].Role != genai.RoleModel ||
+		len(got[0].Parts) != 1 ||
+		got[0].Parts[0].FunctionCall == nil ||
+		got[0].Parts[0].FunctionCall.ID != "call-date" ||
+		got[0].Parts[0].FunctionCall.Name != currentDatetimeToolName ||
+		len(got[0].Parts[0].FunctionCall.Args) != 0 {
+		t.Fatalf("function call content = %#v", got[0])
+	}
+
+	if got[1].Role != genai.RoleUser ||
+		len(got[1].Parts) != 1 ||
+		got[1].Parts[0].FunctionResponse == nil ||
+		got[1].Parts[0].FunctionResponse.ID != "call-date" ||
+		got[1].Parts[0].FunctionResponse.Name != currentDatetimeToolName ||
+		got[1].Parts[0].FunctionResponse.Response["result"] != toolResult {
+		t.Fatalf("function response content = %#v", got[1])
 	}
 }
 
@@ -324,6 +389,46 @@ func TestProcessResponseChunkFunctionCall(t *testing.T) {
 	if toolCall.Id != "call-2" ||
 		toolCall.Function.Name != "web_search" ||
 		toolCall.Function.Args["query"] != "latest release" ||
+		!bytes.Equal(toolCall.ThoughtSignature, thoughtSignature) {
+		t.Fatalf("tool call = %#v", toolCall)
+	}
+}
+
+func TestProcessResponseChunkCurrentDatetimeFunctionCall(t *testing.T) {
+	thoughtSignature := []byte("signed reasoning state")
+	response := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						{
+							ThoughtSignature: thoughtSignature,
+							FunctionCall: &genai.FunctionCall{
+								ID:   "call-date",
+								Name: currentDatetimeToolName,
+								Args: map[string]any{},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := processResponseChunk(response, 2)
+	if err != nil {
+		t.Fatalf("processResponseChunk() error = %v", err)
+	}
+	if !got.isToolCall {
+		t.Fatal("isToolCall = false, want true")
+	}
+	if len(got.chunk.Choices) != 1 || len(got.chunk.Choices[0].ToolCalls) != 1 {
+		t.Fatalf("tool calls = %#v", got.chunk.Choices)
+	}
+	toolCall := got.chunk.Choices[0].ToolCalls[0]
+	if toolCall.Id != "call-date" ||
+		toolCall.Function.Name != currentDatetimeToolName ||
+		len(toolCall.Function.Args) != 0 ||
 		!bytes.Equal(toolCall.ThoughtSignature, thoughtSignature) {
 		t.Fatalf("tool call = %#v", toolCall)
 	}
