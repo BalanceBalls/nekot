@@ -116,24 +116,15 @@ type SettingsPane struct {
 
 	modelPicker  components.ModelsList
 	presetPicker components.PresetsList
+	mcpComponent components.MCPView
 
 	container lipgloss.Style
 
-	initMode    bool
-	config      *config.Config
-	llmClient   util.LlmClient
-	settings    util.Settings
-	mainCtx     context.Context
-	mcpManager  *mcpclient.Manager
-	mcpSelected int
-	mcpInspect  bool
-	mcpError    string
-}
-
-type mcpActionResult struct{ err error }
-
-func runMCPAction(action func() error) tea.Cmd {
-	return func() tea.Msg { return mcpActionResult{err: action()} }
+	initMode  bool
+	config    *config.Config
+	llmClient util.LlmClient
+	settings  util.Settings
+	mainCtx   context.Context
 }
 
 var settingsService *settings.SettingsService
@@ -215,6 +206,15 @@ func NewSettingsPane(db *sql.DB, ctx context.Context, mcpManager *mcpclient.Mana
 		BorderForeground(colors.NormalTabBorderColor)
 
 	spinner := initSpinner()
+	mcpWidth, mcpHeight := util.CalcModelsListSize(
+		util.DefaultTerminalWidth,
+		util.DefaultTerminalHeight,
+	)
+	var mcpComponentManager components.MCPManager
+	if mcpManager != nil {
+		mcpComponentManager = mcpManager
+	}
+	mcpComponent := components.NewMCPView(mcpComponentManager, mcpWidth, mcpHeight, colors)
 
 	return SettingsPane{
 		keyMap:          defaultSettingsKeyMap,
@@ -230,7 +230,7 @@ func NewSettingsPane(db *sql.DB, ctx context.Context, mcpManager *mcpclient.Mana
 		initMode:        true,
 		loading:         true,
 		mainCtx:         ctx,
-		mcpManager:      mcpManager,
+		mcpComponent:    mcpComponent,
 	}
 }
 
@@ -265,13 +265,6 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		p.viewMode = defaultView
 		p.changeMode = inactive
 
-	case mcpActionResult:
-		if msg.err != nil {
-			p.mcpError = msg.err.Error()
-		} else {
-			p.mcpError = ""
-		}
-
 	case util.SystemPromptUpdatedMsg:
 		p.settings.SystemPrompt = &msg.SystemPrompt
 		var updErr error
@@ -296,11 +289,12 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		p.container = p.container.
 			Width(w + p.container.GetHorizontalBorderSize()).
 			Height(h + p.container.GetVerticalBorderSize())
+		mcpWidth, mcpHeight := util.CalcModelsListSize(p.terminalWidth, p.terminalHeight)
+		p.mcpComponent.SetSize(mcpWidth, mcpHeight)
 
 	case spinner.TickMsg:
 		p.spinner, cmd = p.spinner.Update(msg)
 		cmds = append(cmds, cmd)
-		p.clampMCPSelection()
 
 	case settings.UpdateSettingsEvent:
 		util.Slog.Debug("case UpdateSettingsEvent: ", "message", msg)
@@ -339,7 +333,6 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 			}
 			if zone.Get("set_p_settings_tab").InBounds(msg) {
 				p.viewMode = defaultView
-				p.mcpInspect = false
 				break
 			}
 			if zone.Get("set_p_presets_tab").InBounds(msg) && p.viewMode == mcpView {
@@ -409,6 +402,11 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	if !p.initMode && p.viewMode == mcpView {
+		p.mcpComponent, cmd = p.mcpComponent.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	return p, tea.Batch(cmds...)
 }
 
@@ -452,7 +450,7 @@ func (p SettingsPane) View() string {
 			zone.Mark("set_p_mcp_tab", activeHeader.Render("[MCP]")),
 		)
 		return zone.Mark("settings_pane", p.container.Width(containerWidth).Render(
-			lipgloss.JoinVertical(lipgloss.Left, header, p.renderMCPView(w, h)),
+			lipgloss.JoinVertical(lipgloss.Left, header, p.mcpComponent.View()),
 		))
 	}
 
