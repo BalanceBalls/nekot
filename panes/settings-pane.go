@@ -16,6 +16,7 @@ import (
 	"github.com/BalanceBalls/nekot/clients"
 	"github.com/BalanceBalls/nekot/components"
 	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/mcpclient"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/util"
 	zone "github.com/lrstanley/bubblezone/v2"
@@ -27,6 +28,7 @@ const (
 	defaultView settingsViewMode = iota
 	modelsView
 	presetsView
+	mcpView
 )
 
 type settingsChangeMode int
@@ -117,11 +119,21 @@ type SettingsPane struct {
 
 	container lipgloss.Style
 
-	initMode  bool
-	config    *config.Config
-	llmClient util.LlmClient
-	settings  util.Settings
-	mainCtx   context.Context
+	initMode    bool
+	config      *config.Config
+	llmClient   util.LlmClient
+	settings    util.Settings
+	mainCtx     context.Context
+	mcpManager  *mcpclient.Manager
+	mcpSelected int
+	mcpInspect  bool
+	mcpError    string
+}
+
+type mcpActionResult struct{ err error }
+
+func runMCPAction(action func() error) tea.Cmd {
+	return func() tea.Msg { return mcpActionResult{err: action()} }
 }
 
 var settingsService *settings.SettingsService
@@ -176,7 +188,7 @@ func initSpinner() spinner.Model {
 	return s
 }
 
-func NewSettingsPane(db *sql.DB, ctx context.Context) SettingsPane {
+func NewSettingsPane(db *sql.DB, ctx context.Context, mcpManager *mcpclient.Manager) SettingsPane {
 	config, ok := config.FromContext(ctx)
 	if !ok {
 		util.Slog.Error("No config found")
@@ -218,6 +230,7 @@ func NewSettingsPane(db *sql.DB, ctx context.Context) SettingsPane {
 		initMode:        true,
 		loading:         true,
 		mainCtx:         ctx,
+		mcpManager:      mcpManager,
 	}
 }
 
@@ -252,6 +265,13 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		p.viewMode = defaultView
 		p.changeMode = inactive
 
+	case mcpActionResult:
+		if msg.err != nil {
+			p.mcpError = msg.err.Error()
+		} else {
+			p.mcpError = ""
+		}
+
 	case util.SystemPromptUpdatedMsg:
 		p.settings.SystemPrompt = &msg.SystemPrompt
 		var updErr error
@@ -280,6 +300,7 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 	case spinner.TickMsg:
 		p.spinner, cmd = p.spinner.Update(msg)
 		cmds = append(cmds, cmd)
+		p.clampMCPSelection()
 
 	case settings.UpdateSettingsEvent:
 		util.Slog.Debug("case UpdateSettingsEvent: ", "message", msg)
@@ -312,6 +333,19 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 		}
 
 		if msg.Button == tea.MouseLeft {
+			if zone.Get("set_p_mcp_tab").InBounds(msg) {
+				p.switchToMCP()
+				break
+			}
+			if zone.Get("set_p_settings_tab").InBounds(msg) {
+				p.viewMode = defaultView
+				p.mcpInspect = false
+				break
+			}
+			if zone.Get("set_p_presets_tab").InBounds(msg) && p.viewMode == mcpView {
+				cmds = append(cmds, p.switchToPresets())
+				break
+			}
 			switch p.viewMode {
 			case defaultView:
 				cmd = p.handleViewModeMouse(msg)
@@ -330,13 +364,13 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 			break
 		}
 
-		if key.Matches(msg, p.keyMap.enableWebSearch) {
+		if p.viewMode == defaultView && key.Matches(msg, p.keyMap.enableWebSearch) {
 			p.settings.WebSearchEnabled = !p.settings.WebSearchEnabled
 			updatedSettings, err := p.settingsService.UpdateSettings(p.settings)
 			return p, settings.MakeSettingsUpdateMsg(updatedSettings, err)
 		}
 
-		if key.Matches(msg, p.keyMap.hideReasoning) {
+		if p.viewMode == defaultView && key.Matches(msg, p.keyMap.hideReasoning) {
 			p.settings.HideReasoning = !p.settings.HideReasoning
 			updatedSettings, err := p.settingsService.UpdateSettings(p.settings)
 			return p, settings.MakeSettingsUpdateMsg(updatedSettings, err)
@@ -356,6 +390,9 @@ func (p SettingsPane) Update(msg tea.Msg) (SettingsPane, tea.Cmd) {
 					cmds = append(cmds, cmd)
 				case presetsView:
 					cmd = p.handlePresetMode(msg)
+					cmds = append(cmds, cmd)
+				case mcpView:
+					cmd = p.handleMCPMode(msg)
 					cmds = append(cmds, cmd)
 				}
 			}
@@ -382,6 +419,7 @@ func (p SettingsPane) View() string {
 		lipgloss.Left,
 		zone.Mark("set_p_settings_tab", activeHeader.Render("[Settings]")),
 		zone.Mark("set_p_presets_tab", inactiveHeader.Render("Presets")),
+		zone.Mark("set_p_mcp_tab", inactiveHeader.Render("MCP")),
 	)
 	if p.viewMode == modelsView {
 		return zone.Mark("settings_pane", p.container.Width(containerWidth).Render(
@@ -399,9 +437,22 @@ func (p SettingsPane) View() string {
 					lipgloss.Left,
 					zone.Mark("set_p_settings_tab", inactiveHeader.Render("Settings")),
 					zone.Mark("set_p_presets_tab", activeHeader.Render("[Presets]")),
+					zone.Mark("set_p_mcp_tab", inactiveHeader.Render("MCP")),
 				),
 				p.presetPicker.View(),
 			),
+		))
+	}
+
+	if p.viewMode == mcpView {
+		header := lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			zone.Mark("set_p_settings_tab", inactiveHeader.Render("Settings")),
+			zone.Mark("set_p_presets_tab", inactiveHeader.Render("Presets")),
+			zone.Mark("set_p_mcp_tab", activeHeader.Render("[MCP]")),
+		)
+		return zone.Mark("settings_pane", p.container.Width(containerWidth).Render(
+			lipgloss.JoinVertical(lipgloss.Left, header, p.renderMCPView(w, h)),
 		))
 	}
 

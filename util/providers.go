@@ -16,6 +16,7 @@ type LlmClient interface {
 		ctx context.Context,
 		chatMsgs []LocalStoreMessage,
 		modelSettings Settings,
+		tools []ToolDefinition,
 		resultChan chan ProcessApiCompletionResponse,
 	) tea.Cmd
 	RequestModelsList(ctx context.Context) ProcessModelsResponse

@@ -12,6 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/mcpclient"
 	"github.com/BalanceBalls/nekot/migrations"
 	"github.com/BalanceBalls/nekot/util"
 	"github.com/BalanceBalls/nekot/views"
@@ -113,7 +114,13 @@ func main() {
 	appCtx := config.WithFlags(ctxWithConfig, &flags)
 	zone.NewGlobal()
 
-	p := tea.NewProgram(views.NewMainView(db, appCtx))
+	mcpManager := mcpclient.NewManager(db, configToUse)
+	if err := mcpManager.Start(appCtx); err != nil {
+		util.Slog.Warn("MCP manager initialization failed", "error", err)
+	}
+	defer mcpManager.Close()
+
+	p := tea.NewProgram(views.NewMainView(db, appCtx, mcpManager))
 
 	_, err = p.Run()
 	if err != nil {

@@ -26,6 +26,7 @@ func TestBuildGenerateContentConfig(t *testing.T) {
 			SystemPrompt:     &systemPrompt,
 			WebSearchEnabled: true,
 		},
+		ToolsForSettings(util.Settings{WebSearchEnabled: true}, nil),
 	)
 
 	if got.MaxOutputTokens != 512 {
@@ -38,7 +39,6 @@ func TestBuildGenerateContentConfig(t *testing.T) {
 		t.Fatalf("Temperature = %v, want %v", got.Temperature, temperature)
 	}
 	if len(got.Tools) != 1 ||
-		got.Tools[0] != webSearchTool ||
 		len(got.Tools[0].FunctionDeclarations) != 2 ||
 		got.Tools[0].FunctionDeclarations[0].Name != webSearchToolName ||
 		got.Tools[0].FunctionDeclarations[1].Name != currentDatetimeToolName {
@@ -74,7 +74,7 @@ func TestBuildChatHistory(t *testing.T) {
 					ThoughtSignature: thoughtSignature,
 					Function: util.ToolFunction{
 						Name: "web_search",
-						Args: map[string]string{"query": "current info"},
+						Args: map[string]any{"query": "current info"},
 					},
 				},
 			},
@@ -87,7 +87,7 @@ func TestBuildChatHistory(t *testing.T) {
 					Result: &toolResult,
 					Function: util.ToolFunction{
 						Name: "web_search",
-						Args: map[string]string{"query": "current info"},
+						Args: map[string]any{"query": "current info"},
 					},
 				},
 			},
@@ -145,7 +145,7 @@ func TestBuildChatHistoryCurrentDatetimeToolExchange(t *testing.T) {
 					ThoughtSignature: thoughtSignature,
 					Function: util.ToolFunction{
 						Name: currentDatetimeToolName,
-						Args: map[string]string{},
+						Args: map[string]any{},
 					},
 				},
 			},
@@ -158,7 +158,7 @@ func TestBuildChatHistoryCurrentDatetimeToolExchange(t *testing.T) {
 					Result: &toolResult,
 					Function: util.ToolFunction{
 						Name: currentDatetimeToolName,
-						Args: map[string]string{},
+						Args: map[string]any{},
 					},
 				},
 			},
@@ -203,7 +203,7 @@ func TestBuildChatHistorySkipsUnsignedLegacyToolExchange(t *testing.T) {
 					Id: "unsigned-call",
 					Function: util.ToolFunction{
 						Name: "web_search",
-						Args: map[string]string{"query": "current info"},
+						Args: map[string]any{"query": "current info"},
 					},
 				},
 			},
@@ -216,7 +216,7 @@ func TestBuildChatHistorySkipsUnsignedLegacyToolExchange(t *testing.T) {
 					Result: &toolResult,
 					Function: util.ToolFunction{
 						Name: "web_search",
-						Args: map[string]string{"query": "current info"},
+						Args: map[string]any{"query": "current info"},
 					},
 				},
 			},
@@ -244,7 +244,7 @@ func TestBuildChatHistorySkipsEmptyMessagesAndStrayToolResults(t *testing.T) {
 					Result: &toolResult,
 					Function: util.ToolFunction{
 						Name: "web_search",
-						Args: map[string]string{"query": "current info"},
+						Args: map[string]any{"query": "current info"},
 					},
 				},
 			},
@@ -272,7 +272,7 @@ func TestToolCallThoughtSignatureJSONRoundTrip(t *testing.T) {
 		ThoughtSignature: []byte("signed reasoning state"),
 		Function: util.ToolFunction{
 			Name: "web_search",
-			Args: map[string]string{"query": "current info"},
+			Args: map[string]any{"query": "current info"},
 		},
 	}
 

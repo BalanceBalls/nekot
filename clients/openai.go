@@ -61,9 +61,9 @@ type OpenAiToolDefinition struct {
 }
 
 type OpenAiFunction struct {
-	Name        string                   `json:"name"`
-	Description string                   `json:"description"`
-	Parameters  OpenAiFuncitonParameters `json:"parameters"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Parameters  any    `json:"parameters"`
 }
 
 type OpenAiFuncitonParameters struct {
@@ -94,11 +94,6 @@ type OpenAiToolCallsBuffer struct {
 	Chunks []OpenAiToolCallsDelta
 }
 
-const (
-	webSearchToolName       = "web_search"
-	currentDatetimeToolName = "current_datetime"
-)
-
 func NewOpenAiClient(apiUrl, systemMessage string) *OpenAiClient {
 	provider := util.GetOpenAiInferenceProvider(util.OpenAiProviderType, apiUrl)
 	return &OpenAiClient{
@@ -109,41 +104,11 @@ func NewOpenAiClient(apiUrl, systemMessage string) *OpenAiClient {
 	}
 }
 
-var openAIwebSearchTool = OpenAiToolDefinition{
-	Type: "function",
-	Function: OpenAiFunction{
-		Name:        webSearchToolName,
-		Description: "Perform a web search to retrieve up to date info or piece of knowledge you have doubts about.",
-		Parameters: OpenAiFuncitonParameters{
-			Type:     "object",
-			Required: []string{"query"},
-			Properties: map[string]any{
-				"query": map[string]any{
-					"type":        "string",
-					"description": "The search query string. Should be very specific and moderately detailed for accurate retrieval.",
-				},
-			},
-		},
-	},
-}
-
-var openAICurrentDatetimeTool = OpenAiToolDefinition{
-	Type: "function",
-	Function: OpenAiFunction{
-		Name:        currentDatetimeToolName,
-		Description: "Get the current local date, time, weekday, timezone, UTC offset, RFC3339 datetime, and Unix timestamp. Use this before web_search when the query depends on today's date or current time.",
-		Parameters: OpenAiFuncitonParameters{
-			Type:       "object",
-			Required:   []string{},
-			Properties: map[string]any{},
-		},
-	},
-}
-
 func (c OpenAiClient) RequestCompletion(
 	ctx context.Context,
 	chatMsgs []util.LocalStoreMessage,
 	modelSettings util.Settings,
+	tools []util.ToolDefinition,
 	resultChan chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
 	path := "v1/chat/completions"
@@ -157,7 +122,7 @@ func (c OpenAiClient) RequestCompletion(
 		}
 		apiKey := config.ResolvedAPIKey()
 
-		body, err := c.constructCompletionRequestPayload(chatMsgs, *config, modelSettings)
+		body, err := c.constructCompletionRequestPayload(chatMsgs, *config, modelSettings, tools)
 		if err != nil {
 			return util.MakeErrorMsg(err.Error())
 		}
@@ -268,6 +233,7 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 	chatMsgs []util.LocalStoreMessage,
 	cfg config.Config,
 	settings util.Settings,
+	tools []util.ToolDefinition,
 ) ([]byte, error) {
 	messages := []OpenAIConversationTurn{}
 
@@ -321,8 +287,8 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 		reqParams["top_p"] = *settings.TopP
 	}
 
-	if settings.WebSearchEnabled {
-		reqParams["tools"] = []any{openAIwebSearchTool, openAICurrentDatetimeTool}
+	if len(tools) > 0 {
+		reqParams["tools"] = openAITools(tools)
 	}
 
 	util.TransformRequestHeaders(c.provider, reqParams)
@@ -336,6 +302,21 @@ func (c OpenAiClient) constructCompletionRequestPayload(
 	// util.Slog.Debug("serialized request", "data", string(body))
 
 	return body, nil
+}
+
+func openAITools(tools []util.ToolDefinition) []OpenAiToolDefinition {
+	result := make([]OpenAiToolDefinition, 0, len(tools))
+	for _, tool := range tools {
+		result = append(result, OpenAiToolDefinition{
+			Type: "function",
+			Function: OpenAiFunction{
+				Name:        tool.Name,
+				Description: tool.Description,
+				Parameters:  tool.Parameters,
+			},
+		})
+	}
+	return result
 }
 
 func getBaseUrl(configUrl string) string {
@@ -608,7 +589,7 @@ func (b *OpenAiToolCallsBuffer) mergeBuffer(chunk util.ProcessApiCompletionRespo
 			}
 		}
 
-		var args map[string]string
+		var args map[string]any
 
 		err := json.Unmarshal([]byte(argsJson), &args)
 		if err != nil {
@@ -651,7 +632,7 @@ func toOpenAiToolCall(tc util.ToolCall) OpenAiToolCall {
 }
 
 func fromOpenAiToolCall(tc OpenAiToolCall) util.ToolCall {
-	var args map[string]string
+	var args map[string]any
 
 	json.Unmarshal([]byte(tc.Function.Arguments), &args)
 	return util.ToolCall{

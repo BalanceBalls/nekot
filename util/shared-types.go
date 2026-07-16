@@ -43,11 +43,41 @@ type ToolCall struct {
 	Function         ToolFunction `json:"function"`
 	Result           *string      `json:"result"`
 	ThoughtSignature []byte       `json:"thought_signature,omitempty"`
+	Source           ToolSource   `json:"source,omitempty"`
+	ServerID         string       `json:"server_id,omitempty"`
+	OriginalName     string       `json:"original_name,omitempty"`
 }
 
 type ToolFunction struct {
-	Args map[string]string `json:"arguments"`
-	Name string            `json:"name"`
+	Args map[string]any `json:"arguments"`
+	Name string         `json:"name"`
+}
+
+type ToolSource string
+
+const (
+	BuiltinToolSource ToolSource = "builtin"
+	MCPToolSource     ToolSource = "mcp"
+)
+
+type ToolAnnotations struct {
+	Title           string `json:"title,omitempty"`
+	ReadOnlyHint    bool   `json:"read_only_hint,omitempty"`
+	DestructiveHint *bool  `json:"destructive_hint,omitempty"`
+	IdempotentHint  bool   `json:"idempotent_hint,omitempty"`
+	OpenWorldHint   *bool  `json:"open_world_hint,omitempty"`
+}
+
+type ToolDefinition struct {
+	Name             string
+	OriginalName     string
+	DisplayName      string
+	Description      string
+	Parameters       any
+	Source           ToolSource
+	ServerID         string
+	RequiresApproval bool
+	Annotations      ToolAnnotations
 }
 
 type CompletionChunk struct {

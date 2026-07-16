@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -47,6 +48,10 @@ func (p *SettingsPane) handlePresetMode(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	switch {
+	case msg.String() == "]" || msg.String() == "right":
+		p.switchToMCP()
+		return nil
+
 	case key.Matches(msg, p.keyMap.goBack):
 		if msg.String() == "left" && !p.presetPicker.IsFirstPage() {
 			return nil
@@ -65,6 +70,174 @@ func (p *SettingsPane) handlePresetMode(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	return tea.Batch(cmds...)
+}
+
+func (p *SettingsPane) switchToMCP() {
+	p.viewMode = mcpView
+	p.changeMode = inactive
+	p.mcpInspect = false
+	p.mcpError = ""
+	p.clampMCPSelection()
+}
+
+func (p *SettingsPane) clampMCPSelection() {
+	if p.mcpManager == nil {
+		p.mcpSelected = 0
+		return
+	}
+	statuses := p.mcpManager.Statuses()
+	if len(statuses) == 0 {
+		p.mcpSelected = 0
+		return
+	}
+	if p.mcpSelected >= len(statuses) {
+		p.mcpSelected = len(statuses) - 1
+	}
+	if p.mcpSelected < 0 {
+		p.mcpSelected = 0
+	}
+}
+
+func (p *SettingsPane) handleMCPMode(msg tea.KeyPressMsg) tea.Cmd {
+	if p.mcpManager == nil {
+		if msg.String() == "esc" || msg.String() == "[" || msg.String() == "left" {
+			p.viewMode = defaultView
+		}
+		return nil
+	}
+	statuses := p.mcpManager.Statuses()
+	p.clampMCPSelection()
+	if p.mcpInspect {
+		if msg.String() == "esc" || msg.String() == "enter" {
+			p.mcpInspect = false
+		}
+		return nil
+	}
+
+	switch msg.String() {
+	case "esc":
+		p.viewMode = defaultView
+		return nil
+	case "[", "left":
+		return p.switchToPresets()
+	case "]", "right":
+		p.viewMode = defaultView
+		return nil
+	case "up", "k":
+		if p.mcpSelected > 0 {
+			p.mcpSelected--
+		}
+		return nil
+	case "down", "j":
+		if p.mcpSelected+1 < len(statuses) {
+			p.mcpSelected++
+		}
+		return nil
+	case "enter":
+		if len(statuses) > 0 {
+			p.mcpInspect = true
+		}
+		return nil
+	case "ctrl+r":
+		return runMCPAction(p.mcpManager.Reload)
+	}
+
+	if len(statuses) == 0 {
+		return nil
+	}
+	selected := statuses[p.mcpSelected]
+	switch msg.String() {
+	case " ":
+		return runMCPAction(func() error {
+			return p.mcpManager.SetEnabled(selected.ID, !selected.Enabled)
+		})
+	case "r":
+		return runMCPAction(func() error { return p.mcpManager.Reconnect(selected.ID) })
+	case "a":
+		p.mcpInspect = true
+		return runMCPAction(func() error { return p.mcpManager.Authorize(selected.ID) })
+	case "x":
+		return runMCPAction(func() error { return p.mcpManager.Logout(selected.ID) })
+	}
+	return nil
+}
+
+func (p SettingsPane) renderMCPView(width, height int) string {
+	if p.mcpManager == nil {
+		return lipgloss.NewStyle().Width(width).Height(height).Render("MCP manager unavailable")
+	}
+	statuses := p.mcpManager.Statuses()
+	if len(statuses) == 0 {
+		return lipgloss.NewStyle().Width(width).Height(height).Render(
+			"No MCP servers configured\n\nctrl+r reload config",
+		)
+	}
+	selectedIndex := p.mcpSelected
+	if selectedIndex >= len(statuses) {
+		selectedIndex = len(statuses) - 1
+	}
+	selected := statuses[selectedIndex]
+	if p.mcpInspect {
+		lines := []string{
+			fmt.Sprintf("%s (%s)", selected.ID, selected.State),
+			fmt.Sprintf("Transport: %s", selected.Transport),
+			fmt.Sprintf("Tools: %d exposed / %d discovered", selected.ExposedTools, selected.DiscoveredTools),
+		}
+		if selected.LastError != "" {
+			lines = append(lines, "Error: "+selected.LastError)
+		}
+		if selected.AuthorizationURL != "" {
+			lines = append(lines, "Authorization URL: "+selected.AuthorizationURL)
+		}
+		lines = append(lines, "", "Exposed tools")
+		tools := p.mcpManager.ToolsForServer(selected.ID)
+		if len(tools) == 0 {
+			lines = append(lines, "  none")
+		}
+		for _, tool := range tools {
+			approval := "approval"
+			if !tool.RequiresApproval {
+				approval = "trusted"
+			}
+			lines = append(lines, fmt.Sprintf("  %s  [%s]", tool.OriginalName, approval))
+		}
+		lines = append(lines, "", "enter / esc  Back")
+		return lipgloss.NewStyle().Width(width).Height(height).Render(strings.Join(lines, "\n"))
+	}
+
+	lines := make([]string, 0, len(statuses)+8)
+	for index, status := range statuses {
+		cursor := " "
+		if index == selectedIndex {
+			cursor = ">"
+		}
+		toggle := "[ ]"
+		if status.Enabled {
+			toggle = "[x]"
+		}
+		line := fmt.Sprintf(
+			"%s %s %s  %s  %d/%d tools",
+			cursor,
+			toggle,
+			status.ID,
+			status.State,
+			status.ExposedTools,
+			status.DiscoveredTools,
+		)
+		lines = append(lines, util.TrimListItem(line, width))
+	}
+	lines = append(lines, "")
+	if selected.LastError != "" {
+		lines = append(lines, util.TrimListItem("Error: "+selected.LastError, width))
+	}
+	if p.mcpError != "" {
+		lines = append(lines, util.TrimListItem("Action: "+p.mcpError, width))
+	}
+	lines = append(lines,
+		"space toggle   enter inspect   r reconnect",
+		"a authorize    x logout        ctrl+r reload",
+	)
+	return lipgloss.NewStyle().Width(width).Height(height).Render(strings.Join(lines, "\n"))
 }
 
 func (p *SettingsPane) selectPreset(presetId int) tea.Cmd {

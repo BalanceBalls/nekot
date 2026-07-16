@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
 	"slices"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -17,6 +19,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/BalanceBalls/nekot/config"
+	"github.com/BalanceBalls/nekot/mcpclient"
 	"github.com/BalanceBalls/nekot/panes"
 	"github.com/BalanceBalls/nekot/sessions"
 	"github.com/BalanceBalls/nekot/util"
@@ -106,12 +109,14 @@ type MainView struct {
 	infoPane         panes.InfoPane
 	loadedDeps       []util.AsyncDependency
 	pendingToolCalls []util.ToolCall
+	pendingApprovals []sessions.ToolApprovalRequest
 	initialPrompt    string
 
 	flags               config.StartupFlags
 	config              config.Config
 	sessionOrchestrator sessions.Orchestrator
 	sessionService      sessions.SessionService
+	mcpManager          *mcpclient.Manager
 	context             context.Context
 	processingCtx       context.Context
 	processingCancel    context.CancelFunc
@@ -130,11 +135,11 @@ func dimensionsPulsar() tea.Msg {
 	return checkDimensionsMsg(1)
 }
 
-func NewMainView(db *sql.DB, ctx context.Context) MainView {
+func NewMainView(db *sql.DB, ctx context.Context, mcpManager *mcpclient.Manager) MainView {
 	util.Slog.Debug("initializing main view")
 	promptPane := panes.NewPromptPane(ctx)
 	sessionsPane := panes.NewSessionsPane(db, ctx)
-	settingsPane := panes.NewSettingsPane(db, ctx)
+	settingsPane := panes.NewSettingsPane(db, ctx, mcpManager)
 	statusBarPane := panes.NewInfoPane(db, ctx)
 	sessionsService := sessions.NewSessionService(db)
 
@@ -144,7 +149,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		util.NormalMode,
 	)
 	chatPane := panes.NewChatPane(ctx, w, h)
-	orchestrator := sessions.NewOrchestrator(db, ctx)
+	orchestrator := sessions.NewOrchestrator(db, ctx, mcpManager)
 
 	flags, ok := config.FlagsFromContext(ctx)
 	if !ok {
@@ -166,6 +171,7 @@ func NewMainView(db *sql.DB, ctx context.Context) MainView {
 		currentSessionID:    "",
 		sessionOrchestrator: orchestrator,
 		sessionService:      *sessionsService,
+		mcpManager:          mcpManager,
 		promptPane:          promptPane,
 		sessionsPane:        sessionsPane,
 		settingsPane:        settingsPane,
@@ -194,6 +200,35 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd  tea.Cmd
 		cmds []tea.Cmd
 	)
+
+	if approval, ok := msg.(sessions.ToolApprovalRequest); ok {
+		m.pendingApprovals = append(m.pendingApprovals, approval)
+		m.controlsLocked = true
+		return m, nil
+	}
+	if len(m.pendingApprovals) > 0 {
+		switch msg := msg.(type) {
+		case tea.MouseMsg:
+			return m, nil
+		case tea.KeyPressMsg:
+			if key.Matches(msg, m.keys.quit) {
+				return m, tea.Quit
+			}
+			if key.Matches(msg, m.keys.cancel) {
+				return m, m.CancelProcessing()
+			}
+			approval := m.pendingApprovals[0]
+			switch msg.String() {
+			case "enter", "y":
+				m.pendingApprovals = m.pendingApprovals[1:]
+				return m, sessions.SendToolApprovalDecision(approval.ToolCall, true)
+			case "esc", "n":
+				m.pendingApprovals = m.pendingApprovals[1:]
+				return m, sessions.SendToolApprovalDecision(approval.ToolCall, false)
+			}
+			return m, nil
+		}
+	}
 
 	m.sessionOrchestrator, cmd = m.sessionOrchestrator.Update(msg)
 	cmds = append(cmds, cmd)
@@ -320,21 +355,18 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 		}
 
-		if !msg.IsSuccess {
-			return m, tea.Batch(
-				util.MakeErrorMsg("tool call failed: "+msg.Name),
-				util.SendProcessingStateChangedMsg(util.Idle),
-			)
-		}
-
 		lastIdx := len(m.sessionOrchestrator.ArrayOfMessages) - 1
 		lastTurn := m.sessionOrchestrator.ArrayOfMessages[lastIdx]
 
 		if len(lastTurn.ToolCalls) > 0 {
 			for _, tc := range lastTurn.ToolCalls {
-				if tc.Function.Name == msg.Name && tc.Id == msg.Id && msg.IsSuccess {
+				if tc.Id == msg.Id && !containsToolResult(m.pendingToolCalls, msg.Id) {
 					m.pendingToolCalls = append(m.pendingToolCalls, util.ToolCall{
-						Id: msg.Id,
+						Id:           msg.Id,
+						Type:         tc.Type,
+						Source:       tc.Source,
+						ServerID:     tc.ServerID,
+						OriginalName: tc.OriginalName,
 						Function: util.ToolFunction{
 							Args: tc.Function.Args,
 							Name: tc.Function.Name,
@@ -367,6 +399,8 @@ func (m MainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case util.PromptReady:
 		m.error = util.ErrorEvent{}
+		m.pendingToolCalls = nil
+		m.pendingApprovals = nil
 
 		util.Slog.Debug("prompt ready message received", "msg", msg)
 
@@ -576,6 +610,12 @@ func (m *MainView) handleFocusChange(targetPane util.Pane, isMouseEvent bool) {
 }
 
 func (m MainView) View() tea.View {
+	if len(m.pendingApprovals) > 0 {
+		view := tea.NewView(m.renderToolApproval(m.pendingApprovals[0]))
+		view.AltScreen = true
+		view.MouseMode = tea.MouseModeCellMotion
+		return view
+	}
 	if m.viewMode == util.HelpMode {
 		view := tea.NewView(lipgloss.NewStyle().
 			Width(m.terminalWidth).
@@ -626,6 +666,69 @@ func (m MainView) View() tea.View {
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	return view
+}
+
+func (m MainView) renderToolApproval(approval sessions.ToolApprovalRequest) string {
+	arguments, err := json.MarshalIndent(approval.ToolCall.Function.Args, "", "  ")
+	if err != nil {
+		arguments = []byte("<arguments unavailable>")
+	}
+	annotations := []string{}
+	if approval.Tool.Annotations.ReadOnlyHint {
+		annotations = append(annotations, "read-only")
+	}
+	if approval.Tool.Annotations.DestructiveHint != nil && *approval.Tool.Annotations.DestructiveHint {
+		annotations = append(annotations, "destructive")
+	}
+	if approval.Tool.Annotations.IdempotentHint {
+		annotations = append(annotations, "idempotent")
+	}
+	if approval.Tool.Annotations.OpenWorldHint != nil && *approval.Tool.Annotations.OpenWorldHint {
+		annotations = append(annotations, "open-world")
+	}
+	if len(annotations) == 0 {
+		annotations = append(annotations, "no annotations")
+	}
+
+	width := min(min(max(m.terminalWidth-8, 14), 88), max(1, m.terminalWidth-6))
+	contentWidth := max(1, width-4)
+	title := lipgloss.NewStyle().Bold(true).Render("MCP tool approval")
+	metadata := strings.Join([]string{
+		util.TrimListItem("Server: "+approval.Tool.ServerID, contentWidth),
+		util.TrimListItem("Tool: "+approval.Tool.OriginalName, contentWidth),
+		util.TrimListItem("Hints: "+strings.Join(annotations, ", "), contentWidth),
+	}, "\n")
+	argumentHeight := max(1, m.terminalHeight-13)
+	actions := "Enter / y  Allow once    Esc / n  Deny"
+	if contentWidth < 40 {
+		actions = "y  Allow once    n  Deny"
+	}
+	if contentWidth < 22 {
+		actions = "y Allow\nn Deny"
+	}
+	body := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		"",
+		metadata,
+		"",
+		"Arguments",
+		lipgloss.NewStyle().Width(contentWidth).MaxHeight(argumentHeight).Render(string(arguments)),
+		"",
+		actions,
+	)
+	panel := lipgloss.NewStyle().
+		Width(width).
+		MaxHeight(max(1, m.terminalHeight-2)).
+		Padding(1, 2).
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(m.config.ColorScheme.GetColors().ActiveTabBorderColor).
+		Render(body)
+	return lipgloss.Place(m.terminalWidth, m.terminalHeight, lipgloss.Center, lipgloss.Center, panel)
+}
+
+func containsToolResult(results []util.ToolCall, id string) bool {
+	return slices.ContainsFunc(results, func(result util.ToolCall) bool { return result.Id == id })
 }
 
 func (m *MainView) setProcessingContext() {
@@ -731,7 +834,23 @@ func (m *MainView) CancelProcessing() tea.Cmd {
 
 	m.sessionOrchestrator.Cancel()
 	m.chatPane.Cancel()
-	m.processingCancel()
+	if m.processingCancel != nil {
+		m.processingCancel()
+	}
+
+	if m.sessionOrchestrator.ResponseProcessingState == util.AwaitingToolCallResult {
+		if err := m.persistCancelledToolTurn(); err != nil {
+			return util.MakeErrorMsg(err.Error())
+		}
+		m.sessionOrchestrator.ResponseProcessingState = util.Idle
+		m.pendingToolCalls = nil
+		m.pendingApprovals = nil
+		m.controlsLocked = false
+		return tea.Batch(
+			util.SendProcessingStateChangedMsg(util.Idle),
+			util.SendNotificationMsg(util.CancelledNotification),
+		)
+	}
 
 	finalizeCmd := m.sessionOrchestrator.FinalizeResponseOnCancel()
 	if finalizeCmd != nil {
@@ -742,4 +861,35 @@ func (m *MainView) CancelProcessing() tea.Cmd {
 
 	cmds = append(cmds, util.SendNotificationMsg(util.CancelledNotification))
 	return tea.Batch(cmds...)
+}
+
+func (m *MainView) persistCancelledToolTurn() error {
+	messages := m.sessionOrchestrator.ArrayOfMessages
+	if len(messages) == 0 {
+		return nil
+	}
+	lastTurn := messages[len(messages)-1]
+	if len(lastTurn.ToolCalls) == 0 {
+		return nil
+	}
+	results := append([]util.ToolCall(nil), m.pendingToolCalls...)
+	for _, toolCall := range lastTurn.ToolCalls {
+		if containsToolResult(results, toolCall.Id) {
+			continue
+		}
+		result := `{"error":"tool call cancelled","isError":true}`
+		toolCall.Result = &result
+		results = append(results, toolCall)
+	}
+	messages = append(messages, util.LocalStoreMessage{
+		Model:       lastTurn.Model,
+		Role:        "tool",
+		Attachments: []util.Attachment{},
+		ToolCalls:   results,
+	})
+	if err := m.sessionService.UpdateSessionMessages(m.sessionOrchestrator.GetCurrentSessionId(), messages); err != nil {
+		return err
+	}
+	m.sessionOrchestrator.ArrayOfMessages = messages
+	return nil
 }

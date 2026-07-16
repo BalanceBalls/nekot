@@ -13,37 +13,6 @@ import (
 	"github.com/revrost/go-openrouter"
 )
 
-var openRouterwebSearchTool = openrouter.Tool{
-	Type: openrouter.ToolTypeFunction,
-	Function: &openrouter.FunctionDefinition{
-		Name:        webSearchToolName,
-		Description: "Perform a web search to retrieve up to date info or piece of knowledge you have doubts about.",
-		Parameters: OpenAiFuncitonParameters{
-			Type:     "object",
-			Required: []string{"query"},
-			Properties: map[string]any{
-				"query": map[string]any{
-					"type":        "string",
-					"description": "The search query string. Should be very specific and moderately detailed for accurate retrieval.",
-				},
-			},
-		},
-	},
-}
-
-var openRouterCurrentDatetimeTool = openrouter.Tool{
-	Type: openrouter.ToolTypeFunction,
-	Function: &openrouter.FunctionDefinition{
-		Name:        currentDatetimeToolName,
-		Description: "Get the current local date, time, weekday, timezone, UTC offset, RFC3339 datetime, and Unix timestamp. Use this before web_search when the query depends on today's date or current time.",
-		Parameters: OpenAiFuncitonParameters{
-			Type:       "object",
-			Required:   []string{},
-			Properties: map[string]any{},
-		},
-	},
-}
-
 type OpenrouterClient struct {
 	systemMessage string
 }
@@ -62,6 +31,7 @@ func (c OpenrouterClient) RequestCompletion(
 	ctx context.Context,
 	chatMsgs []util.LocalStoreMessage,
 	modelSettings util.Settings,
+	tools []util.ToolDefinition,
 	resultChan chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
 
@@ -75,7 +45,7 @@ func (c OpenrouterClient) RequestCompletion(
 		client := openrouter.NewClient(config.ResolvedAPIKey())
 
 		request := openrouter.ChatCompletionRequest{}
-		setRequestParams(&request, modelSettings)
+		setRequestParams(&request, modelSettings, tools)
 		setRequestContext(&request, *config, modelSettings, chatMsgs)
 
 		stream, err := client.CreateChatCompletionStream(ctx, request)
@@ -303,7 +273,9 @@ func setRequestContext(
 
 func setRequestParams(
 	r *openrouter.ChatCompletionRequest,
-	settings util.Settings) {
+	settings util.Settings,
+	tools []util.ToolDefinition,
+) {
 
 	r.Stream = true
 	r.Model = settings.Model
@@ -321,9 +293,24 @@ func setRequestParams(
 		r.FrequencyPenalty = *settings.Frequency
 	}
 
-	if settings.WebSearchEnabled {
-		r.Tools = []openrouter.Tool{openRouterwebSearchTool, openRouterCurrentDatetimeTool}
+	if len(tools) > 0 {
+		r.Tools = openRouterTools(tools)
 	}
+}
+
+func openRouterTools(tools []util.ToolDefinition) []openrouter.Tool {
+	result := make([]openrouter.Tool, 0, len(tools))
+	for _, tool := range tools {
+		result = append(result, openrouter.Tool{
+			Type: openrouter.ToolTypeFunction,
+			Function: &openrouter.FunctionDefinition{
+				Name:        tool.Name,
+				Description: tool.Description,
+				Parameters:  tool.Parameters,
+			},
+		})
+	}
+	return result
 }
 
 func processCompletionChunk(chunk openrouter.ChatCompletionStreamResponse) (util.CompletionChunk, error) {
@@ -483,7 +470,7 @@ func (b *OpenRouterToolCallsBuffer) mergeOpenRouterBuffer(chunk openrouter.ChatC
 			}
 		}
 
-		var args map[string]string
+		var args map[string]any
 
 		err := json.Unmarshal([]byte(argsJson), &args)
 		if err != nil {
@@ -514,7 +501,7 @@ func toOpenRouterToolCall(tc util.ToolCall) openrouter.ToolCall {
 }
 
 func fromOpenRouterToolCall(tc openrouter.ToolCall) util.ToolCall {
-	var args map[string]string
+	var args map[string]any
 
 	json.Unmarshal([]byte(tc.Function.Arguments), &args)
 	return util.ToolCall{

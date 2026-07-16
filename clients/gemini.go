@@ -34,37 +34,11 @@ func NewGeminiClient(systemMessage string) *GeminiClient {
 	}
 }
 
-var webSearchTool = &genai.Tool{
-	FunctionDeclarations: []*genai.FunctionDeclaration{
-		{
-			Name:        webSearchToolName,
-			Description: "Perform a web search to retrieve up to date info or piece of knowledge you have doubts about.",
-			Parameters: &genai.Schema{
-				Type: genai.TypeObject,
-				Properties: map[string]*genai.Schema{
-					"query": {
-						Type:        genai.TypeString,
-						Description: "The search query string. Should be very specific and moderately detailed for accurate retrieval.",
-					},
-				},
-				Required: []string{"query"},
-			},
-		},
-		{
-			Name:        currentDatetimeToolName,
-			Description: "Get the current local date, time, weekday, timezone, UTC offset, RFC3339 datetime, and Unix timestamp. Use this before web_search when the query depends on today's date or current time.",
-			Parameters: &genai.Schema{
-				Type:       genai.TypeObject,
-				Properties: map[string]*genai.Schema{},
-			},
-		},
-	},
-}
-
 func (c GeminiClient) RequestCompletion(
 	ctx context.Context,
 	chatMsgs []util.LocalStoreMessage,
 	modelSettings util.Settings,
+	tools []util.ToolDefinition,
 	resultChan chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
 
@@ -81,7 +55,7 @@ func (c GeminiClient) RequestCompletion(
 			return nil
 		}
 
-		contents, generationConfig, err := prepareGeminiCompletionRequest(chatMsgs, *cfg, modelSettings)
+		contents, generationConfig, err := prepareGeminiCompletionRequest(chatMsgs, *cfg, modelSettings, tools)
 		if err != nil {
 			return util.MakeErrorMsg(err.Error())
 		}
@@ -112,10 +86,11 @@ func prepareGeminiCompletionRequest(
 	chatMsgs []util.LocalStoreMessage,
 	cfg config.Config,
 	modelSettings util.Settings,
+	tools []util.ToolDefinition,
 ) ([]*genai.Content, *genai.GenerateContentConfig, error) {
 	util.Slog.Debug("constructing message", "model", modelSettings.Model)
 
-	generationConfig := buildGenerateContentConfig(cfg, modelSettings)
+	generationConfig := buildGenerateContentConfig(cfg, modelSettings, tools)
 	util.Slog.Debug("added tools", "tools", generationConfig.Tools)
 
 	contents, err := buildChatHistory(chatMsgs, *cfg.IncludeReasoningTokensInContext)
@@ -294,7 +269,11 @@ func singleChoiceChunk(id int, content, finishReason string) util.CompletionChun
 	}
 }
 
-func buildGenerateContentConfig(cfg config.Config, settings util.Settings) *genai.GenerateContentConfig {
+func buildGenerateContentConfig(
+	cfg config.Config,
+	settings util.Settings,
+	tools []util.ToolDefinition,
+) *genai.GenerateContentConfig {
 	generationConfig := &genai.GenerateContentConfig{
 		MaxOutputTokens: int32(settings.MaxTokens),
 	}
@@ -307,8 +286,8 @@ func buildGenerateContentConfig(cfg config.Config, settings util.Settings) *gena
 		generationConfig.Temperature = settings.Temperature
 	}
 
-	if settings.WebSearchEnabled {
-		generationConfig.Tools = []*genai.Tool{webSearchTool}
+	if len(tools) > 0 {
+		generationConfig.Tools = []*genai.Tool{{FunctionDeclarations: geminiTools(tools)}}
 	}
 
 	if cfg.SystemMessage != "" || (settings.SystemPrompt != nil && *settings.SystemPrompt != "") {
@@ -320,6 +299,18 @@ func buildGenerateContentConfig(cfg config.Config, settings util.Settings) *gena
 	}
 
 	return generationConfig
+}
+
+func geminiTools(tools []util.ToolDefinition) []*genai.FunctionDeclaration {
+	result := make([]*genai.FunctionDeclaration, 0, len(tools))
+	for _, tool := range tools {
+		result = append(result, &genai.FunctionDeclaration{
+			Name:                 tool.Name,
+			Description:          tool.Description,
+			ParametersJsonSchema: tool.Parameters,
+		})
+	}
+	return result
 }
 
 // Maps gemini response model to the openai response model
@@ -422,12 +413,8 @@ func responseToolCalls(parts []*genai.Part) ([]util.ToolCall, error) {
 	var toolCalls []util.ToolCall
 	for _, part := range parts {
 		tc := part.FunctionCall
-		if tc.Name != webSearchToolName && tc.Name != currentDatetimeToolName {
-			continue
-		}
-
-		args := geminiStringArgs(tc.Args)
-		if tc.Name == webSearchToolName && args["query"] == "" {
+		args := tc.Args
+		if tc.Name == webSearchToolName && fmt.Sprint(args["query"]) == "" {
 			return nil, errors.New("GeminiAPI: web search tool call has no string query")
 		}
 
@@ -450,25 +437,6 @@ func geminiCallID(id string) string {
 		return id
 	}
 	return "gemini_func"
-}
-
-func geminiStringArgs(args map[string]any) map[string]string {
-	result := map[string]string{}
-	for key, value := range args {
-		strValue, ok := value.(string)
-		if ok {
-			result[key] = strValue
-		}
-	}
-	return result
-}
-
-func geminiArgs(args map[string]string) map[string]any {
-	result := map[string]any{}
-	for key, value := range args {
-		result[key] = value
-	}
-	return result
 }
 
 func contentDelta(content string) map[string]any {
@@ -656,7 +624,10 @@ func (b *geminiHistoryBuilder) toolResponsePart(tc util.ToolCall) *genai.Part {
 		result = *tc.Result
 	}
 
-	response := geminiArgs(tc.Function.Args)
+	response := make(map[string]any, len(tc.Function.Args)+1)
+	for key, value := range tc.Function.Args {
+		response[key] = value
+	}
 	response["result"] = result
 
 	return &genai.Part{
@@ -685,7 +656,7 @@ func (b *geminiHistoryBuilder) toolRequestPart(tc util.ToolCall) *genai.Part {
 		FunctionCall: &genai.FunctionCall{
 			ID:   tc.Id,
 			Name: tc.Function.Name,
-			Args: geminiArgs(tc.Function.Args),
+			Args: tc.Function.Args,
 		},
 		ThoughtSignature: append([]byte(nil), tc.ThoughtSignature...),
 	}

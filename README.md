@@ -17,6 +17,7 @@ A tool for those who appreciate keyboard driven apps and terminal workflows (*mo
  * 🔀 **Support for OpenRouter API**
  * 🖼️ **Images support**
  * 🔍 **Web search tool [BETA]**
+ * 🔌 **MCP tools** over stdio and Streamable HTTP
  * 💬 **Chat sessions** management and quick chats
  * ⚙️ **Settings presets** (configure different personas with unique settings)
  * ✂️ **Convenient text selection** tool (vim-like line selection)
@@ -187,6 +188,58 @@ We provide a `config.json` file within your directory for easy access to essenti
  - `includeReasoningTokensInContext` field sets whether to include reasoning tokens in the next request or not.
  - `sessionExportDir` allows to specify directory for session exports. If not set, exports are saved to current directory. **The path must be an absolute path**
  - `titleGeneration` config for automatic session name generation
+
+### MCP servers
+
+MCP tool servers are defined in `~/.nekot/config.json`. Server failures do not
+block startup. Enablement is global and persists in `chat.db`; definitions and
+approval allowlists remain config-managed.
+
+```json
+{
+  "mcp": {
+    "connectTimeoutSeconds": 10,
+    "toolTimeoutSeconds": 60,
+    "oauthTimeoutSeconds": 120,
+    "maxResultBytes": 1048576,
+    "servers": {
+      "filesystem": {
+        "transport": "stdio",
+        "defaultEnabled": true,
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"],
+        "cwd": "/workspace",
+        "env": {"TOKEN": "env:MCP_TOKEN"},
+        "denyTools": ["delete_*"],
+        "autoApprove": ["read_*"]
+      },
+      "remote": {
+        "transport": "streamable-http",
+        "defaultEnabled": false,
+        "url": "https://example.com/mcp",
+        "headers": {"X-API-Key": "cmd:security find-generic-password -s mcp-key -w"},
+        "oauth": {"registration": "dynamic", "scopes": ["read"]}
+      }
+    }
+  }
+}
+```
+
+Environment values and HTTP headers require an explicit `env:`, `cmd:`, or
+`literal:` source. `allowTools` restricts exposed original tool names,
+`denyTools` takes precedence, and `autoApprove` accepts exact names or glob
+patterns (`"*"` trusts every tool on that server). Calls not auto-approved show
+an allow-once/deny prompt.
+
+For a pre-registered OAuth client, use `"registration": "preregistered"`, a
+`clientId`, optional `clientSecretSource`, and a loopback URL such as
+`http://127.0.0.1:38475/callback`. OAuth tokens and dynamic client credentials
+are stored in `~/.nekot/mcp-oauth.json` with user-only permissions. Authorization
+starts only when requested from the MCP Settings tab.
+
+In Settings, open the MCP tab with tab navigation. Use `space` to toggle a
+server, `enter` to inspect tools, `r` to reconnect, `Ctrl+r` to reload
+definitions, `a` to authorize, and `x` to log out.
 
 
 ### Providers

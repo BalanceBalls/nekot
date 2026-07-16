@@ -193,7 +193,7 @@ func (g *SessionNameGenerator) requestTitleCompletion(
 		{Role: "user", Content: genPrompt},
 	}
 	resultChan := make(chan util.ProcessApiCompletionResponse)
-	go llmClient.RequestCompletion(titleCtx, dummyMsgs, modelSettings, resultChan)()
+	go llmClient.RequestCompletion(titleCtx, dummyMsgs, modelSettings, nil, resultChan)()
 
 	return titleCtx, cancel, resultChan
 }

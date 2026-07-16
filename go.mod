@@ -12,9 +12,11 @@ require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/joho/godotenv v1.5.1
 	github.com/lrstanley/bubblezone/v2 v2.0.0
+	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/pressly/goose/v3 v3.27.2
 	github.com/revrost/go-openrouter v1.6.0
 	golang.design/x/clipboard v0.8.0
+	golang.org/x/oauth2 v0.36.0
 	golang.org/x/term v0.44.0
 	google.golang.org/genai v1.62.0
 	modernc.org/sqlite v1.53.0
@@ -30,9 +32,13 @@ require (
 	github.com/dlclark/regexp2/v2 v2.2.2 // indirect
 	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.8 // indirect
+	github.com/segmentio/asm v1.2.1 // indirect
+	github.com/segmentio/encoding v0.5.4 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	gitlab.com/golang-commonmark/html v0.0.0-20191124015941-a22733972181 // indirect
 	gitlab.com/golang-commonmark/linkify v0.0.0-20200225224916-64bca66f6ad3 // indirect
 	gitlab.com/golang-commonmark/markdown v0.0.0-20211110145824-bf3e522c626a // indirect

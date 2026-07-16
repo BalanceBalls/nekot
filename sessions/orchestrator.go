@@ -14,6 +14,7 @@ import (
 	"github.com/BalanceBalls/nekot/config"
 	"github.com/BalanceBalls/nekot/extensions/datetime"
 	"github.com/BalanceBalls/nekot/extensions/websearch"
+	"github.com/BalanceBalls/nekot/mcpclient"
 	"github.com/BalanceBalls/nekot/settings"
 	"github.com/BalanceBalls/nekot/user"
 	"github.com/BalanceBalls/nekot/util"
@@ -25,6 +26,7 @@ type Orchestrator struct {
 	userService     *user.UserService
 	settingsService *settings.SettingsService
 	config          config.Config
+	mcpManager      *mcpclient.Manager
 
 	mu                        *sync.RWMutex
 	InferenceClient           util.LlmClient
@@ -48,7 +50,7 @@ type Orchestrator struct {
 	processingCancel context.CancelFunc
 }
 
-func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
+func NewOrchestrator(db *sql.DB, ctx context.Context, mcpManager *mcpclient.Manager) Orchestrator {
 	ss := NewSessionService(db)
 	us := user.NewUserService(db)
 
@@ -72,6 +74,7 @@ func NewOrchestrator(db *sql.DB, ctx context.Context) Orchestrator {
 		sessionService:          ss,
 		userService:             us,
 		settingsService:         settingsService,
+		mcpManager:              mcpManager,
 		InferenceClient:         llmClient,
 		ResponseProcessingState: util.Idle,
 		mu:                      &sync.RWMutex{},
@@ -189,10 +192,42 @@ func (m Orchestrator) Update(msg tea.Msg) (Orchestrator, tea.Cmd) {
 		tc := msg.ToolCall
 		switch tc.Function.Name {
 		case "web_search":
+			tc.Source = util.BuiltinToolSource
+			tc.OriginalName = tc.Function.Name
+			if err := m.annotateToolCall(tc); err != nil {
+				return m, util.MakeErrorMsg(err.Error())
+			}
 			return m, m.doWebSearch(m.processingCtx, tc.Id, tc.Function.Args)
 		case "current_datetime":
+			tc.Source = util.BuiltinToolSource
+			tc.OriginalName = tc.Function.Name
+			if err := m.annotateToolCall(tc); err != nil {
+				return m, util.MakeErrorMsg(err.Error())
+			}
 			return m, m.doCurrentDatetime(tc.Id)
 		}
+
+		if m.mcpManager != nil {
+			if definition, ok := m.mcpManager.Resolve(tc.Function.Name); ok {
+				tc.Source = util.MCPToolSource
+				tc.ServerID = definition.ServerID
+				tc.OriginalName = definition.OriginalName
+				if err := m.annotateToolCall(tc); err != nil {
+					return m, util.MakeErrorMsg(err.Error())
+				}
+				if definition.RequiresApproval {
+					return m, RequestToolApproval(tc, definition)
+				}
+				return m, m.doMCPTool(m.processingCtx, tc)
+			}
+		}
+		return m, completeToolCallWithError(tc, "tool is no longer available")
+
+	case ToolApprovalDecision:
+		if msg.Allow {
+			return m, m.doMCPTool(m.processingCtx, msg.ToolCall)
+		}
+		return m, completeToolCallWithError(msg.ToolCall, "tool call denied by user")
 
 	case InferenceFinalized:
 		return m, m.finishResponseProcessing(msg.Response, msg.IsToolCall)
@@ -211,7 +246,8 @@ func (m *Orchestrator) GetCompletion(
 	resp chan util.ProcessApiCompletionResponse,
 ) tea.Cmd {
 	m.setProcessingContext(ctx)
-	return m.InferenceClient.RequestCompletion(m.processingCtx, m.ArrayOfMessages, m.Settings, resp)
+	tools := m.currentTools()
+	return m.InferenceClient.RequestCompletion(m.processingCtx, m.ArrayOfMessages, m.Settings, tools, resp)
 }
 
 func (m *Orchestrator) ResumeCompletion(
@@ -234,8 +270,79 @@ func (m *Orchestrator) ResumeCompletion(
 
 	return tea.Batch(
 		util.SendProcessingStateChangedMsg(util.ProcessingChunks),
-		m.InferenceClient.RequestCompletion(m.processingCtx, updatedSession.Messages, m.Settings, resp),
+		m.InferenceClient.RequestCompletion(
+			m.processingCtx,
+			updatedSession.Messages,
+			m.Settings,
+			m.currentTools(),
+			resp,
+		),
 	)
+}
+
+func (m *Orchestrator) currentTools() []util.ToolDefinition {
+	var external []util.ToolDefinition
+	if m.mcpManager != nil {
+		external = m.mcpManager.Tools()
+	}
+	return clients.ToolsForSettings(m.Settings, external)
+}
+
+func (m *Orchestrator) annotateToolCall(toolCall util.ToolCall) error {
+	if len(m.ArrayOfMessages) == 0 {
+		return fmt.Errorf("cannot annotate tool call without an assistant message")
+	}
+	lastIndex := len(m.ArrayOfMessages) - 1
+	updated := false
+	for index := range m.ArrayOfMessages[lastIndex].ToolCalls {
+		if m.ArrayOfMessages[lastIndex].ToolCalls[index].Id != toolCall.Id {
+			continue
+		}
+		m.ArrayOfMessages[lastIndex].ToolCalls[index].Source = toolCall.Source
+		m.ArrayOfMessages[lastIndex].ToolCalls[index].ServerID = toolCall.ServerID
+		m.ArrayOfMessages[lastIndex].ToolCalls[index].OriginalName = toolCall.OriginalName
+		updated = true
+		break
+	}
+	if !updated {
+		return fmt.Errorf("tool call %q is missing from the assistant message", toolCall.Id)
+	}
+	return m.sessionService.UpdateSessionMessages(m.CurrentSessionID, m.ArrayOfMessages)
+}
+
+func (m *Orchestrator) doMCPTool(ctx context.Context, toolCall util.ToolCall) tea.Cmd {
+	return func() tea.Msg {
+		if m.mcpManager == nil {
+			return completeToolCallErrorMessage(toolCall, "MCP manager is unavailable")
+		}
+		result := m.mcpManager.Execute(ctx, toolCall.Function.Name, toolCall.Function.Args)
+		return ToolCallComplete{
+			Id:           toolCall.Id,
+			IsSuccess:    !result.IsError,
+			Name:         toolCall.Function.Name,
+			Result:       result.Result,
+			Source:       toolCall.Source,
+			ServerID:     toolCall.ServerID,
+			OriginalName: toolCall.OriginalName,
+		}
+	}
+}
+
+func completeToolCallWithError(toolCall util.ToolCall, message string) tea.Cmd {
+	return func() tea.Msg { return completeToolCallErrorMessage(toolCall, message) }
+}
+
+func completeToolCallErrorMessage(toolCall util.ToolCall, message string) ToolCallComplete {
+	data, _ := json.Marshal(map[string]any{"error": message, "isError": true})
+	return ToolCallComplete{
+		Id:           toolCall.Id,
+		IsSuccess:    false,
+		Name:         toolCall.Function.Name,
+		Result:       string(data),
+		Source:       toolCall.Source,
+		ServerID:     toolCall.ServerID,
+		OriginalName: toolCall.OriginalName,
+	}
 }
 
 func (m *Orchestrator) prepareToolContinuation() error {
@@ -415,10 +522,20 @@ func (m *Orchestrator) hanldeProcessAPICompletionResponse(
 	return nil
 }
 
-func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[string]string) tea.Cmd {
+func (m *Orchestrator) doWebSearch(ctx context.Context, id string, args map[string]any) tea.Cmd {
 	return func() tea.Msg {
 		toolName := "web_search"
-		result, err := websearch.PrepareContextFromWebSearch(ctx, args["query"])
+		query, ok := args["query"].(string)
+		if !ok || query == "" {
+			return ToolCallComplete{
+				Id:        id,
+				IsSuccess: false,
+				Name:      toolName,
+				Result:    `{"error":"web_search requires a non-empty string query"}`,
+			}
+		}
+
+		result, err := websearch.PrepareContextFromWebSearch(ctx, query)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return nil

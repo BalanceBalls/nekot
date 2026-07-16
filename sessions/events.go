@@ -90,11 +90,36 @@ func ExecuteToolCallRequest(tc util.ToolCall) tea.Cmd {
 	}
 }
 
+type ToolApprovalRequest struct {
+	ToolCall util.ToolCall
+	Tool     util.ToolDefinition
+}
+
+func RequestToolApproval(tc util.ToolCall, tool util.ToolDefinition) tea.Cmd {
+	return func() tea.Msg {
+		return ToolApprovalRequest{ToolCall: tc, Tool: tool}
+	}
+}
+
+type ToolApprovalDecision struct {
+	ToolCall util.ToolCall
+	Allow    bool
+}
+
+func SendToolApprovalDecision(tc util.ToolCall, allow bool) tea.Cmd {
+	return func() tea.Msg {
+		return ToolApprovalDecision{ToolCall: tc, Allow: allow}
+	}
+}
+
 type ToolCallComplete struct {
-	Id        string
-	IsSuccess bool
-	Name      string
-	Result    string
+	Id           string
+	IsSuccess    bool
+	Name         string
+	Result       string
+	Source       util.ToolSource
+	ServerID     string
+	OriginalName string
 }
 
 type SessionTitleGeneratedMsg struct {

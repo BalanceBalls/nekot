@@ -33,7 +33,7 @@ func TestToolContinuationAllowsAnotherToolCall(t *testing.T) {
 							Id: "call-2",
 							Function: util.ToolFunction{
 								Name: "web_search",
-								Args: map[string]string{"query": "second query"},
+								Args: map[string]any{"query": "second query"},
 							},
 						},
 					},

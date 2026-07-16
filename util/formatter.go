@@ -12,6 +12,8 @@ import (
 	"github.com/rivo/uniseg"
 )
 
+const MaxArgsLength = 80
+
 func GetMessagesAsPrettyString(
 	msgsToRender []LocalStoreMessage,
 	w int,
@@ -243,7 +245,7 @@ func RenderToolCall(
 
 	content := ""
 
-	if msg.Content != "" {
+	if msg.Content != "" && !settings.HideReasoning {
 		contentLines := strings.SplitSeq(msg.Content, "\n")
 
 		for contentLine := range contentLines {
@@ -273,15 +275,16 @@ func RenderToolCall(
 
 		toolData := "<div>--------------------</div>\n"
 		for _, tc := range msg.ToolCalls {
+
+			name := fmt.Sprintf("Executed tool call: [%s]", tc.Function.Name)
+			args := formatToolCallArgs(tc.Function)
 			toolData += fmt.Sprintf(
-				"<div>%s [Executed tool call: %s]\n   Args: %v</div>                                           \n",
+				"<div>%s %s%s</div>                                           \n",
 				"🔧",
-				tc.Function.Name,
-				tc.Function.Args)
+				name,
+				args)
 		}
 		toolData += "<div>--------------------</div>\n"
-		toolData += "\n  \n"
-
 		content += toolData
 	}
 
@@ -301,6 +304,33 @@ func RenderToolCall(
 		BorderLeftForeground(colors.HighlightColor).
 		Width(width - 1).
 		Render("  " + output)
+}
+
+func formatToolCallArgs(tf ToolFunction) string {
+	if tf.Name == "web_search" || tf.Name == "current_datetime" {
+		return fmt.Sprintf("\n   Args: %v", tf.Args)
+	}
+
+	if len(tf.Args) == 0 {
+		return ""
+	}
+
+	result := ""
+	for k, v := range tf.Args {
+		strValue := fmt.Sprintf("%v", v)
+		if strings.ContainsAny(strValue, "\n\r") {
+			strValue = "*text_content*"
+		}
+
+		argLine := fmt.Sprintf("\n   - %s:%s", k, strValue)
+		if len(argLine) > MaxArgsLength {
+			argLine = argLine[:MaxArgsLength-3] + "..."
+		}
+		result += argLine
+	}
+
+	result = strings.Trim(result, "\n")
+	return fmt.Sprintf("\n   Args: [\n%s\n   ]", result)
 }
 
 func RenderBotChunk(

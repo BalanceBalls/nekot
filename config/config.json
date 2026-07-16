@@ -9,7 +9,14 @@
   "includeReasoningTokensInContext": true,
   "sessionExportDir": "",
   "titleGeneration": {
-    "enabled": true,
-    "timeoutSeconds": 5
+	"enabled": true,
+	"timeoutSeconds": 5
+  },
+  "mcp": {
+	"connectTimeoutSeconds": 10,
+	"toolTimeoutSeconds": 60,
+	"oauthTimeoutSeconds": 120,
+	"maxResultBytes": 1048576,
+	"servers": {}
   }
 }

@@ -55,7 +55,9 @@ type Config struct {
 	IncludeReasoningTokensInContext *bool                  `json:"includeReasoningTokensInContext"`
 	SessionExportDir                string                 `json:"sessionExportDir"`
 	TitleGeneration                 *TitleGenerationConfig `json:"titleGeneration"`
+	MCP                             MCPConfig              `json:"mcp"`
 	resolvedAPIKey                  string
+	sourcePath                      string
 }
 
 type TitleGenerationConfig struct {
@@ -131,6 +133,11 @@ func validateConfig(config Config) bool {
 		}
 	}
 
+	if err := config.MCP.Validate(); err != nil {
+		fmt.Println(err)
+		return false
+	}
+
 	switch config.Provider {
 	case util.OpenrouterProviderType:
 		return true
@@ -174,6 +181,7 @@ func CreateAndValidateConfig(flags StartupFlags) Config {
 
 	config.setDefaults()
 	config.applyFlags(flags)
+	config.sourcePath = configFilePath
 
 	isValidConfig := validateConfig(config)
 	if !isValidConfig {
@@ -213,6 +221,12 @@ func (c *Config) setDefaults() {
 			TimeoutSeconds: 5,
 		}
 	}
+
+	c.MCP.setDefaults()
+}
+
+func (c Config) SourcePath() string {
+	return c.sourcePath
 }
 
 func (c *Config) applyFlags(flags StartupFlags) {
